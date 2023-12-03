@@ -40,3 +40,27 @@
 2023-12-03 17:19:29.860 +01:00 [WRN] Overriding address(es) 'http://0.0.0.0:5000, https://0.0.0.0:5001'. Binding to endpoints defined via IConfiguration and/or UseKestrel() instead.
 2023-12-03 17:50:04.168 +01:00 [INF] API Service started
 2023-12-03 17:50:04.343 +01:00 [WRN] Overriding address(es) 'http://0.0.0.0:5000, https://0.0.0.0:5001'. Binding to endpoints defined via IConfiguration and/or UseKestrel() instead.
+2023-12-03 18:25:41.244 +01:00 [INF] API Service started
+2023-12-03 18:37:20.248 +01:00 [INF] API Service started
+2023-12-03 18:41:02.301 +01:00 [INF] API Service started
+2023-12-03 19:27:27.332 +01:00 [INF] API Service started
+2023-12-03 19:31:05.761 +01:00 [INF] API Service started
+2023-12-03 19:34:57.577 +01:00 [INF] API Service started
+2023-12-03 19:57:04.595 +01:00 [INF] API Service started
+2023-12-03 19:58:23.504 +01:00 [INF] API Service started
+2023-12-03 20:01:39.523 +01:00 [INF] API Service started
+2023-12-03 20:12:32.744 +01:00 [INF] API Service started
+2023-12-03 20:13:23.458 +01:00 [INF] API Service started
+2023-12-03 20:13:59.302 +01:00 [INF] API Service started
+2023-12-03 20:18:37.101 +01:00 [INF] API Service started
+2023-12-03 20:32:51.208 +01:00 [INF] API Service started
+2023-12-03 20:38:33.648 +01:00 [INF] API Service started
+2023-12-03 20:42:25.993 +01:00 [INF] API Service started
+2023-12-03 20:50:59.407 +01:00 [INF] API Service started
+2023-12-03 20:55:49.025 +01:00 [INF] API Service started
+2023-12-03 20:59:08.170 +01:00 [INF] API Service started
+2023-12-03 21:00:45.518 +01:00 [INF] API Service started
+2023-12-03 21:01:08.319 +01:00 [INF] API Service started
+2023-12-03 21:10:11.128 +01:00 [INF] API Service started
+2023-12-03 21:51:42.472 +01:00 [INF] API Service started
+2023-12-03 21:55:12.167 +01:00 [INF] API Service started

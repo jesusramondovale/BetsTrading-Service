@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("BetsTrading-Service")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+eb1e14c265258687e8a5dc5d27bddf3c2d77c61d")]
 [assembly: System.Reflection.AssemblyProductAttribute("BetsTrading-Service")]
 [assembly: System.Reflection.AssemblyTitleAttribute("BetsTrading-Service")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

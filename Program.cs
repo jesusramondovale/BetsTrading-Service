@@ -4,10 +4,13 @@ using Serilog.Events;
 using Serilog;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore;
+using System.Net;
+using System.Security.Cryptography.X509Certificates;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Host.UseSerilog();
+
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
@@ -16,8 +19,7 @@ Log.Logger = new LoggerConfiguration()
     .CreateLogger();
 
 try
-{  
-  
+{
   // Database connection settings (hosted locally on pre-alpha versions)
   var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
@@ -29,33 +31,42 @@ try
   builder.Services.AddControllers();
   builder.Services.AddSwaggerGen();
 
-  var kestrelConfig = builder.Configuration.GetSection("Kestrel");
+  builder.Services.AddHsts(options =>
+  {
+    options.Preload = true;
+    options.IncludeSubDomains = true;
+    options.MaxAge = TimeSpan.FromDays(60);
+  });
+
+  builder.Services.AddHttpsRedirection(options =>
+  {
+    options.RedirectStatusCode = (int)HttpStatusCode.TemporaryRedirect;
+    options.HttpsPort = 5001;
+  });
+
 
   var app = builder.Build();
-  
 
   if (app.Environment.IsDevelopment())
   {
     app.UseSwagger();
     app.UseSwaggerUI();
+    app.UseHsts();
   }
 
-  //app.UseHttpsRedirection();
+  app.UseHttpsRedirection();
   app.UseAuthorization();
   app.MapControllers();
 
   Log.Information("API Service started");
   app.Run();
-  
 }
 catch (Exception ex)
 {
   Log.Fatal(ex, "API Service terminated unexpectedly. Exception elevated to main process: ", ex.Message);
   return;
 }
-
 finally
 {
   Log.CloseAndFlush();
 }
-

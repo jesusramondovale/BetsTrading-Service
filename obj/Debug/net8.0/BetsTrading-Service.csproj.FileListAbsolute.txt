@@ -111,3 +111,4 @@ C:\dev\BetsTrading-Service\obj\Debug\net8.0\refint\BetsTrading-Service.dll
 C:\dev\BetsTrading-Service\obj\Debug\net8.0\BetsTrading-Service.pdb
 C:\dev\BetsTrading-Service\obj\Debug\net8.0\BetsTrading-Service.genruntimeconfig.cache
 C:\dev\BetsTrading-Service\obj\Debug\net8.0\ref\BetsTrading-Service.dll
+C:\dev\BetsTrading-Service\obj\Debug\net8.0\BetsTrading-Service.sourcelink.json
