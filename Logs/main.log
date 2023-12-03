@@ -1,0 +1,42 @@
+2023-12-03 15:00:06.468 +01:00 [INF] API Service started
+2023-12-03 15:00:06.663 +01:00 [WRN] Overriding address(es) 'http://0.0.0.0:5000, https://0.0.0.0:5001'. Binding to endpoints defined via IConfiguration and/or UseKestrel() instead.
+2023-12-03 15:00:51.744 +01:00 [INF] API Service started
+2023-12-03 15:00:51.925 +01:00 [WRN] Overriding address(es) 'http://0.0.0.0:5000, https://0.0.0.0:5001'. Binding to endpoints defined via IConfiguration and/or UseKestrel() instead.
+2023-12-03 15:01:20.674 +01:00 [INF] API Service started
+2023-12-03 15:01:20.853 +01:00 [WRN] Overriding address(es) 'http://0.0.0.0:5000, https://0.0.0.0:5001'. Binding to endpoints defined via IConfiguration and/or UseKestrel() instead.
+2023-12-03 15:01:56.852 +01:00 [INF] API Service started
+2023-12-03 15:01:57.006 +01:00 [WRN] Overriding address(es) 'http://0.0.0.0:7000, https://0.0.0.0:7001'. Binding to endpoints defined via IConfiguration and/or UseKestrel() instead.
+2023-12-03 15:03:02.602 +01:00 [INF] API Service started
+2023-12-03 15:03:02.757 +01:00 [WRN] Overriding address(es) 'http://0.0.0.0:5000, https://0.0.0.0:5001'. Binding to endpoints defined via IConfiguration and/or UseKestrel() instead.
+2023-12-03 15:12:38.552 +01:00 [INF] API Service started
+2023-12-03 15:12:38.742 +01:00 [WRN] Overriding address(es) 'http://0.0.0.0:5000, https://0.0.0.0:5001'. Binding to endpoints defined via IConfiguration and/or UseKestrel() instead.
+2023-12-03 15:18:05.597 +01:00 [INF] API Service started
+2023-12-03 15:18:05.766 +01:00 [WRN] Overriding address(es) 'http://0.0.0.0:5000, https://0.0.0.0:5001'. Binding to endpoints defined via IConfiguration and/or UseKestrel() instead.
+2023-12-03 15:18:22.091 +01:00 [INF] API Service started
+2023-12-03 15:18:22.263 +01:00 [WRN] Overriding address(es) 'http://0.0.0.0:5000, https://0.0.0.0:5001'. Binding to endpoints defined via IConfiguration and/or UseKestrel() instead.
+2023-12-03 15:21:05.505 +01:00 [INF] API Service started
+2023-12-03 15:21:05.670 +01:00 [WRN] Overriding address(es) 'http://0.0.0.0:5000, https://0.0.0.0:5001'. Binding to endpoints defined via IConfiguration and/or UseKestrel() instead.
+2023-12-03 15:23:07.283 +01:00 [INF] API Service started
+2023-12-03 15:23:07.442 +01:00 [WRN] Overriding address(es) 'http://0.0.0.0:5000, https://0.0.0.0:5001'. Binding to endpoints defined via IConfiguration and/or UseKestrel() instead.
+2023-12-03 15:25:00.006 +01:00 [INF] API Service started
+2023-12-03 15:25:00.175 +01:00 [WRN] Overriding address(es) 'http://0.0.0.0:5000, https://0.0.0.0:5001'. Binding to endpoints defined via IConfiguration and/or UseKestrel() instead.
+2023-12-03 15:26:45.278 +01:00 [INF] API Service started
+2023-12-03 15:26:45.436 +01:00 [WRN] Overriding address(es) 'http://0.0.0.0:5000, https://0.0.0.0:5001'. Binding to endpoints defined via IConfiguration and/or UseKestrel() instead.
+2023-12-03 15:33:34.772 +01:00 [INF] API Service started
+2023-12-03 15:33:34.928 +01:00 [WRN] Overriding address(es) 'http://0.0.0.0:5000, https://0.0.0.0:5001'. Binding to endpoints defined via IConfiguration and/or UseKestrel() instead.
+2023-12-03 15:36:48.371 +01:00 [INF] API Service started
+2023-12-03 15:36:48.579 +01:00 [WRN] Overriding address(es) 'http://0.0.0.0:5000, https://0.0.0.0:5001'. Binding to endpoints defined via IConfiguration and/or UseKestrel() instead.
+2023-12-03 15:54:11.015 +01:00 [INF] API Service started
+2023-12-03 15:54:11.242 +01:00 [WRN] Overriding address(es) 'http://0.0.0.0:5000, https://0.0.0.0:5001'. Binding to endpoints defined via IConfiguration and/or UseKestrel() instead.
+2023-12-03 15:55:06.789 +01:00 [INF] API Service started
+2023-12-03 15:55:06.869 +01:00 [WRN] Overriding address(es) 'http://0.0.0.0:5000, https://0.0.0.0:5001'. Binding to endpoints defined via IConfiguration and/or UseKestrel() instead.
+2023-12-03 15:56:47.006 +01:00 [INF] API Service started
+2023-12-03 15:56:47.200 +01:00 [WRN] Overriding address(es) 'http://0.0.0.0:5000, https://0.0.0.0:5001'. Binding to endpoints defined via IConfiguration and/or UseKestrel() instead.
+2023-12-03 16:09:33.109 +01:00 [INF] API Service started
+2023-12-03 16:09:33.300 +01:00 [WRN] Overriding address(es) 'http://0.0.0.0:5000, https://0.0.0.0:5001'. Binding to endpoints defined via IConfiguration and/or UseKestrel() instead.
+2023-12-03 17:06:51.028 +01:00 [INF] API Service started
+2023-12-03 17:06:51.329 +01:00 [WRN] Overriding address(es) 'http://0.0.0.0:5000, https://0.0.0.0:5001'. Binding to endpoints defined via IConfiguration and/or UseKestrel() instead.
+2023-12-03 17:19:29.688 +01:00 [INF] API Service started
+2023-12-03 17:19:29.860 +01:00 [WRN] Overriding address(es) 'http://0.0.0.0:5000, https://0.0.0.0:5001'. Binding to endpoints defined via IConfiguration and/or UseKestrel() instead.
+2023-12-03 17:50:04.168 +01:00 [INF] API Service started
+2023-12-03 17:50:04.343 +01:00 [WRN] Overriding address(es) 'http://0.0.0.0:5000, https://0.0.0.0:5001'. Binding to endpoints defined via IConfiguration and/or UseKestrel() instead.
