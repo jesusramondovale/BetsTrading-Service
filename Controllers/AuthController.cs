@@ -25,7 +25,6 @@ namespace BetsTrading_Service.Controllers
     {
       try
       {
-        // Buscar el usuario en la base de datos
         var user = _dbContext.Users
             .FirstOrDefault(u => u.username == loginRequest.Username || 
                                  u.email == loginRequest.Username);
