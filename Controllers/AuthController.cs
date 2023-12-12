@@ -1,9 +1,15 @@
 ﻿using System;
+using System.Diagnostics.Metrics;
 using System.Linq;
+using System.Net;
+using System.Reflection;
 using BetsTrading_Service.Database;
 using BetsTrading_Service.Models;
 using Microsoft.AspNetCore.Identity.Data;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Serilog;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 
 namespace BetsTrading_Service.Controllers
@@ -51,7 +57,45 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
+    [HttpPost("SignIn")]
+    public IActionResult SignIn([FromBody] SignUpRequest signUpRequest)
+    {
+      try
+      {
+        var existingUser = _dbContext.Users
+            .FirstOrDefault(u => u.username == signUpRequest.Username || u.email == signUpRequest.Email);
 
+        if (existingUser != null)
+        {
+          return Conflict(new { Message = "Username or email already exists" }); 
+        }
+
+        // Crear un nuevo usuario
+        var newUser = new User(
+            Guid.NewGuid().ToString(),
+            signUpRequest.IdCard,
+            signUpRequest.FullName,
+            signUpRequest.Password,
+            signUpRequest.Address,
+            signUpRequest.Country,
+            signUpRequest.Gender,
+            signUpRequest.Email,
+            signUpRequest.Birthday,
+            DateTime.Now,
+            DateTimeOffset.Now,
+            signUpRequest.CreditCard,
+            signUpRequest.Username);
+      
+        _dbContext.Users.Add(newUser);
+        _dbContext.SaveChanges();
+
+        return CreatedAtAction(nameof(LogIn), new { UserId = newUser.id });
+      }
+      catch (Exception ex)
+      {
+        return StatusCode(500, new { Message = "Internal server error! ", Error = ex.Message });
+      }
+    }
 
   }
 
@@ -61,6 +105,20 @@ namespace BetsTrading_Service.Controllers
     public string? Password { get; set; }
   }
 
+  public class SignUpRequest
+  {
+    public string? Id { get; set; }
+    public string? IdCard { get; set; }
+    public string? FullName { get; set; }
+    public string? Password { get; set; }
+    public string? Address { get; set; }
+    public string? Country { get; set; }
+    public string? Gender { get; set; }
+    public string? Email { get; set; }
+    public DateTime Birthday { get; set; }
+    public string? CreditCard { get; set; }
+    public string? Username { get; set; }
+  }
 
 }
 
