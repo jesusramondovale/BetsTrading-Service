@@ -63,11 +63,11 @@ namespace BetsTrading_Service.Controllers
       try
       {
         var existingUser = _dbContext.Users
-            .FirstOrDefault(u => u.username == signUpRequest.Username || u.email == signUpRequest.Email);
+            .FirstOrDefault(u => u.username == signUpRequest.Username || u.email == signUpRequest.Email || u.idcard== signUpRequest.IdCard);
 
         if (existingUser != null)
         {
-          return Conflict(new { Message = "Username or email already exists" }); 
+          return Conflict(new { Message = "Username, email or ID already exists" }); 
         }
 
         // Crear un nuevo usuario
@@ -81,19 +81,20 @@ namespace BetsTrading_Service.Controllers
             signUpRequest.Gender,
             signUpRequest.Email,
             signUpRequest.Birthday,
-            DateTime.Now,
-            DateTimeOffset.Now,
+            DateTime.UtcNow,
+            DateTime.UtcNow,
             signUpRequest.CreditCard,
             signUpRequest.Username);
       
         _dbContext.Users.Add(newUser);
         _dbContext.SaveChanges();
 
-        return CreatedAtAction(nameof(LogIn), new { UserId = newUser.id });
+        return Ok(new { Message = "Registration succesfull!", UserId = newUser.id }); // Success
       }
+      
       catch (Exception ex)
       {
-        return StatusCode(500, new { Message = "Internal server error! ", Error = ex.Message });
+          return StatusCode(500, new { Message = "Internal server error! ", Error = ex.Message });
       }
     }
 
@@ -107,7 +108,6 @@ namespace BetsTrading_Service.Controllers
 
   public class SignUpRequest
   {
-    public string? Id { get; set; }
     public string? IdCard { get; set; }
     public string? FullName { get; set; }
     public string? Password { get; set; }
