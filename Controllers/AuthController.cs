@@ -44,6 +44,7 @@ namespace BetsTrading_Service.Controllers
             
             user.last_session = DateTime.UtcNow;
             user.token_expiration = DateTime.UtcNow.AddDays(SESSION_EXP_DAYS);
+            user.is_active = true;
             _dbContext.SaveChanges();
 
             return Ok(new { Message = "LogIn SUCCESS", UserId = user.id });
@@ -64,8 +65,66 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
+    [HttpPost("LogOut")]
+    public IActionResult LogOut([FromBody] idRequest logOutRequest)
+    {
+      try
+      {
+        var user = _dbContext.Users.FirstOrDefault(u => u.id== logOutRequest.id);
+
+        if (user != null) 
+        {        
+          user.last_session = DateTime.UtcNow;
+          user.is_active = false;
+          _dbContext.SaveChanges();
+          return Ok(new { Message = "LogOut SUCCESS", UserId = user.id });
+          
+        }
+        else
+        {
+          return NotFound(new { Message = "User or email not found" }); // User not found
+        }
+      }
+      catch (Exception ex)
+      {
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+    }
+
+    [HttpPost("UserInfo")]
+    public IActionResult UserInfo([FromBody] idRequest userInfoRequest)
+    {
+      try
+      {
+        var user = _dbContext.Users
+            .FirstOrDefault(u => u.id == userInfoRequest.id);
+
+        if (user != null) // User exists
+        {
+          return Ok(new { Message = "UserInfo SUCCESS", 
+                          Username = user.username,
+                          Email = user.email,
+                          Birthday = user.birthday,
+                          Fullname = user.fullname, 
+                          Address = user.address,
+                          Country = user.country,
+                          Lastsession = user.last_session
+          });
+                    
+        }
+        else // Unexistent user
+        {
+          return NotFound(new { Message = "User or email not found" }); // User not found
+        }
+      }
+      catch (Exception ex)
+      {
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+    }
+
     [HttpPost("IsLoggedIn")]
-    public IActionResult IsLoggedIn(IsLoggedRequest isLoggedRequest)
+    public IActionResult IsLoggedIn(idRequest isLoggedRequest)
     {
       try
       {
@@ -74,7 +133,7 @@ namespace BetsTrading_Service.Controllers
 
         if (user != null) 
         {
-          if (user.token_expiration > DateTime.UtcNow)
+          if (user.is_active && user.token_expiration > DateTime.UtcNow)
           {
             user.last_session = DateTime.UtcNow;
             _dbContext.SaveChanges();
@@ -152,7 +211,7 @@ namespace BetsTrading_Service.Controllers
     public string? Password { get; set; }
   }
 
-  public class IsLoggedRequest
+  public class idRequest
   {
     [Required]
     [StringLength(100, MinimumLength = 25)]

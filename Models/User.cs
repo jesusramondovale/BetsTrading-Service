@@ -42,7 +42,7 @@
     public string credit_card { get; private set; }
     public string username { get; private set; }
     public DateTimeOffset? token_expiration { get;  set; }
-    public bool is_active { get; private set; }
+    public bool is_active { get; set; }
     public int failed_attempts { get; private set; }
     public DateTimeOffset? last_login_attempt { get; private set; }
     public DateTimeOffset? last_password_change { get; private set; }
