@@ -134,9 +134,7 @@ namespace BetsTrading_Service.Controllers
         if (user != null) 
         {
           if (user.is_active && user.token_expiration > DateTime.UtcNow)
-          {
-            user.last_session = DateTime.UtcNow;
-            _dbContext.SaveChanges();
+          {           
 
             return Ok(new { Message = "User is logged in", UserId = user.id }); 
           }
