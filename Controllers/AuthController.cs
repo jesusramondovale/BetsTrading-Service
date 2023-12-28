@@ -4,6 +4,7 @@ using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Net;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using BetsTrading_Service.Database;
 using BetsTrading_Service.Models;
 using Microsoft.AspNetCore.Identity.Data;
@@ -108,8 +109,9 @@ namespace BetsTrading_Service.Controllers
                           Fullname = user.fullname, 
                           Address = user.address,
                           Country = user.country,
-                          Lastsession = user.last_session
-          });
+                          Lastsession = user.last_session,
+                          Profilepic = user.profile_pic
+          });;
                     
         }
         else // Unexistent user
@@ -154,6 +156,40 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
+
+    [HttpPost("UploadPic")]
+    public IActionResult UploadPic(uploadPicRequest uploadPicImageRequest)
+    {
+      try
+      {
+        var user = _dbContext.Users
+            .FirstOrDefault(u => u.id == uploadPicImageRequest.id);
+
+        if (user != null && uploadPicImageRequest.Profilepic != "")
+        {
+          if (user.is_active && user.token_expiration > DateTime.UtcNow)
+          {
+            user.profile_pic = uploadPicImageRequest.Profilepic;
+            _dbContext.SaveChanges();
+
+            return Ok(new { Message = "Profile pic succesfully updated!", UserId = user.id });
+          }
+          else
+          {
+            return BadRequest(new { Message = "No active session or session expired" });
+          }
+        }
+        else
+        {
+          return NotFound(new { Message = "User token not found" });
+        }
+      }
+      catch (Exception ex)
+      {
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+    }
+
     [HttpPost("SignIn")]
     public IActionResult SignIn([FromBody] SignUpRequest signUpRequest)
     {
@@ -166,8 +202,7 @@ namespace BetsTrading_Service.Controllers
         {
           return Conflict(new { Message = "Username, email or ID already exists" }); 
         }
-
-        // Crear un nuevo usuario
+            
         var newUser = new User(
           Guid.NewGuid().ToString(),
           signUpRequest.IdCard ?? "nullIdCard",
@@ -178,16 +213,18 @@ namespace BetsTrading_Service.Controllers
           signUpRequest.Gender ?? "nullGender",
           signUpRequest.Email ?? "nullEmail",
           signUpRequest.Birthday,
-          DateTime.UtcNow, 
-          DateTime.UtcNow, 
-          signUpRequest.CreditCard ?? "nullCreditCard", 
-          signUpRequest.Username ?? "nullUsername");
-                
-        newUser.token_expiration = DateTime.UtcNow.AddDays(SESSION_EXP_DAYS);
+          DateTime.UtcNow,
+          DateTime.UtcNow,
+          signUpRequest.CreditCard ?? "nullCreditCard",
+          signUpRequest.Username ?? "nullUsername",
+          signUpRequest.ProfilePic ?? null);
+          newUser.token_expiration = DateTime.UtcNow.AddDays(SESSION_EXP_DAYS);
+
         _dbContext.Users.Add(newUser);
         _dbContext.SaveChanges();
 
         return Ok(new { Message = "Registration succesfull!", UserId = newUser.id }); // SUCCESS
+                      
       }
       
       catch (Exception ex)
@@ -216,6 +253,18 @@ namespace BetsTrading_Service.Controllers
     public string? id { get; set; }
 
     
+  }
+
+  public class uploadPicRequest
+  {
+    [Required]
+    [StringLength(100, MinimumLength = 25)]
+    public string? id { get; set; }
+
+    [Required]
+    public string? Profilepic { get; set; }
+
+
   }
 
   public class SignUpRequest
@@ -251,6 +300,9 @@ namespace BetsTrading_Service.Controllers
     [Required]
     [StringLength(50, MinimumLength = 3)]
     public string? Username { get; set; }
+
+    public string? ProfilePic { get; set; }
+
   }
 
 

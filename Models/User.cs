@@ -26,7 +26,36 @@
       failed_attempts = 0;
       last_login_attempt = null;
       last_password_change = null;
+      profile_pic = null;
     }
+
+    public User(string id, string idcard, string fullname, string password,
+                string address, string country, string gender,
+                string email, DateTime birthday, DateTime signin_date,
+                DateTimeOffset last_session, string credit_card, string username, string profile_pic)
+    {
+      this.id = id;
+      this.idcard = idcard;
+      this.fullname = fullname;
+      this.password = password; // La contraseña ya viene hasheada
+      this.address = address;
+      this.country = country;
+      this.gender = gender;
+      this.email = email;
+      this.birthday = birthday;
+      this.signin_date = signin_date;
+      this.last_session = last_session;
+      this.credit_card = credit_card;
+      this.username = username;
+      this.profile_pic = profile_pic;
+
+      token_expiration = null;
+      is_active = true;
+      failed_attempts = 0;
+      last_login_attempt = null;
+      last_password_change = null;
+    }
+
 
     public string id { get; private set; }
     public string idcard { get; private set; }
@@ -46,6 +75,8 @@
     public int failed_attempts { get; private set; }
     public DateTimeOffset? last_login_attempt { get; private set; }
     public DateTimeOffset? last_password_change { get; private set; }
+    public string? profile_pic { get; set; }
+
   }
 
 }
