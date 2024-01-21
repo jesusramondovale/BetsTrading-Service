@@ -7,6 +7,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using BetsTrading_Service.Database;
 using BetsTrading_Service.Models;
+using BetsTrading_Service.Requests;
 using Microsoft.AspNetCore.Identity.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -30,7 +31,7 @@ namespace BetsTrading_Service.Controllers
     }
 
     [HttpPost("LogIn")]
-    public IActionResult LogIn([FromBody] LoginRequest loginRequest)
+    public IActionResult LogIn([FromBody] Requests.LoginRequest loginRequest)
     {
       try
       {
@@ -92,38 +93,6 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
-    [HttpPost("UserInfo")]
-    public IActionResult UserInfo([FromBody] idRequest userInfoRequest)
-    {
-      try
-      {
-        var user = _dbContext.Users
-            .FirstOrDefault(u => u.id == userInfoRequest.id);
-
-        if (user != null) // User exists
-        {
-          return Ok(new { Message = "UserInfo SUCCESS", 
-                          Username = user.username,
-                          Email = user.email,
-                          Birthday = user.birthday,
-                          Fullname = user.fullname, 
-                          Address = user.address,
-                          Country = user.country,
-                          Lastsession = user.last_session,
-                          Profilepic = user.profile_pic
-          });;
-                    
-        }
-        else // Unexistent user
-        {
-          return NotFound(new { Message = "User or email not found" }); // User not found
-        }
-      }
-      catch (Exception ex)
-      {
-        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
-      }
-    }
 
     [HttpPost("IsLoggedIn")]
     public IActionResult IsLoggedIn(idRequest isLoggedRequest)
@@ -156,39 +125,6 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
-
-    [HttpPost("UploadPic")]
-    public IActionResult UploadPic(uploadPicRequest uploadPicImageRequest)
-    {
-      try
-      {
-        var user = _dbContext.Users
-            .FirstOrDefault(u => u.id == uploadPicImageRequest.id);
-
-        if (user != null && uploadPicImageRequest.Profilepic != "")
-        {
-          if (user.is_active && user.token_expiration > DateTime.UtcNow)
-          {
-            user.profile_pic = uploadPicImageRequest.Profilepic;
-            _dbContext.SaveChanges();
-
-            return Ok(new { Message = "Profile pic succesfully updated!", UserId = user.id });
-          }
-          else
-          {
-            return BadRequest(new { Message = "No active session or session expired" });
-          }
-        }
-        else
-        {
-          return NotFound(new { Message = "User token not found" });
-        }
-      }
-      catch (Exception ex)
-      {
-        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
-      }
-    }
 
     [HttpPost("SignIn")]
     public IActionResult SignIn([FromBody] SignUpRequest signUpRequest)
@@ -235,75 +171,6 @@ namespace BetsTrading_Service.Controllers
 
   }
 
-  public class LoginRequest
-  {
-    [Required]
-    [StringLength(50, MinimumLength = 3)]
-    public string? Username { get; set; }
-
-    [Required]
-    [StringLength(100, MinimumLength = 6)]
-    public string? Password { get; set; }
-  }
-
-  public class idRequest
-  {
-    [Required]
-    [StringLength(100, MinimumLength = 25)]
-    public string? id { get; set; }
-
-    
-  }
-
-  public class uploadPicRequest
-  {
-    [Required]
-    [StringLength(100, MinimumLength = 25)]
-    public string? id { get; set; }
-
-    [Required]
-    public string? Profilepic { get; set; }
-
-
-  }
-
-  public class SignUpRequest
-  {
-    [Required]
-    public string? IdCard { get; set; }
-
-    [Required]
-    [StringLength(100, MinimumLength = 3)]
-    public string? FullName { get; set; }
-
-    [Required]
-    [StringLength(100, MinimumLength = 6)]
-    public string? Password { get; set; }
-
-    public string? Address { get; set; }
-
-    [Required]
-    public string? Country { get; set; }
-
-    public string? Gender { get; set; }
-
-    [Required]
-    [EmailAddress]
-    public string? Email { get; set; }
-
-    [Required]
-    public DateTime Birthday { get; set; }
-
-    // REMOVE FROM HERE IN FUTURE
-    public string? CreditCard { get; set; }
-
-    [Required]
-    [StringLength(50, MinimumLength = 3)]
-    public string? Username { get; set; }
-
-    public string? ProfilePic { get; set; }
-
-  }
 
 
 }
