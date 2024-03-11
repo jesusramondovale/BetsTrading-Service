@@ -44,6 +44,11 @@ try
     options.HttpsPort = 5001;
   });
 
+  builder.Services.AddResponseCompression(options =>
+  {
+    options.EnableForHttps = true;
+  });
+
 
   var app = builder.Build();
 
@@ -54,6 +59,7 @@ try
     app.UseHsts();
   }
 
+  app.UseResponseCompression();
   app.UseHttpsRedirection();
   app.UseAuthorization();
   app.MapControllers();

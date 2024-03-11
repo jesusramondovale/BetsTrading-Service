@@ -22,7 +22,7 @@
     // Especifica el esquema "BetsTrading" al definir el DbSet
     public DbSet<User> Users { get; set; }
     public DbSet<Bet> InvestmentData{ get; set; }
-
+    public DbSet<FinancialAsset> FinancialAssets { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
