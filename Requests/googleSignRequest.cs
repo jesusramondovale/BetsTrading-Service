@@ -10,6 +10,7 @@ namespace BetsTrading_Service.Requests
     [StringLength(100, MinimumLength = 21)]
     public string? id { get; set; }
 
+    public DateTime? birthday { get; set; }
    
     [Required]
     [StringLength(100, MinimumLength = 1)]

@@ -187,13 +187,13 @@ namespace BetsTrading_Service.Controllers
         Console.WriteLine("OK1");
         var newUser = new User(
           signUpRequest.Token ?? Guid.NewGuid().ToString(),
-          signUpRequest.IdCard ?? "nullIdCard",
-          signUpRequest.FullName ?? "nullFullName",
-          signUpRequest.Password ?? "nullPassword",
-          signUpRequest.Address ?? "nullAddress",
-          signUpRequest.Country ?? "nullCountry",
-          signUpRequest.Gender ?? "nullGender",
-          signUpRequest.Email ?? "nullEmail",
+          signUpRequest.IdCard ?? "-",
+          signUpRequest.FullName ?? "-",
+          signUpRequest.Password ?? "-",
+          signUpRequest.Address ?? "-",
+          signUpRequest.Country ?? "-",
+          signUpRequest.Gender ?? "-",
+          signUpRequest.Email ?? "-",
           signUpRequest.Birthday ?? DateTime.UtcNow,
           DateTime.UtcNow,
           DateTime.UtcNow,
@@ -233,7 +233,8 @@ namespace BetsTrading_Service.Controllers
 
       signUpRequest.FullName = isGoogledRequest.displayName;
       signUpRequest.Email= isGoogledRequest.email;
- 
+      signUpRequest.ProfilePic = isGoogledRequest.photoUrl;
+      signUpRequest.Birthday = isGoogledRequest.birthday;
       var signInResult = SignIn(signUpRequest);
 
       
