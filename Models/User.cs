@@ -2,10 +2,10 @@
 {
   public class User
   {
-    public User(string id, string idcard, string fullname, string password,
-                string address, string country, string gender,
+    public User(string id, string? idcard, string fullname, string? password,
+                string? address, string? country, string? gender,
                 string email, DateTime birthday, DateTime signin_date,
-                DateTimeOffset last_session, string credit_card, string username)
+                DateTimeOffset last_session, string? credit_card, string username)
     {
       this.id = id;
       this.idcard = idcard;
@@ -35,17 +35,17 @@
                 DateTimeOffset last_session, string credit_card, string username, string profile_pic)
     {
       this.id = id;
-      this.idcard = idcard;
+      this.idcard = idcard!;
       this.fullname = fullname;
-      this.password = password; // La contraseña ya viene hasheada
-      this.address = address;
-      this.country = country;
-      this.gender = gender;
+      this.password = password!; // La contraseña ya viene hasheada
+      this.address = address!;
+      this.country = country!;
+      this.gender = gender!;
       this.email = email;
       this.birthday = birthday;
       this.signin_date = signin_date;
-      this.last_session = last_session;
-      this.credit_card = credit_card;
+      this.last_session = last_session!;
+      this.credit_card = credit_card!;
       this.username = username;
       this.profile_pic = profile_pic;
 

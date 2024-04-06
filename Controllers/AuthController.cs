@@ -125,40 +125,87 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
+    [HttpPost("IsGoogledIn")]
+    public IActionResult IsGoogledIn(googleSignRequest isGoogledRequest)
+    {
+      Console.WriteLine("IsGoogledIn() called");
+      Console.WriteLine("IsGoogledIn(): Token -> " + isGoogledRequest.id);
+      try
+      {
+        var user = _dbContext.Users
+            .FirstOrDefault(u => u.id == isGoogledRequest.id);
 
+        if (user != null)
+        {
+          Console.WriteLine("User is already logged in");
+          return Ok(new { Message = "User is logged in", UserId = user.id });
+         
+        }
+        else
+        {
+          var googleQuickResult = GoogleQuickRegister(isGoogledRequest);
+
+          Console.WriteLine("Aqui ya tengo quickResult y es : " + googleQuickResult);
+          if (googleQuickResult is OkObjectResult)
+          {
+            Console.WriteLine("ConsoleQuickRegister() returned OK");
+            return Ok(new { Message = "User quick-registered", UserId = isGoogledRequest.id });
+          }
+          else
+          {
+            Console.WriteLine("ConsoleQuickRegister() returned NO OK");
+            return StatusCode(500, new { Message = "Internal server error! ", Error = "Internal server error  while google quick-regist" });
+          }
+          
+
+        }
+      }
+      catch (Exception ex)
+      {
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+    }
+
+
+    //TODO
     [HttpPost("SignIn")]
     public IActionResult SignIn([FromBody] SignUpRequest signUpRequest)
     {
+      Console.WriteLine("SignIn() called");
+      Console.WriteLine("Requesst -> " + signUpRequest.FullName);
       try
       {
         var existingUser = _dbContext.Users
-            .FirstOrDefault(u => u.username == signUpRequest.Username || u.email == signUpRequest.Email || u.idcard== signUpRequest.IdCard);
+            .FirstOrDefault(u => u.username == signUpRequest.Username || u.email == signUpRequest.Email);
 
         if (existingUser != null)
         {
+          Console.WriteLine("Conflict!");
           return Conflict(new { Message = "Username, email or ID already exists" }); 
         }
-            
+
+        Console.WriteLine("OK1");
         var newUser = new User(
-          Guid.NewGuid().ToString(),
-          signUpRequest.IdCard ?? "nullIdCard",
-          signUpRequest.FullName ?? "nullFullName",
-          signUpRequest.Password ?? "nullPassword",
-          signUpRequest.Address ?? "nullAddress",
-          signUpRequest.Country ?? "nullCountry",
-          signUpRequest.Gender ?? "nullGender",
-          signUpRequest.Email ?? "nullEmail",
-          signUpRequest.Birthday,
+          signUpRequest.Token ?? Guid.NewGuid().ToString(),
+          signUpRequest.IdCard ?? "-",
+          signUpRequest.FullName ?? "-",
+          signUpRequest.Password ?? "-",
+          signUpRequest.Address ?? "-",
+          signUpRequest.Country ?? "-",
+          signUpRequest.Gender ?? "-",
+          signUpRequest.Email ?? "-",
+          signUpRequest.Birthday ?? DateTime.UtcNow,
           DateTime.UtcNow,
           DateTime.UtcNow,
           signUpRequest.CreditCard ?? "nullCreditCard",
           signUpRequest.Username ?? "nullUsername",
-          signUpRequest.ProfilePic ?? null);
+          signUpRequest.ProfilePic ?? null); 
           newUser.token_expiration = DateTime.UtcNow.AddDays(SESSION_EXP_DAYS);
-
+        Console.WriteLine("OK2");
         _dbContext.Users.Add(newUser);
         _dbContext.SaveChanges();
 
+        Console.WriteLine("SignIn() OK)");
         return Ok(new { Message = "Registration succesfull!", UserId = newUser.id }); // SUCCESS
                       
       }
@@ -169,9 +216,42 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
+    //TODO
+    public IActionResult GoogleQuickRegister(googleSignRequest isGoogledRequest)
+    {
+      Console.WriteLine("GoogleQuickRegister() called");
+      SignUpRequest signUpRequest = new SignUpRequest();
+      signUpRequest.Token = isGoogledRequest.id;
+      if (!string.IsNullOrEmpty(isGoogledRequest.email))
+      {
+        signUpRequest.Username = isGoogledRequest.email.Split('@')[0];
+      }
+      else
+      {
+        signUpRequest.Username = isGoogledRequest.displayName;
+      }
+
+      signUpRequest.FullName = isGoogledRequest.displayName;
+      signUpRequest.Email= isGoogledRequest.email;
+      signUpRequest.ProfilePic = isGoogledRequest.photoUrl;
+      signUpRequest.Birthday = isGoogledRequest.birthday;
+      var signInResult = SignIn(signUpRequest);
+
+      
+      if (signInResult is OkObjectResult) // Asumiendo que SignIn devuelve un OkObjectResult en caso de éxito.
+      {
+        Console.WriteLine("SignIn external() OK");
+        return Ok(new { Message = "User quick-registered", UserId = signUpRequest.Token });
+      }
+      else
+      {
+        Console.WriteLine("SignIn() INTERNAL SERVER ERROR");
+        return StatusCode(500, new { Message = "Internal server error! ", Error = "Internal server error  while google quick-regist" });
+      }
+     
+    }
+
   }
-
-
 
 }
 
