@@ -10,7 +10,7 @@
       this.id = id;
       this.idcard = idcard;
       this.fullname = fullname;
-      this.password = password; // La contraseña ya viene hasheada
+      this.password = password; // SHA-256
       this.address = address;
       this.country = country;
       this.gender = gender;
@@ -37,7 +37,7 @@
       this.id = id;
       this.idcard = idcard!;
       this.fullname = fullname;
-      this.password = password!; // La contraseña ya viene hasheada
+      this.password = password!;
       this.address = address!;
       this.country = country!;
       this.gender = gender!;
@@ -60,7 +60,7 @@
     public string id { get; private set; }
     public string idcard { get; private set; }
     public string fullname { get; private set; }
-    public string password { get; private set; } // Esta propiedad ahora almacena la contraseña hasheada
+    public string password { get; private set; }
     public string address { get; private set; }
     public string country { get; private set; }
     public string gender { get; private set; }

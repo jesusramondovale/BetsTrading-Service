@@ -93,7 +93,6 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
-
     [HttpPost("IsLoggedIn")]
     public IActionResult IsLoggedIn(idRequest isLoggedRequest)
     {
@@ -125,49 +124,6 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
-    [HttpPost("IsGoogledIn")]
-    public IActionResult IsGoogledIn(googleSignRequest isGoogledRequest)
-    {
-      Console.WriteLine("IsGoogledIn() called");
-      Console.WriteLine("IsGoogledIn(): Token -> " + isGoogledRequest.id);
-      try
-      {
-        var user = _dbContext.Users
-            .FirstOrDefault(u => u.id == isGoogledRequest.id);
-
-        if (user != null)
-        {
-          Console.WriteLine("User is already logged in");
-          return Ok(new { Message = "User is logged in", UserId = user.id });
-         
-        }
-        else
-        {
-          var googleQuickResult = GoogleQuickRegister(isGoogledRequest);
-
-          Console.WriteLine("Aqui ya tengo quickResult y es : " + googleQuickResult);
-          if (googleQuickResult is OkObjectResult)
-          {
-            Console.WriteLine("ConsoleQuickRegister() returned OK");
-            return Ok(new { Message = "User quick-registered", UserId = isGoogledRequest.id });
-          }
-          else
-          {
-            Console.WriteLine("ConsoleQuickRegister() returned NO OK");
-            return StatusCode(500, new { Message = "Internal server error! ", Error = "Internal server error  while google quick-regist" });
-          }
-          
-
-        }
-      }
-      catch (Exception ex)
-      {
-        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
-      }
-    }
-
-
-    //TODO
     [HttpPost("SignIn")]
     public IActionResult SignIn([FromBody] SignUpRequest signUpRequest)
     {
@@ -216,7 +172,7 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
-    //TODO
+    [HttpPost("GoogleQuickRegister")]
     public IActionResult GoogleQuickRegister(googleSignRequest isGoogledRequest)
     {
       Console.WriteLine("GoogleQuickRegister() called");
@@ -238,7 +194,7 @@ namespace BetsTrading_Service.Controllers
       var signInResult = SignIn(signUpRequest);
 
       
-      if (signInResult is OkObjectResult) // Asumiendo que SignIn devuelve un OkObjectResult en caso de éxito.
+      if (signInResult is OkObjectResult)
       {
         Console.WriteLine("SignIn external() OK");
         return Ok(new { Message = "User quick-registered", UserId = signUpRequest.Token });
