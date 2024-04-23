@@ -5,7 +5,7 @@ namespace BetsTrading_Service.Requests
   public class uploadPicRequest
   {
     [Required]
-    [StringLength(100, MinimumLength = 25)]
+    [StringLength(100, MinimumLength = 20)]
     public string? id { get; set; }
 
     [Required]
