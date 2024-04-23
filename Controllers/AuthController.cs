@@ -67,6 +67,36 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
+    [HttpPost("GoogleLogIn")]
+    public IActionResult GoogleLogIn([FromBody] Requests.LoginRequest loginRequest)
+    {
+      try
+      {
+        var user = _dbContext.Users
+            .FirstOrDefault(u => u.id == loginRequest.Username);
+
+        if (user != null) // Google-User exists
+        {
+          
+          user.last_session = DateTime.UtcNow;
+          user.token_expiration = DateTime.UtcNow.AddDays(SESSION_EXP_DAYS);
+          user.is_active = true;
+          _dbContext.SaveChanges();
+
+          return Ok(new { Message = "Google LogIn SUCCESS", UserId = user.id });        
+          
+        }
+        else // Unexistent user
+        {
+          return NotFound(new { Message = "User found" }); // User not found
+        }
+      }
+      catch (Exception ex)
+      {
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+    }
+
     [HttpPost("LogOut")]
     public IActionResult LogOut([FromBody] idRequest logOutRequest)
     {
@@ -155,8 +185,10 @@ namespace BetsTrading_Service.Controllers
           DateTime.UtcNow,
           signUpRequest.CreditCard ?? "nullCreditCard",
           signUpRequest.Username ?? "ERROR",
-          signUpRequest.ProfilePic ?? null); 
+          signUpRequest.ProfilePic ?? null);
+          newUser.is_active = true;
           newUser.token_expiration = DateTime.UtcNow.AddDays(SESSION_EXP_DAYS);
+        
         Console.WriteLine("OK2");
         _dbContext.Users.Add(newUser);
         _dbContext.SaveChanges();
