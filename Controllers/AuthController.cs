@@ -147,14 +147,14 @@ namespace BetsTrading_Service.Controllers
           signUpRequest.FullName ?? "-",
           signUpRequest.Password ?? "-",
           signUpRequest.Address ?? "-",
-          signUpRequest.Country ?? "-",
+          signUpRequest.Country ?? "",
           signUpRequest.Gender ?? "-",
           signUpRequest.Email ?? "-",
           signUpRequest.Birthday ?? DateTime.UtcNow,
           DateTime.UtcNow,
           DateTime.UtcNow,
           signUpRequest.CreditCard ?? "nullCreditCard",
-          signUpRequest.Username ?? "nullUsername",
+          signUpRequest.Username ?? "ERROR",
           signUpRequest.ProfilePic ?? null); 
           newUser.token_expiration = DateTime.UtcNow.AddDays(SESSION_EXP_DAYS);
         Console.WriteLine("OK2");
