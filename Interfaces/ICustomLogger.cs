@@ -1,5 +1,4 @@
-﻿using Serilog;
-using Serilog.Core;
+﻿using Serilog.Core;
 using ILogger = Serilog.ILogger;
 
 namespace BetsTrading_Service.Interfaces

@@ -11,28 +11,27 @@ public class Program
   public static void Main(string[] args)
   {
     var logPath = "Logs/BetsTrading_Service_.log";
+    RollingInterval loggingInterval = RollingInterval.Day;
 
     ICustomLogger customLogger = new CustomLogger(new LoggerConfiguration()
         .MinimumLevel.Debug()
-
-        .WriteTo.File(logPath, rollingInterval: RollingInterval.Day)
+        .WriteTo.File(logPath, rollingInterval: loggingInterval)
         .CreateLogger());
 
     try
-    {      
+    {
+      customLogger.Log.Information("[PROGRAM] :: ****** STARTING BETSTRADING BACKEND SERVICE ******");
+      
       var builder = WebApplication.CreateBuilder(args);          
+      builder.Services.AddSingleton(customLogger);
 
-      builder.Services.AddSingleton(customLogger);      
+      customLogger.Log.Information("[PROGRAM] :: Serilog service started. Logging on {pth} with interval: {itr}", logPath, loggingInterval.ToString());
 
-      // Log inicial para marcar el inicio del servicio
-      customLogger.Log.Information("****** STARTING BETSTRADING BACKEND SERVICE ******");
-
-      // Configuración de la base de datos
       var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
       builder.Services.AddDbContext<AppDbContext>(options =>
           options.UseNpgsql(connectionString));
 
-      // Configuración de servicios y middleware
+      
       builder.Services.AddControllers();
       builder.Services.AddEndpointsApiExplorer();
       builder.Services.AddSwaggerGen();
@@ -44,12 +43,14 @@ public class Program
         options.Preload = true;
         options.IncludeSubDomains = true;
         options.MaxAge = TimeSpan.FromDays(60);
+        customLogger.Log.Information("[PROGRAM] :: Hsts max duration (days) : {d}", options.MaxAge.TotalSeconds/(3600*24));
       });
 
       builder.Services.AddHttpsRedirection(options =>
       {
         options.RedirectStatusCode = (int)HttpStatusCode.TemporaryRedirect;
         options.HttpsPort = 5001;
+        customLogger.Log.Information("[PROGRAM] :: HTTPS redirection on port {prt}", options.HttpsPort);
       });
 
       builder.Services.AddResponseCompression(options =>
@@ -62,6 +63,7 @@ public class Program
       // Configuración de middleware en ambiente de desarrollo
       if (app.Environment.IsDevelopment())
       {
+        customLogger.Log.Warning("[PROGRAM] :: Developer mode activated! Using SwaggerUI and Hsts");
         app.UseSwagger();
         app.UseSwaggerUI();
         app.UseHsts();
@@ -72,16 +74,17 @@ public class Program
       app.UseHttpsRedirection();
       app.UseAuthorization();
       app.MapControllers();
+      customLogger.Log.Information("[PROGRAM] :: Controller endpoints added succesfully");
 
       // Log final para marcar el inicio de la API
-      customLogger.Log.Information("Service started!");
+      customLogger.Log.Information("[PROGRAM] :: Backend service started succesfully!");
 
     
       app.Run();
     }
     catch (Exception ex)
     {
-      customLogger.Log.Error(ex, "API Service terminated unexpectedly: {ErrorMessage}", ex.Message);
+      customLogger.Log.Error(ex, "[PROGRAM] :: Service terminated unexpectedly: {ErrorMessage}", ex.Message);
       throw;  
     }    
   }

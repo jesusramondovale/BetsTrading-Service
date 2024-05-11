@@ -31,7 +31,7 @@ namespace BetsTrading_Service.Controllers
         if (user != null) // User exists
         {
           
-          _logger.Log.Information("INFO :: UserInfo :: Success on ID: {msg}", userInfoRequest.id);
+          _logger.Log.Information("[INFO] :: UserInfo :: Success on ID: {msg}", userInfoRequest.id);
           return Ok(new
           {
             Message = "UserInfo SUCCESS",
@@ -48,13 +48,13 @@ namespace BetsTrading_Service.Controllers
         }
         else // Unexistent user
         { 
-          _logger.Log.Warning("INFO :: UserInfo :: User not found for ID: {msg}", userInfoRequest.id);
+          _logger.Log.Warning("[INFO] :: UserInfo :: User not found for ID: {msg}", userInfoRequest.id);
           return NotFound(new { Message = "User or email not found" }); // User not found
         }
       }
       catch (Exception ex)
       {
-        _logger.Log.Error("INFO :: UserInfo :: Internal server error: {msg}", ex.Message);
+        _logger.Log.Error("[INFO] :: UserInfo :: Internal server error: {msg}", ex.Message);
         return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
 
@@ -74,7 +74,7 @@ namespace BetsTrading_Service.Controllers
 
         if (bets != null && bets.Count != 0) // There are bets
         {
-          _logger.Log.Information("INFO :: UserBets :: success with ID: {msg}", userInfoRequest.id);
+          _logger.Log.Information("[INFO] :: UserBets :: success with ID: {msg}", userInfoRequest.id);
           return Ok(new
           {
             Message = "UserBets SUCCESS",
@@ -85,13 +85,13 @@ namespace BetsTrading_Service.Controllers
         }
         else // No bets user
         {
-          _logger.Log.Warning("INFO :: UserBets :: Empty list of bets on userID: {msg}", userInfoRequest.id);
+          _logger.Log.Warning("[INFO] :: UserBets :: Empty list of bets on userID: {msg}", userInfoRequest.id);
           return NotFound(new { Message = "User has no bets!" }); // User not found
         }
       }
       catch (Exception ex)
       {
-        _logger.Log.Error("INFO :: UserBets :: Internal server error: {msg}", ex.Message);
+        _logger.Log.Error("[INFO] :: UserBets :: Internal server error: {msg}", ex.Message);
         return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
 
@@ -116,24 +116,24 @@ namespace BetsTrading_Service.Controllers
           {
             user.profile_pic = uploadPicImageRequest.Profilepic;
             _dbContext.SaveChanges();
-            _logger.Log.Information("INFO :: UploadPic :: Success on profile pic updating for ID: {msg}", uploadPicImageRequest.id);
+            _logger.Log.Information("[INFO] :: UploadPic :: Success on profile pic updating for ID: {msg}", uploadPicImageRequest.id);
             return Ok(new { Message = "Profile pic succesfully updated!", UserId = user.id });
           }
           else
           {
-            _logger.Log.Warning("INFO :: UploadPic :: No active session or session expired for ID: {msg}", uploadPicImageRequest.id);
+            _logger.Log.Warning("[INFO] :: UploadPic :: No active session or session expired for ID: {msg}", uploadPicImageRequest.id);
             return BadRequest(new { Message = "No active session or session expired" });
           }
         }
         else
         {
-          _logger.Log.Error("INFO :: UploadPic :: User token not found: {msg}", uploadPicImageRequest.id);
+          _logger.Log.Error("[INFO] :: UploadPic :: User token not found: {msg}", uploadPicImageRequest.id);
           return NotFound(new { Message = "User token not found" });
         }
       }
       catch (Exception ex)
       {
-        _logger.Log.Error("INFO :: UploadPic :: Internal server error: {msg}", ex.Message);
+        _logger.Log.Error("[INFO] :: UploadPic :: Internal server error: {msg}", ex.Message);
         return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
 
