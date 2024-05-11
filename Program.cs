@@ -1,78 +1,88 @@
+using BetsTrading_Service.Controllers;
 using BetsTrading_Service.Database;
+using BetsTrading_Service.Interfaces;
 using Microsoft.EntityFrameworkCore;
-using Serilog.Events;
 using Serilog;
-using Microsoft.AspNetCore.Hosting.Server.Features;
-using Microsoft.AspNetCore;
+using System;
 using System.Net;
-using System.Security.Cryptography.X509Certificates;
 
-var builder = WebApplication.CreateBuilder(args);
-
-builder.Host.UseSerilog();
-
-
-Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
-    .Enrich.FromLogContext()
-    .WriteTo.File("./Logs/main.log")
-    .CreateLogger();
-
-try
+public class Program
 {
-  // Database connection settings (hosted locally on pre-alpha versions)
-  var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-
-  // DbContext configuration
-  builder.Services.AddDbContext<AppDbContext>(options =>
-      options.UseNpgsql(connectionString));
-
-  // API Service controllers
-  builder.Services.AddControllers();
-  builder.Services.AddSwaggerGen();
-
-  builder.Services.AddHsts(options =>
+  public static void Main(string[] args)
   {
-    options.Preload = true;
-    options.IncludeSubDomains = true;
-    options.MaxAge = TimeSpan.FromDays(60);
-  });
+    var logPath = "Logs/BetsTrading_Service_.log";
 
-  builder.Services.AddHttpsRedirection(options =>
-  {
-    options.RedirectStatusCode = (int)HttpStatusCode.TemporaryRedirect;
-    options.HttpsPort = 5001;
-  });
+    ICustomLogger customLogger = new CustomLogger(new LoggerConfiguration()
+        .MinimumLevel.Debug()
 
-  builder.Services.AddResponseCompression(options =>
-  {
-    options.EnableForHttps = true;
-  });
+        .WriteTo.File(logPath, rollingInterval: RollingInterval.Day)
+        .CreateLogger());
 
+    try
+    {      
+      var builder = WebApplication.CreateBuilder(args);          
 
-  var app = builder.Build();
+      builder.Services.AddSingleton(customLogger);      
 
-  if (app.Environment.IsDevelopment())
-  {
-    app.UseSwagger();
-    app.UseSwaggerUI();
-    app.UseHsts();
+      // Log inicial para marcar el inicio del servicio
+      customLogger.Log.Information("****** STARTING BETSTRADING BACKEND SERVICE ******");
+
+      // Configuración de la base de datos
+      var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+      builder.Services.AddDbContext<AppDbContext>(options =>
+          options.UseNpgsql(connectionString));
+
+      // Configuración de servicios y middleware
+      builder.Services.AddControllers();
+      builder.Services.AddEndpointsApiExplorer();
+      builder.Services.AddSwaggerGen();
+      builder.Services.AddTransient<AuthController>();
+      builder.Services.AddTransient<InfoController>();
+      builder.Services.AddTransient<FinancialAssetsController>();
+      builder.Services.AddHsts(options =>
+      {
+        options.Preload = true;
+        options.IncludeSubDomains = true;
+        options.MaxAge = TimeSpan.FromDays(60);
+      });
+
+      builder.Services.AddHttpsRedirection(options =>
+      {
+        options.RedirectStatusCode = (int)HttpStatusCode.TemporaryRedirect;
+        options.HttpsPort = 5001;
+      });
+
+      builder.Services.AddResponseCompression(options =>
+      {
+        options.EnableForHttps = true;
+      });
+
+      var app = builder.Build();
+
+      // Configuración de middleware en ambiente de desarrollo
+      if (app.Environment.IsDevelopment())
+      {
+        app.UseSwagger();
+        app.UseSwaggerUI();
+        app.UseHsts();
+      }
+
+      // Configuración de middleware común
+      app.UseResponseCompression();
+      app.UseHttpsRedirection();
+      app.UseAuthorization();
+      app.MapControllers();
+
+      // Log final para marcar el inicio de la API
+      customLogger.Log.Information("Service started!");
+
+    
+      app.Run();
+    }
+    catch (Exception ex)
+    {
+      customLogger.Log.Error(ex, "API Service terminated unexpectedly: {ErrorMessage}", ex.Message);
+      throw;  
+    }    
   }
-
-  app.UseResponseCompression();
-  app.UseHttpsRedirection();
-  app.UseAuthorization();
-  app.MapControllers();
-
-  Log.Information("API Service started");
-  app.Run();
-}
-catch (Exception ex)
-{
-  Log.Fatal(ex, "API Service terminated unexpectedly. Exception elevated to main process: ", ex.Message);
-  return;
-}
-finally
-{
-  Log.CloseAndFlush();
 }

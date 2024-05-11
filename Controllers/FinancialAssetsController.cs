@@ -1,25 +1,37 @@
 ﻿using BetsTrading_Service.Database;
+using BetsTrading_Service.Interfaces;
 using BetsTrading_Service.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Serilog.Context;
+
 
 namespace BetsTrading_Service.Controllers
 {
-  [Route("api/[controller]")]
   [ApiController]
+  [Route("api/[controller]")]
   public class FinancialAssetsController : ControllerBase
   {
-    private readonly AppDbContext _context;
 
-    public FinancialAssetsController(AppDbContext context)
+    private readonly AppDbContext _context;
+    private readonly  ICustomLogger _logger;
+
+
+    public FinancialAssetsController(AppDbContext context, ICustomLogger customLogger)
     {
       _context = context;
+      _logger = customLogger;
+     
     }
 
     // GET: api/FinancialAssets (all)
     [HttpGet]
     public async Task<ActionResult<IEnumerable<FinancialAsset>>> GetFinancialAssets()
     {
+      
+       _logger.Log.Information("FINANCIAL :: GetFinancialAssets");
+      
+     
       return await _context.FinancialAssets.ToListAsync();
     }
 
@@ -27,33 +39,39 @@ namespace BetsTrading_Service.Controllers
     [HttpGet("ByGroup/{group}")]
     public async Task<ActionResult<IEnumerable<FinancialAsset>>> GetFinancialAssetsByGroup(string group)
     {
+      
       var financialAssets = await _context.FinancialAssets
-          .Where(fa => fa.group == group)
-          .ToListAsync();
+        .Where(fa => fa.group == group)
+        .ToListAsync();
 
       if (financialAssets == null)
       {
+        _logger.Log.Information("FINANCIAL :: ByGroup :: Not found . Group: {grp}", group);
         return NotFound();
       }
-
+      _logger.Log.Information("FINANCIAL :: ByGroup :: Success. Assets : {msg}", financialAssets.ToString());
       return financialAssets;
+                  
     }
 
     // GET: api/FinancialAssets/ByCountry/{country}
     [HttpGet("ByCountry/{country}")]
     public async Task<ActionResult<IEnumerable<FinancialAsset>>> GetFinancialAssetsByCountry(string country)
     {
+      
       var financialAssets = await _context.FinancialAssets
-          .Where(fa => fa.country == country)
-          .ToListAsync();
+        .Where(fa => fa.country == country)
+        .ToListAsync();
 
       if (financialAssets == null)
       {
+        _logger.Log.Information("FINANCIAL :: ByCountry :: Not found . Group: {grp}", country);
         return NotFound();
       }
+      _logger.Log.Information("FINANCIAL :: ByCountry :: Success. Assets : {msg}", financialAssets.ToString());
       return financialAssets;
-    }
 
-
+    }     
+    
   }
 }
