@@ -23,6 +23,7 @@
     public DbSet<User> Users { get; set; }
     public DbSet<Bet> InvestmentData{ get; set; }
     public DbSet<FinancialAsset> FinancialAssets { get; set; }
+    public DbSet<Trend> Trends { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

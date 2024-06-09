@@ -62,6 +62,45 @@ namespace BetsTrading_Service.Controllers
       
     }
 
+
+    [HttpPost("Trends")]
+    public IActionResult Trends([FromBody] idRequest userInfoRequest)
+    {
+
+      try
+      {
+        /* TO-DO : Custom trends by user
+        var trends = _dbContext.Trends.Where(u => u.user_id == userInfoRequest.id)ToList();
+        */
+
+        var trends = _dbContext.Trends.ToList();
+
+        if (trends != null && trends.Count != 0) // There are trends
+        {
+          _logger.Log.Information("[INFO] :: Trends :: success with ID: {msg}", userInfoRequest.id);
+          return Ok(new
+          {
+            Message = "UserBets SUCCESS",
+            Trends = trends
+
+          }); ;
+
+        }
+        else // No trends
+        {
+          _logger.Log.Warning("[INFO] :: UserBets :: Empty list of bets to userID: {msg}", userInfoRequest.id);
+          return NotFound(new { Message = "EROR :: No trends!" }); 
+        }
+      }
+      catch (Exception ex)
+      {
+        _logger.Log.Error("[INFO] :: UserBets :: Internal server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+
+    }
+
+
     [HttpPost("UserBets")]
     public IActionResult UserBets([FromBody] idRequest userInfoRequest)
     {
