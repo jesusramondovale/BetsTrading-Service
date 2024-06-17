@@ -1,5 +1,6 @@
 ﻿using BetsTrading_Service.Database;
 using BetsTrading_Service.Interfaces;
+using BetsTrading_Service.Models;
 using BetsTrading_Service.Requests;
 using Microsoft.AspNetCore.Mvc;
 
@@ -62,6 +63,88 @@ namespace BetsTrading_Service.Controllers
       
     }
 
+    [HttpPost("Favorites")]
+    public IActionResult Favorites([FromBody] idRequest favoritesRequest)
+    {
+
+      try
+      {
+
+        var favorites = _dbContext.Favorites.Where(u => u.user_id == favoritesRequest.id).ToList();
+
+        if (favorites != null && favorites.Count != 0) // There are favorites
+        {
+          _logger.Log.Information("[INFO] :: Favorites :: success to ID: {msg}", favoritesRequest.id);
+          return Ok(new
+          {
+            Message = "Favorites SUCCESS",
+            Favorites = favorites
+
+          }); ;
+
+        }
+        else // No Favorites
+        {
+          _logger.Log.Warning("[INFO] :: Favorites :: Empty list of Favorites to userID: {msg}", favoritesRequest.id);
+          return NotFound(new { Message = "ERROR :: No Favorites!" });
+        }
+      }
+      catch (Exception ex)
+      {
+        _logger.Log.Error("[INFO] :: Favorites :: Internal server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+
+    }
+
+    [HttpPost("NewFavorite")]
+    public IActionResult NewFavorite([FromBody] newFavoriteRequest newFavRequest)
+    {
+      try
+      {
+        var assetts = _dbContext.Trends.ToList();
+        var fav = _dbContext.Favorites.FirstOrDefault(u => u.user_id == newFavRequest.id && u.name == newFavRequest.item_name);
+
+        if (null != fav)
+        {
+          _dbContext.Favorites.Remove(fav);
+          _dbContext.SaveChanges();
+          return Ok(new { });
+
+        }
+        
+        var tmpAsset = assetts.FirstOrDefault(a => a.name == newFavRequest.item_name);
+
+        if (tmpAsset == null)
+        {
+          return NotFound(new { Message = "Asset not found" });
+        }
+
+        
+        var favoriteId = Guid.NewGuid().ToString();
+
+        var newFavorite = new Favorite(
+            favoriteId,
+            newFavRequest.item_name!,
+            tmpAsset.icon,
+            tmpAsset.daily_gain,
+            tmpAsset.close,
+            tmpAsset.current,
+            newFavRequest.id!
+        );
+
+        _dbContext.Favorites.Add(newFavorite);
+        _dbContext.SaveChanges();
+
+        return Ok(new { });
+      }
+      catch (Exception ex)
+      {
+        _logger.Log.Error("[INFO] :: New favorite :: Internal server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+    }
+
 
     [HttpPost("Trends")]
     public IActionResult Trends([FromBody] idRequest userInfoRequest)
@@ -80,7 +163,7 @@ namespace BetsTrading_Service.Controllers
           _logger.Log.Information("[INFO] :: Trends :: success with ID: {msg}", userInfoRequest.id);
           return Ok(new
           {
-            Message = "UserBets SUCCESS",
+            Message = "Trends SUCCESS",
             Trends = trends
 
           }); ;
@@ -88,13 +171,13 @@ namespace BetsTrading_Service.Controllers
         }
         else // No trends
         {
-          _logger.Log.Warning("[INFO] :: UserBets :: Empty list of bets to userID: {msg}", userInfoRequest.id);
-          return NotFound(new { Message = "EROR :: No trends!" }); 
+          _logger.Log.Warning("[INFO] :: Trends :: Empty list of trends to ID: {msg}", userInfoRequest.id);
+          return NotFound(new { Message = "ERROR :: No trends!" }); 
         }
       }
       catch (Exception ex)
       {
-        _logger.Log.Error("[INFO] :: UserBets :: Internal server error: {msg}", ex.Message);
+        _logger.Log.Error("[INFO] :: Trends :: Internal server error: {msg}", ex.Message);
         return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
 
