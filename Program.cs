@@ -3,9 +3,10 @@ using BetsTrading_Service.Database;
 using BetsTrading_Service.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
-using System.Timers;
 using System.Net;
 using BetsTrading_Service.Services;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 public class Program
 {
@@ -23,9 +24,7 @@ public class Program
     {
       customLogger.Log.Information("[PROGRAM] :: ****** STARTING BETSTRADING BACKEND SERVICE ******");
 
-      var trendUpdaterTimer = new System.Timers.Timer(TimeSpan.FromHours(6).TotalMilliseconds);
-      
-      var builder = WebApplication.CreateBuilder(args);          
+      var builder = WebApplication.CreateBuilder(args);
       builder.Services.AddSingleton(customLogger);
 
       customLogger.Log.Information("[PROGRAM] :: Serilog service started. Logging on {pth} with interval: {itr}", logPath, loggingInterval.ToString());
@@ -34,19 +33,21 @@ public class Program
       builder.Services.AddDbContext<AppDbContext>(options =>
           options.UseNpgsql(connectionString));
 
-      
       builder.Services.AddControllers();
       builder.Services.AddEndpointsApiExplorer();
       builder.Services.AddSwaggerGen();
       builder.Services.AddTransient<AuthController>();
       builder.Services.AddTransient<InfoController>();
       builder.Services.AddTransient<FinancialAssetsController>();
+      builder.Services.AddScoped<TrendUpdater>(); // Register TrendUpdater as scoped
+      builder.Services.AddHostedService<TrendUpdaterHostedService>(); // Register the hosted service
+
       builder.Services.AddHsts(options =>
       {
         options.Preload = true;
         options.IncludeSubDomains = true;
         options.MaxAge = TimeSpan.FromDays(60);
-        customLogger.Log.Information("[PROGRAM] :: Hsts max duration (days) : {d}", options.MaxAge.TotalSeconds/(3600*24));
+        customLogger.Log.Information("[PROGRAM] :: Hsts max duration (days) : {d}", options.MaxAge.TotalSeconds / (3600 * 24));
       });
 
       builder.Services.AddHttpsRedirection(options =>
@@ -61,9 +62,6 @@ public class Program
         options.EnableForHttps = true;
       });
 
-     
-
-      trendUpdaterTimer.Start();
       var app = builder.Build();
 
       // Configuración de middleware en ambiente de desarrollo
@@ -80,26 +78,16 @@ public class Program
       app.UseHttpsRedirection();
       app.UseAuthorization();
       app.MapControllers();
-      customLogger.Log.Information("[PROGRAM] :: Controller endpoints added succesfully");
-
-      
-      var trendUpdater = new TrendUpdater(app.Services.GetRequiredService<AppDbContext>(),customLogger);
-      customLogger.Log.Information("[PROGRAM] :: Trend Updater service started succesfully!");
-      trendUpdaterTimer.Elapsed += async (sender, e) =>
-      {
-        customLogger.Log.Information("[PROGRAM] :: Trend Updater service called!");
-        trendUpdater.UpdateTrends();
-
-      };
+      customLogger.Log.Information("[PROGRAM] :: Controller endpoints added successfully");
 
       // Log final para marcar el inicio de la API
-      customLogger.Log.Information("[PROGRAM] :: All Backend services started succesfully!");
+      customLogger.Log.Information("[PROGRAM] :: All Backend services started successfully!");
       app.Run();
     }
     catch (Exception ex)
     {
       customLogger.Log.Error(ex, "[PROGRAM] :: Service terminated unexpectedly: {ErrorMessage}", ex.Message);
-      throw;  
-    }    
+      throw;
+    }
   }
 }
