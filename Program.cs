@@ -3,8 +3,9 @@ using BetsTrading_Service.Database;
 using BetsTrading_Service.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
-using System;
+using System.Timers;
 using System.Net;
+using BetsTrading_Service.Services;
 
 public class Program
 {
@@ -21,6 +22,8 @@ public class Program
     try
     {
       customLogger.Log.Information("[PROGRAM] :: ****** STARTING BETSTRADING BACKEND SERVICE ******");
+
+      var trendUpdaterTimer = new System.Timers.Timer(TimeSpan.FromHours(6).TotalMilliseconds);
       
       var builder = WebApplication.CreateBuilder(args);          
       builder.Services.AddSingleton(customLogger);
@@ -58,6 +61,9 @@ public class Program
         options.EnableForHttps = true;
       });
 
+     
+
+      trendUpdaterTimer.Start();
       var app = builder.Build();
 
       // Configuración de middleware en ambiente de desarrollo
@@ -76,10 +82,18 @@ public class Program
       app.MapControllers();
       customLogger.Log.Information("[PROGRAM] :: Controller endpoints added succesfully");
 
-      // Log final para marcar el inicio de la API
-      customLogger.Log.Information("[PROGRAM] :: Backend service started succesfully!");
+      
+      var trendUpdater = new TrendUpdater(app.Services.GetRequiredService<AppDbContext>(),customLogger);
+      customLogger.Log.Information("[PROGRAM] :: Trend Updater service started succesfully!");
+      trendUpdaterTimer.Elapsed += async (sender, e) =>
+      {
+        customLogger.Log.Information("[PROGRAM] :: Trend Updater service called!");
+        trendUpdater.UpdateTrends();
 
-    
+      };
+
+      // Log final para marcar el inicio de la API
+      customLogger.Log.Information("[PROGRAM] :: All Backend services started succesfully!");
       app.Run();
     }
     catch (Exception ex)
