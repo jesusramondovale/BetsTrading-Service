@@ -3,8 +3,10 @@ using BetsTrading_Service.Database;
 using BetsTrading_Service.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
-using System;
 using System.Net;
+using BetsTrading_Service.Services;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 public class Program
 {
@@ -21,8 +23,8 @@ public class Program
     try
     {
       customLogger.Log.Information("[PROGRAM] :: ****** STARTING BETSTRADING BACKEND SERVICE ******");
-      
-      var builder = WebApplication.CreateBuilder(args);          
+
+      var builder = WebApplication.CreateBuilder(args);
       builder.Services.AddSingleton(customLogger);
 
       customLogger.Log.Information("[PROGRAM] :: Serilog service started. Logging on {pth} with interval: {itr}", logPath, loggingInterval.ToString());
@@ -31,19 +33,21 @@ public class Program
       builder.Services.AddDbContext<AppDbContext>(options =>
           options.UseNpgsql(connectionString));
 
-      
       builder.Services.AddControllers();
       builder.Services.AddEndpointsApiExplorer();
       builder.Services.AddSwaggerGen();
       builder.Services.AddTransient<AuthController>();
       builder.Services.AddTransient<InfoController>();
       builder.Services.AddTransient<FinancialAssetsController>();
+      builder.Services.AddScoped<TrendUpdater>(); 
+      builder.Services.AddHostedService<TrendUpdaterHostedService>(); 
+
       builder.Services.AddHsts(options =>
       {
         options.Preload = true;
         options.IncludeSubDomains = true;
         options.MaxAge = TimeSpan.FromDays(60);
-        customLogger.Log.Information("[PROGRAM] :: Hsts max duration (days) : {d}", options.MaxAge.TotalSeconds/(3600*24));
+        customLogger.Log.Information("[PROGRAM] :: Hsts max duration (days) : {d}", options.MaxAge.TotalSeconds / (3600 * 24));
       });
 
       builder.Services.AddHttpsRedirection(options =>
@@ -60,7 +64,7 @@ public class Program
 
       var app = builder.Build();
 
-      // Configuración de middleware en ambiente de desarrollo
+      // Development middleware
       if (app.Environment.IsDevelopment())
       {
         customLogger.Log.Warning("[PROGRAM] :: Developer mode activated! Using SwaggerUI and Hsts");
@@ -69,23 +73,21 @@ public class Program
         app.UseHsts();
       }
 
-      // Configuración de middleware común
+      // Common middleware
       app.UseResponseCompression();
       app.UseHttpsRedirection();
       app.UseAuthorization();
       app.MapControllers();
-      customLogger.Log.Information("[PROGRAM] :: Controller endpoints added succesfully");
+      customLogger.Log.Information("[PROGRAM] :: Controller endpoints added successfully");
 
-      // Log final para marcar el inicio de la API
-      customLogger.Log.Information("[PROGRAM] :: Backend service started succesfully!");
-
-    
+      // Final log
+      customLogger.Log.Information("[PROGRAM] :: All Backend services started successfully!");
       app.Run();
     }
     catch (Exception ex)
     {
       customLogger.Log.Error(ex, "[PROGRAM] :: Service terminated unexpectedly: {ErrorMessage}", ex.Message);
-      throw;  
-    }    
+      throw;
+    }
   }
 }
