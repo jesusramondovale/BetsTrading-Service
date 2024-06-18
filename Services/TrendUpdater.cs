@@ -5,11 +5,15 @@ using SerpApi;
 using Newtonsoft.Json.Linq;
 using BetsTrading_Service.Database;
 using BetsTrading_Service.Interfaces;
+using BetsTrading_Service.Models;
+using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
 
 namespace BetsTrading_Service.Services
 {
   public class TrendUpdater
   {
+    const int MAX_TRENDS_ELEMENTS = 5;
     private const string API_KEY= "d9661ef0baa78e225f4ee66ebfb7474202d1cafa808501d174785b04e30a9964";
     private Hashtable ht = new Hashtable() { { "engine", "google_finance_markets" }, { "trend", "most-active" } };
 
@@ -25,27 +29,78 @@ namespace BetsTrading_Service.Services
 
     public void UpdateTrends()
     {
-      try
+      using (var transaction = _dbContext.Database.BeginTransaction())
       {
-        _logger.Log.Error("[Trend Updater] :: UpdateTrends() called! :");
-        GoogleSearch search = new GoogleSearch(ht, API_KEY);
-        JObject data = search.GetJson();
-        //var market_trends = data["market_trends"];
-        
-        //TO-DO:  EXTRACT INFO, PARSE AND WRITE
+        try
+        {
+          _logger.Log.Error("[Trend Updater] :: UpdateTrends() called!");
+          GoogleSearch search = new GoogleSearch(ht, API_KEY);
+          JObject data = search.GetJson();
+          var market_trends = data["market_trends"];
+                    
+          var trends = new List<Trend>();
+          var mostActive = data["market_trends"].FirstOrDefault(x => (string)x["title"] == "Most active")?["results"];
 
-
+          if (mostActive != null)
+          {
+            int i = 1;
+            foreach (var item in mostActive)
+            {
+              if (i <= MAX_TRENDS_ELEMENTS)
+              {
+                int id = i++;
+                string name = (string)item["name"];
+                string icon = GetIconBase64(name)!;            
+                double dailyGain = (double)item["price_movement"]["percentage"];
+                double close = (double)item["extracted_price"];
+                double current = close + (double)item["price_movement"]["value"];
+                trends.Add(new Trend(id, name, icon, dailyGain, close, current));
+              }
+              
+            }
+          }
+          
+          var existingTrends = _dbContext.Trends.ToList();
+          _dbContext.Trends.RemoveRange(existingTrends);
+          _dbContext.SaveChanges();
+                    
+          _dbContext.Trends.AddRange(trends);
+          _dbContext.SaveChanges();
+                    
+          transaction.Commit();
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+          _logger.Log.Error("[Trend Updater] :: UpdateTrends() concurrency error :", ex.ToString());
+          transaction.Rollback();
+        }
+        catch (SerpApiSearchException ex)
+        {
+          _logger.Log.Error("[Trend Updater] :: UpdateTrends() error :", ex.ToString());
+          transaction.Rollback();
+        }
+        catch (Exception ex)
+        {          
+          _logger.Log.Error("[Trend Updater] :: UpdateTrends() unexpected error :", ex.ToString());
+          transaction.Rollback();
+        }
       }
-      catch (SerpApiSearchException ex)
-      {
-        _logger.Log.Error("[Trend Updater] :: UpdateTrends() error :" , ex.ToString());
-      }
-
     }
+
+    private string? GetIconBase64(string stock)
+    {
+      var financialAsset = _dbContext.FinancialAssets.FirstOrDefault(fa => fa.name == stock);
+      return financialAsset != null ? financialAsset.icon : 
+        // Empty image base64
+        "iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAABhWlDQ1BJQ0MgcHJvZmlsZQAAKJF9kT1Iw0AYht+makUqgnYQcYhQnexiRRxLFYtgobQVWnUwufRHaNKQpLg4Cq4FB38Wqw4uzro6uAqC4A+Is4OToouU+F1SaBHjHcc9vPe9L3ffAUKjwlSzKwaommWkE3Exl18RA6/owSDNKMYkZurJzEIWnuPrHj6+30V4lnfdn6NfKZgM8InEMaYbFvE68cympXPeJw6xsqQQnxNPGnRB4keuyy6/cS45LPDMkJFNzxGHiMVSB8sdzMqGSjxNHFZUjfKFnMsK5y3OaqXGWvfkLwwWtOUM12mNIoFFJJGCCBk1bKACCxHaNVJMpOk87uEfcfwpcsnk2gAjxzyqUCE5fvA/+N1bsxidcpOCcaD7xbY/xoHALtCs2/b3sW03TwD/M3Cltf3VBjD7SXq9rYWPgIFt4OK6rcl7wOUOMPykS4bkSH5aQrEIvJ/RN+WBoVugb9XtW+scpw9Alnq1dAMcHAITJcpe83h3b2ff/q1p9e8H+Ixy3PQAMcEAAAAGYktHRAD/AP8A/6C9p5MAAAAJcEhZcwAALiMAAC4jAXilP3YAAAAHdElNRQfoBhISNCtLpyRSAAAAGXRFWHRDb21tZW50AENyZWF0ZWQgd2l0aCBHSU1QV4EOFwAAAAxJREFUCNdjYKATAAAAaQABwB3y+AAAAABJRU5ErkJggg=="; 
+    }
+
+
   }
 
   public class TrendUpdaterHostedService : IHostedService, IDisposable
   {
+    const int UPDATE_SECONDS = 21600;
     private readonly IServiceProvider _serviceProvider;
     private readonly ICustomLogger _customLogger;
     private Timer _timer;
@@ -59,7 +114,7 @@ namespace BetsTrading_Service.Services
     public Task StartAsync(CancellationToken cancellationToken)
     {
       _customLogger.Log.Information("[TrendUpdaterHostedService] :: Starting the TrendUpdater hosted service.");
-      _timer = new Timer(DoWork, null, TimeSpan.Zero, TimeSpan.FromHours(6));
+      _timer = new Timer(DoWork!, null, TimeSpan.Zero, TimeSpan.FromSeconds(UPDATE_SECONDS));
       return Task.CompletedTask;
     }
 

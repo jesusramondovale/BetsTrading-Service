@@ -39,8 +39,8 @@ public class Program
       builder.Services.AddTransient<AuthController>();
       builder.Services.AddTransient<InfoController>();
       builder.Services.AddTransient<FinancialAssetsController>();
-      builder.Services.AddScoped<TrendUpdater>(); // Register TrendUpdater as scoped
-      builder.Services.AddHostedService<TrendUpdaterHostedService>(); // Register the hosted service
+      builder.Services.AddScoped<TrendUpdater>(); 
+      builder.Services.AddHostedService<TrendUpdaterHostedService>(); 
 
       builder.Services.AddHsts(options =>
       {
@@ -64,7 +64,7 @@ public class Program
 
       var app = builder.Build();
 
-      // Configuración de middleware en ambiente de desarrollo
+      // Development middleware
       if (app.Environment.IsDevelopment())
       {
         customLogger.Log.Warning("[PROGRAM] :: Developer mode activated! Using SwaggerUI and Hsts");
@@ -73,14 +73,14 @@ public class Program
         app.UseHsts();
       }
 
-      // Configuración de middleware común
+      // Common middleware
       app.UseResponseCompression();
       app.UseHttpsRedirection();
       app.UseAuthorization();
       app.MapControllers();
       customLogger.Log.Information("[PROGRAM] :: Controller endpoints added successfully");
 
-      // Log final para marcar el inicio de la API
+      // Final log
       customLogger.Log.Information("[PROGRAM] :: All Backend services started successfully!");
       app.Run();
     }
