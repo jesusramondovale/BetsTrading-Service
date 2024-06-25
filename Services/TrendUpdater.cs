@@ -90,9 +90,7 @@ namespace BetsTrading_Service.Services
     private string? GetIconBase64(string stock)
     {
       var financialAsset = _dbContext.FinancialAssets.FirstOrDefault(fa => fa.name == stock);
-      return financialAsset != null ? financialAsset.icon : 
-        // Empty image base64
-        "iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAABhWlDQ1BJQ0MgcHJvZmlsZQAAKJF9kT1Iw0AYht+makUqgnYQcYhQnexiRRxLFYtgobQVWnUwufRHaNKQpLg4Cq4FB38Wqw4uzro6uAqC4A+Is4OToouU+F1SaBHjHcc9vPe9L3ffAUKjwlSzKwaommWkE3Exl18RA6/owSDNKMYkZurJzEIWnuPrHj6+30V4lnfdn6NfKZgM8InEMaYbFvE68cympXPeJw6xsqQQnxNPGnRB4keuyy6/cS45LPDMkJFNzxGHiMVSB8sdzMqGSjxNHFZUjfKFnMsK5y3OaqXGWvfkLwwWtOUM12mNIoFFJJGCCBk1bKACCxHaNVJMpOk87uEfcfwpcsnk2gAjxzyqUCE5fvA/+N1bsxidcpOCcaD7xbY/xoHALtCs2/b3sW03TwD/M3Cltf3VBjD7SXq9rYWPgIFt4OK6rcl7wOUOMPykS4bkSH5aQrEIvJ/RN+WBoVugb9XtW+scpw9Alnq1dAMcHAITJcpe83h3b2ff/q1p9e8H+Ixy3PQAMcEAAAAGYktHRAD/AP8A/6C9p5MAAAAJcEhZcwAALiMAAC4jAXilP3YAAAAHdElNRQfoBhISNCtLpyRSAAAAGXRFWHRDb21tZW50AENyZWF0ZWQgd2l0aCBHSU1QV4EOFwAAAAxJREFUCNdjYKATAAAAaQABwB3y+AAAAABJRU5ErkJggg=="; 
+      return financialAsset != null ? financialAsset.icon : "null"; 
     }
 
 
