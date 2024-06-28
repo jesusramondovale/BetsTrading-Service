@@ -6,7 +6,7 @@ namespace BetsTrading_Service.Requests
   {
     
     [Required]
-    [StringLength(100, MinimumLength = 21)]
+    [StringLength(100, MinimumLength = 1)]
     public string? id { get; set; }
 
 

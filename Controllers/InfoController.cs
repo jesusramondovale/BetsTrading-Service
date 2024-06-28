@@ -145,6 +145,39 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
+    [HttpPost("DeleteRecentBet")]
+    public IActionResult DeleteRecentBet([FromBody] idRequest betIdRequest)
+    {
+
+      try
+      {
+        var bet = _dbContext.InvestmentData
+            .FirstOrDefault(u => u.id.ToString() == betIdRequest.id);
+
+        if (bet != null) // Bet exists
+        {
+          _dbContext.InvestmentData.Remove(bet);
+          _dbContext.SaveChanges();
+          _logger.Log.Warning("[INFO] :: DeleteRecentBet :: Bet removed succesfuly with ID: {msg}", betIdRequest.id);
+          return Ok(new { });
+
+        }
+
+        else // Bet not found
+        {
+          _logger.Log.Warning("[INFO] :: DeleteRecentBet :: Bet not found for ID: {msg}", betIdRequest.id);
+          return NotFound(new { Message = "User or email not found" }); 
+        }
+      }
+      catch (Exception ex)
+      {
+        _logger.Log.Error("[INFO] :: UserInfo :: DeleteRecentBet server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+
+
+
+    }
 
     [HttpPost("Trends")]
     public IActionResult Trends([FromBody] idRequest userInfoRequest)
