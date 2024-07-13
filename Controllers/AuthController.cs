@@ -228,6 +228,7 @@ namespace BetsTrading_Service.Controllers
       signUpRequest.Email = isGoogledRequest.email;
       signUpRequest.ProfilePic = isGoogledRequest.photoUrl;
       signUpRequest.Birthday = isGoogledRequest.birthday;
+      signUpRequest.Country = isGoogledRequest.country;
       var signInResult = SignIn(signUpRequest);
 
 

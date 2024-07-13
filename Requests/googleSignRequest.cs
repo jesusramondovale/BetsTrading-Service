@@ -11,11 +11,15 @@ namespace BetsTrading_Service.Requests
     public string? id { get; set; }
 
     public DateTime? birthday { get; set; }
-   
+
+    [Required]
+    public string? country { get; set; }
+
     [Required]
     [StringLength(100, MinimumLength = 1)]
     public string? displayName { get; set; }
-   
+    
+
     [Required]
     [StringLength(100, MinimumLength = 4)]
     public string? email { get; set; }
