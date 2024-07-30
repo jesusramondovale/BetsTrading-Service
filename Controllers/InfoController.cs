@@ -40,7 +40,6 @@ namespace BetsTrading_Service.Controllers
             Email = user.email,
             Birthday = user.birthday,
             Fullname = user.fullname,
-            Address = user.address,
             Country = user.country,
             Lastsession = user.last_session,
             Profilepic = user.profile_pic
