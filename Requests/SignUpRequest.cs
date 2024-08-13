@@ -19,8 +19,6 @@ namespace BetsTrading_Service.Requests
     [StringLength(100, MinimumLength = 6)]
     public string? Password { get; set; }
 
-    public string? Address { get; set; }
-
     //[Required]
     public string? Country { get; set; }
 

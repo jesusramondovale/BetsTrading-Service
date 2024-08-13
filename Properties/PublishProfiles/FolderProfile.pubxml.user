@@ -5,7 +5,7 @@ https://go.microsoft.com/fwlink/?LinkID=208121.
 <Project>
   <PropertyGroup>
     <_PublishTargetUrl>C:\dev\BetsTrading-Service\bin\Release\net8.0\publish\</_PublishTargetUrl>
-    <History>True|2024-05-11T10:39:00.7419166Z;True|2024-05-11T12:33:10.0533103+02:00;True|2024-04-13T19:05:23.5882968+02:00;</History>
+    <History>True|2024-07-30T18:12:56.5659058Z;True|2024-05-11T12:39:00.7419166+02:00;True|2024-05-11T12:33:10.0533103+02:00;True|2024-04-13T19:05:23.5882968+02:00;</History>
     <LastFailureDetails />
   </PropertyGroup>
 </Project>

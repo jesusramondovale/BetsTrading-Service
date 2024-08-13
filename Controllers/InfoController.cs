@@ -37,6 +37,7 @@ namespace BetsTrading_Service.Controllers
           {
             Message = "UserInfo SUCCESS",
             Username = user.username,
+            Idcard = user.idcard,
             Email = user.email,
             Birthday = user.birthday,
             Fullname = user.fullname,
@@ -57,9 +58,7 @@ namespace BetsTrading_Service.Controllers
         _logger.Log.Error("[INFO] :: UserInfo :: Internal server error: {msg}", ex.Message);
         return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
-
-      
-      
+            
     }
 
     [HttpPost("Favorites")]

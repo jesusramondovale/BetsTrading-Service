@@ -3,7 +3,7 @@
   public class User
   {
     public User(string id, string? idcard, string fullname, string? password,
-                string? address, string? country, string? gender,
+                string? country, string? gender,
                 string email, DateTime birthday, DateTime signin_date,
                 DateTimeOffset last_session, string? credit_card, string username)
     {
@@ -11,7 +11,6 @@
       this.idcard = idcard;
       this.fullname = fullname;
       this.password = password; // SHA-256
-      this.address = address;
       this.country = country;
       this.gender = gender;
       this.email = email;
@@ -30,7 +29,7 @@
     }
 
     public User(string id, string idcard, string fullname, string password,
-                string address, string country, string gender,
+                string country, string gender,
                 string email, DateTime birthday, DateTime signin_date,
                 DateTimeOffset last_session, string credit_card, string username, string profile_pic)
     {
@@ -38,7 +37,6 @@
       this.idcard = idcard!;
       this.fullname = fullname;
       this.password = password!;
-      this.address = address!;
       this.country = country!;
       this.gender = gender!;
       this.email = email;
@@ -61,7 +59,6 @@
     public string idcard { get; private set; }
     public string fullname { get; private set; }
     public string password { get; private set; }
-    public string address { get; private set; }
     public string country { get; private set; }
     public string gender { get; private set; }
     public string email { get; private set; }

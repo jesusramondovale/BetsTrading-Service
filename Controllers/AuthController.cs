@@ -179,7 +179,6 @@ namespace BetsTrading_Service.Controllers
           signUpRequest.IdCard ?? "-",
           signUpRequest.FullName ?? "-",
           signUpRequest.Password ?? "-",
-          signUpRequest.Address ?? "-",
           signUpRequest.Country ?? "",
           signUpRequest.Gender ?? "-",
           signUpRequest.Email ?? "-",
