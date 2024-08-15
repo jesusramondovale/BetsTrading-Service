@@ -218,28 +218,47 @@ namespace BetsTrading_Service.Controllers
     [HttpPost("UserBets")]
     public IActionResult UserBets([FromBody] idRequest userInfoRequest)
     {
-      
-
       try
       {
-        var bets = _dbContext.Bet
-            .Where(u => u.user_id == userInfoRequest.id).ToList();
+        var userBets = _dbContext.Bet
+            .Where(u => u.user_id == userInfoRequest.id)
+            .Join(
+                _dbContext.FinancialAssets,  
+                bet => bet.ticker,          
+                asset => asset.ticker,      
+                (bet, asset) => new Bet   
+                {
+                  id = bet.id,
+                  user_id = bet.user_id,
+                  ticker = bet.ticker,
+                  name = asset.name,                // Name took from FinancialAssets table using ticker key
+                  bet_amount = bet.bet_amount,
+                  origin_value = bet.origin_value,
+                  current_value = bet.current_value,
+                  target_value = bet.target_value,
+                  target_margin = bet.target_margin,
+                  target_date = bet.target_date,
+                  target_odds = bet.target_odds,
+                  target_won = bet.target_won,
+                  icon_path = bet.icon_path,
+                  type = bet.type,
+                  date_margin = bet.date_margin
+                }
+            ).ToList();
 
-        if (bets != null && bets.Count != 0) // There are bets
+        if (userBets.Any()) // Hay apuestas
         {
           _logger.Log.Information("[INFO] :: UserBets :: success with ID: {msg}", userInfoRequest.id);
           return Ok(new
           {
             Message = "UserBets SUCCESS",
-            Bets = bets
-
-          }); ;
-
+            Bets = userBets
+          });
         }
-        else // No bets user
+        else // No hay apuestas para el usuario
         {
           _logger.Log.Warning("[INFO] :: UserBets :: Empty list of bets on userID: {msg}", userInfoRequest.id);
-          return NotFound(new { Message = "User has no bets!" }); // User not found
+          return NotFound(new { Message = "User has no bets!" });
         }
       }
       catch (Exception ex)
@@ -247,9 +266,6 @@ namespace BetsTrading_Service.Controllers
         _logger.Log.Error("[INFO] :: UserBets :: Internal server error: {msg}", ex.Message);
         return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
-
-      
-     
     }
 
 

@@ -30,6 +30,19 @@
     {
       // Especifica el esquema "BetsTrading" para todas las tablas del modelo
       modelBuilder.HasDefaultSchema("BetsTrading");
+
+      modelBuilder.Entity<Bet>(entity =>
+      {
+        entity.HasKey(e => e.id);
+        entity.Property(e => e.ticker).IsRequired();
+      });
+
+      modelBuilder.Entity<FinancialAsset>(entity =>
+      {
+        entity.HasKey(e => e.ticker);
+        entity.Property(e => e.name).IsRequired();
+      });
+
       base.OnModelCreating(modelBuilder);
     }
 

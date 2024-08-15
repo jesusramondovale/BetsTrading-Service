@@ -7,6 +7,7 @@
     public required string group { get; set; }
     public string? icon { get; set; }
     public string? country { get; set; }
+    public string? ticker { get; set; }
   }
 
 
