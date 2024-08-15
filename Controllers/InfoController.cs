@@ -149,12 +149,12 @@ namespace BetsTrading_Service.Controllers
 
       try
       {
-        var bet = _dbContext.InvestmentData
+        var bet = _dbContext.Bet
             .FirstOrDefault(u => u.id.ToString() == betIdRequest.id);
 
         if (bet != null) // Bet exists
         {
-          _dbContext.InvestmentData.Remove(bet);
+          _dbContext.Bet.Remove(bet);
           _dbContext.SaveChanges();
           _logger.Log.Warning("[INFO] :: DeleteRecentBet :: Bet removed succesfuly with ID: {msg}", betIdRequest.id);
           return Ok(new { });
@@ -222,7 +222,7 @@ namespace BetsTrading_Service.Controllers
 
       try
       {
-        var bets = _dbContext.InvestmentData
+        var bets = _dbContext.Bet
             .Where(u => u.user_id == userInfoRequest.id).ToList();
 
         if (bets != null && bets.Count != 0) // There are bets

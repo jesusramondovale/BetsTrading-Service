@@ -21,7 +21,7 @@
 
     // Especifica el esquema "BetsTrading" al definir el DbSet
     public DbSet<User> Users { get; set; }
-    public DbSet<Bet> InvestmentData{ get; set; }
+    public DbSet<Bet> Bet{ get; set; }
     public DbSet<FinancialAsset> FinancialAssets { get; set; }
     public DbSet<Trend> Trends { get; set; }
     public DbSet<Favorite> Favorites { get; set; }
