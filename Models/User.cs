@@ -56,7 +56,7 @@
 
 
     public string id { get; private set; }
-    public string idcard { get; private set; }
+    public string idcard { get; set; }
     public string fullname { get; private set; }
     public string password { get; private set; }
     public string country { get; private set; }

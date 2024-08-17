@@ -207,6 +207,34 @@ namespace BetsTrading_Service.Controllers
       }     
     }
 
+    [HttpPost("Verify")]
+    public IActionResult Verify([FromBody] idCardRequest idCardRequest)
+    {
+      try
+      {
+        var user = _dbContext.Users.FirstOrDefault(u => u.id == idCardRequest.id);
+
+        if (user != null)
+        {
+          user.idcard = idCardRequest.idCard!;
+          _dbContext.SaveChanges();
+          _logger.Log.Information("[AUTH] :: Verify :: Success with ID Card {idCard}", idCardRequest.idCard);
+          return Ok(new { Message = "ID saved successfully", UserId = user.id });
+        }
+        else
+        {
+          _logger.Log.Error("[AUTH] :: Verify :: User not found with ID {id}", idCardRequest.id);
+          return NotFound(new { Message = "User not found" });
+        }
+      }
+      catch (Exception ex)
+      {
+        _logger.Log.Error("[AUTH] :: Verify :: Internal Server Error : {ex.Message}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+    }
+
+
     [HttpPost("GoogleQuickRegister")]
     public IActionResult GoogleQuickRegister(googleSignRequest isGoogledRequest)
     {
