@@ -19,6 +19,7 @@
       this.last_session = last_session;
       this.credit_card = credit_card;
       this.username = username;
+      this.points = 0;
 
       token_expiration = null;
       is_active = true;
@@ -31,7 +32,7 @@
     public User(string id, string idcard, string fullname, string password,
                 string country, string gender,
                 string email, DateTime birthday, DateTime signin_date,
-                DateTimeOffset last_session, string credit_card, string username, string profile_pic)
+                DateTimeOffset last_session, string credit_card, string username, string profile_pic, int points)
     {
       this.id = id;
       this.idcard = idcard!;
@@ -46,6 +47,7 @@
       this.credit_card = credit_card!;
       this.username = username;
       this.profile_pic = profile_pic;
+      this.points = points;
 
       token_expiration = null;
       is_active = true;
@@ -73,6 +75,8 @@
     public DateTimeOffset? last_login_attempt { get; private set; }
     public DateTimeOffset? last_password_change { get; private set; }
     public string? profile_pic { get; set; }
+
+    public int points{ get; set; }
 
   }
 

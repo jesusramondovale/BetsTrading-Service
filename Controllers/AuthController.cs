@@ -187,7 +187,8 @@ namespace BetsTrading_Service.Controllers
           DateTime.UtcNow,
           signUpRequest.CreditCard ?? "nullCreditCard",
           signUpRequest.Username ?? "ERROR",
-          signUpRequest.ProfilePic ?? null!);
+          signUpRequest.ProfilePic ?? null!,
+          0);
 
         newUser.is_active = true;
         newUser.token_expiration = DateTime.UtcNow.AddDays(SESSION_EXP_DAYS);

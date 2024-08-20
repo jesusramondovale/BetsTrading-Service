@@ -189,7 +189,7 @@ namespace BetsTrading_Service.Controllers
 
         var trends = _dbContext.Trends.ToList();
 
-        if (trends != null && trends.Count != 0) // There are trends
+        if (trends.Any()) // There are trends
         {
           _logger.Log.Information("[INFO] :: Trends :: success with ID: {msg}", userInfoRequest.id);
           return Ok(new
@@ -269,6 +269,68 @@ namespace BetsTrading_Service.Controllers
     }
 
 
+    [HttpPost("TopUsers")]
+    public IActionResult TopUsers([FromBody] idRequest userInfoRequest)
+    {
+      try
+      {
+        var topUsers = _dbContext.Users.OrderByDescending(u => u.points).ToList();
+
+
+        if (topUsers.Any())
+        {
+          _logger.Log.Information("[INFO] :: TopUsers :: success with user ID: {msg}", userInfoRequest.id);
+          return Ok(new
+          {
+            Message = "TopUsers SUCCESS",
+            Users = topUsers
+          });
+        }
+        else // No users
+        {
+          _logger.Log.Warning("[INFO] :: TopUsers :: Empty list of users with user ID: {msg}", userInfoRequest.id);
+          return NotFound(new { Message = "User has no bets!" });
+        }
+      }
+      catch (Exception ex)
+      {
+        _logger.Log.Error("[INFO] :: TopUsers :: Internal server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+    }
+
+    [HttpPost("TopUsersByCountry")]
+    public IActionResult TopUsersByCountry([FromBody] idRequest countryCode)
+    {
+      try
+      {
+        var topUsersByCountry = _dbContext.Users.Where(u => u.country == countryCode.id).OrderByDescending(u => u.points).ToList();
+
+
+        if (topUsersByCountry.Any())
+        {
+          _logger.Log.Information("[INFO] :: TopUsersByCountry :: success with country code: {msg}", countryCode.id);
+          return Ok(new
+          {
+            Message = "TopUsersByCountry SUCCESS",
+            Users = topUsersByCountry
+          });
+        }
+        else // No users
+        {
+          _logger.Log.Warning("[INFO] :: TopUsersByCountry :: Empty list of users with country code: {msg}", countryCode.id);
+          return NotFound(new { Message = "User has no bets!" });
+        }
+      }
+      catch (Exception ex)
+      {
+        _logger.Log.Error("[INFO] :: TopUsersByCountry :: Internal server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+    }
+
+
+
     [HttpPost("UploadPic")]
     public IActionResult UploadPic(uploadPicRequest uploadPicImageRequest)
     {
@@ -309,6 +371,9 @@ namespace BetsTrading_Service.Controllers
       
       
     }
+
+
+
 
   }
 }
