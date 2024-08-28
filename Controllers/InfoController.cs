@@ -43,7 +43,9 @@ namespace BetsTrading_Service.Controllers
             Fullname = user.fullname,
             Country = user.country,
             Lastsession = user.last_session,
-            Profilepic = user.profile_pic
+            Profilepic = user.profile_pic,
+            Points = user.points
+
           }); ;
 
         }
