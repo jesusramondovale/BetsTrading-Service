@@ -25,6 +25,7 @@
     public DbSet<FinancialAsset> FinancialAssets { get; set; }
     public DbSet<Trend> Trends { get; set; }
     public DbSet<Favorite> Favorites { get; set; }
+    public DbSet<BetZone> BetZones { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

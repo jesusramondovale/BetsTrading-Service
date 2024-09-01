@@ -331,6 +331,38 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
+    [HttpPost("GetBets")]
+    public IActionResult GetBets([FromBody] idRequest ticker)
+    {
+
+      try
+      {
+        var zones = _dbContext.BetZones
+            .Where(u => u.ticker == ticker.id).ToList();
+
+        if (zones != null && zones.Count > 0) // Ticker bets exists
+        {
+
+          _logger.Log.Information("[INFO] :: GetBets :: Success on ticker: {msg}", ticker.id);
+          return Ok(new
+          {           
+            bets = zones
+          
+          }) ;
+        }
+        else // Unexistent ticker
+        {
+          _logger.Log.Warning("[INFO] :: GetBets :: Bets not found for ticker: {msg}", ticker.id);
+          return NotFound(new { Message = "No bets found for this ticker" }); // Ticker not found
+        }
+      }
+      catch (Exception ex)
+      {
+        _logger.Log.Error("[INFO] :: GetBets :: Internal server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+
+    }
 
 
     [HttpPost("UploadPic")]
