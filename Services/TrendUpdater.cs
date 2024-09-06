@@ -49,12 +49,10 @@ namespace BetsTrading_Service.Services
               if (i <= MAX_TRENDS_ELEMENTS)
               {
                 int id = i++;
-                string name = (string)item["name"];
-                string icon = GetIconBase64(name)!;            
                 double dailyGain = (double)item["price_movement"]["percentage"];
-                double close = (double)item["extracted_price"];
-                double current = close + (double)item["price_movement"]["value"];
-                trends.Add(new Trend(id, name, icon, dailyGain, close, current));
+                string ticker = (string)item["stock"];
+
+                trends.Add(new Trend(id, dailyGain, ticker.Replace(":", ".")));
               }
               
             }
@@ -85,6 +83,12 @@ namespace BetsTrading_Service.Services
           transaction.Rollback();
         }
       }
+    }
+
+    private string? GetTickerFromAssetName(string name)
+    {
+      var financialAsset = _dbContext.FinancialAssets.FirstOrDefault(fa => fa.name == name);
+      return financialAsset != null ? financialAsset.ticker : "null";
     }
 
     private string? GetIconBase64(string stock)

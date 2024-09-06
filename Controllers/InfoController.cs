@@ -64,28 +64,36 @@ namespace BetsTrading_Service.Controllers
     }
 
     [HttpPost("Favorites")]
-    public IActionResult Favorites([FromBody] idRequest favoritesRequest)
+    public IActionResult Favorites([FromBody] idRequest userId)
     {
 
       try
       {
 
-        var favorites = _dbContext.Favorites.Where(u => u.user_id == favoritesRequest.id).ToList();
+        var favorites = _dbContext.Favorites.Where(u => u.user_id == userId.id).ToList();
 
         if (favorites != null && favorites.Count != 0) // There are favorites
         {
-          _logger.Log.Information("[INFO] :: Favorites :: success to ID: {msg}", favoritesRequest.id);
-          return Ok(new
+          List<FavoriteDTO> favsDTO = new List<FavoriteDTO>();
+          foreach (var fav in favorites)
+          {
+            var tmpAsset = _dbContext.FinancialAssets.Where(fa => fa.ticker == fav.ticker).FirstOrDefault();
+            
+            favsDTO.Add(new FavoriteDTO(id: fav.id, name: tmpAsset!.name, icon: tmpAsset.icon, daily_gain: (tmpAsset.close-tmpAsset.current)/100, close: tmpAsset.close, current: tmpAsset.current, user_id: userId.id, ticker: fav.ticker));
+          }
+
+          _logger.Log.Information("[INFO] :: Favorites :: success to ID: {msg}", userId.id);
+          return Ok( new
           {
             Message = "Favorites SUCCESS",
-            Favorites = favorites
+            Favorites = favsDTO
 
           }); ;
 
         }
         else // No Favorites
         {
-          _logger.Log.Warning("[INFO] :: Favorites :: Empty list of Favorites to userID: {msg}", favoritesRequest.id);
+          _logger.Log.Warning("[INFO] :: Favorites :: Empty list of Favorites to userID: {msg}", userId.id);
           return NotFound(new { Message = "ERROR :: No Favorites!" });
         }
       }
@@ -102,8 +110,9 @@ namespace BetsTrading_Service.Controllers
     {
       try
       {
-        var assetts = _dbContext.Trends.ToList();
-        var fav = _dbContext.Favorites.FirstOrDefault(u => u.user_id == newFavRequest.id && u.name == newFavRequest.item_name);
+        var assetts = _dbContext.FinancialAssets.ToList();
+        var trends = _dbContext.Trends.ToList();
+        var fav = _dbContext.Favorites.FirstOrDefault(fav => fav.user_id == newFavRequest.user_id && fav.ticker == newFavRequest.ticker);
 
         if (null != fav)
         {
@@ -113,26 +122,9 @@ namespace BetsTrading_Service.Controllers
 
         }
         
-        var tmpAsset = assetts.FirstOrDefault(a => a.name == newFavRequest.item_name);
 
-        if (tmpAsset == null)
-        {
-          return NotFound(new { Message = "Asset not found" });
-        }
-
-        
-        var favoriteId = Guid.NewGuid().ToString();
-
-        var newFavorite = new Favorite(
-            favoriteId,
-            newFavRequest.item_name!,
-            tmpAsset.icon,
-            tmpAsset.daily_gain,
-            tmpAsset.close,
-            tmpAsset.current,
-            newFavRequest.id!
-        );
-
+        var newFavorite = new Favorite(id: Guid.NewGuid().ToString(), user_id: newFavRequest.user_id, ticker: newFavRequest.ticker);
+            
         _dbContext.Favorites.Add(newFavorite);
         _dbContext.SaveChanges();
 
@@ -185,19 +177,31 @@ namespace BetsTrading_Service.Controllers
 
       try
       {
-        /* TO-DO : Custom trends by user
-        var trends = _dbContext.Trends.Where(u => u.user_id == userInfoRequest.id)ToList();
-        */
+        /* TO-DO : Custom trends by user*/
 
         var trends = _dbContext.Trends.ToList();
 
-        if (trends.Any()) // There are trends
+        if (trends.Any())
         {
+          List<TrendDTO> trendDTOs = new List<TrendDTO>();
+          foreach (var trend in trends) {
+
+            var tmpAsset = _dbContext.FinancialAssets.FirstOrDefault(a => a.ticker == trend.ticker);
+            if (tmpAsset != null)
+            {
+              trendDTOs.Add(new TrendDTO(id: trend.id, name: tmpAsset.name, icon: tmpAsset.icon , daily_gain: trend.daily_gain, close: tmpAsset.close, current: tmpAsset.current, ticker: trend.ticker));
+            }
+            else
+            {
+              trendDTOs.Add(new TrendDTO(id: trend.id, name: "xdxd", icon: "null", daily_gain: trend.daily_gain, close: 0.0, current: 0.0, ticker: trend.ticker));
+            }
+            
+          }
           _logger.Log.Information("[INFO] :: Trends :: success with ID: {msg}", userInfoRequest.id);
           return Ok(new
           {
             Message = "Trends SUCCESS",
-            Trends = trends
+            Trends = trendDTOs
 
           }); ;
 
@@ -222,46 +226,37 @@ namespace BetsTrading_Service.Controllers
     {
       try
       {
-        var userBets = _dbContext.Bet
-            .Where(u => u.user_id == userInfoRequest.id)
-            .Join(
-                _dbContext.FinancialAssets,  
-                bet => bet.ticker,          
-                asset => asset.ticker,      
-                (bet, asset) => new Bet   
-                {
-                  id = bet.id,
-                  user_id = bet.user_id,
-                  ticker = bet.ticker,
-                  name = asset.name,                // Name took from FinancialAssets table using ticker key
-                  bet_amount = bet.bet_amount,
-                  origin_value = bet.origin_value,
-                  current_value = bet.current_value,
-                  target_value = bet.target_value,
-                  target_margin = bet.target_margin,
-                  target_date = bet.target_date,
-                  target_odds = bet.target_odds,
-                  target_won = bet.target_won,
-                  icon_path = bet.icon_path,
-                  type = bet.type,
-                  date_margin = bet.date_margin
-                }
-            ).ToList();
-
-        if (userBets.Any()) // Hay apuestas
-        {
-          _logger.Log.Information("[INFO] :: UserBets :: success with ID: {msg}", userInfoRequest.id);
-          return Ok(new
-          {
-            Message = "UserBets SUCCESS",
-            Bets = userBets
-          });
-        }
-        else // No hay apuestas para el usuario
+        var bets = _dbContext.Bet.Where(bet => bet.user_id == userInfoRequest.id).ToList();
+        
+        if (!(bets.Any()))
         {
           _logger.Log.Warning("[INFO] :: UserBets :: Empty list of bets on userID: {msg}", userInfoRequest.id);
           return NotFound(new { Message = "User has no bets!" });
         }
+
+        _logger.Log.Information("[INFO] :: UserBets :: success with ID: {msg}", userInfoRequest.id);
+        List<BetDTO> betDTOs = new List<BetDTO>();
+        
+        foreach (var bet in bets)
+        {
+          var tmpAsset = _dbContext.FinancialAssets.Where(a => a.ticker ==  bet.ticker).FirstOrDefault();
+          
+          var tmpBetZone = _dbContext.BetZones.Where(bz => bz.id == bet.bet_zone).FirstOrDefault();
+          TimeSpan timeMargin = (TimeSpan)(tmpBetZone!.end_date - tmpBetZone!.start_date);
+
+          betDTOs.Add(new BetDTO(id: bet.id, user_id: userInfoRequest.id, ticker: bet.ticker, name: tmpAsset.name, bet_amount: bet.bet_amount, 
+            origin_value: bet.origin_value, current_value: tmpAsset.current, target_value: tmpBetZone.target_value, target_margin: tmpBetZone.bet_margin, target_date: tmpBetZone.start_date, target_odds: tmpBetZone.target_odds, 
+            target_won: bet.target_won, icon_path: tmpAsset.icon, type: tmpBetZone.type, date_margin: timeMargin.Days ));
+
+        }
+
+        return Ok(new
+        {
+          Message = "UserBets SUCCESS",
+          Bets = betDTOs
+        });
+
+        
       }
       catch (Exception ex)
       {
@@ -331,26 +326,25 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
-    [HttpPost("GetBets")]
-    public IActionResult GetBets([FromBody] idRequest ticker)
+    [HttpPost("GetBetZones")]
+    public IActionResult GetBetZones([FromBody] idRequest ticker)
     {
 
       try
       {
-        var zones = _dbContext.BetZones
-            .Where(u => u.ticker == ticker.id).ToList();
+        var betZones = _dbContext.BetZones.Where(bz => bz.ticker == ticker.id).ToList();
 
-        if (zones != null && zones.Count > 0) // Ticker bets exists
+        if (betZones.Any())
         {
 
           _logger.Log.Information("[INFO] :: GetBets :: Success on ticker: {msg}", ticker.id);
           return Ok(new
           {           
-            bets = zones
+            bets = betZones
           
           }) ;
         }
-        else // Unexistent ticker
+        else // Unexistent zones for given ticker
         {
           _logger.Log.Warning("[INFO] :: GetBets :: Bets not found for ticker: {msg}", ticker.id);
           return NotFound(new { Message = "No bets found for this ticker" }); // Ticker not found
@@ -368,7 +362,6 @@ namespace BetsTrading_Service.Controllers
     [HttpPost("UploadPic")]
     public IActionResult UploadPic(uploadPicRequest uploadPicImageRequest)
     {
-      
 
       try
       {
@@ -401,12 +394,9 @@ namespace BetsTrading_Service.Controllers
         _logger.Log.Error("[INFO] :: UploadPic :: Internal server error: {msg}", ex.Message);
         return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
-
       
       
     }
-
-
 
 
   }

@@ -3,7 +3,26 @@
   public class Favorite
   {
 
-    public Favorite(string id, string name, string icon, double daily_gain, double close, double current, string user_id, string ticker )
+    public Favorite(string id, string user_id, string ticker )
+
+    {
+      this.id = id;
+      this.user_id = user_id;
+      this.ticker = ticker;
+
+    }
+
+
+    public string id { get; private set; }
+    public string user_id { get; private set; }
+    public string ticker { get; private set; }
+
+
+  }
+
+  public class FavoriteDTO
+  {
+    public FavoriteDTO(string id, string name, string icon, double daily_gain, double close, double current, string user_id, string ticker)
 
     {
       this.id = id;
@@ -29,4 +48,8 @@
 
 
   }
+
+
+
 }
+
