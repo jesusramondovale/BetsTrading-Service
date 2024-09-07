@@ -79,7 +79,7 @@ namespace BetsTrading_Service.Controllers
           {
             var tmpAsset = _dbContext.FinancialAssets.Where(fa => fa.ticker == fav.ticker).FirstOrDefault();
             
-            favsDTO.Add(new FavoriteDTO(id: fav.id, name: tmpAsset!.name, icon: tmpAsset.icon, daily_gain: (tmpAsset.close-tmpAsset.current)/100, close: tmpAsset.close, current: tmpAsset.current, user_id: userId.id, ticker: fav.ticker));
+            favsDTO.Add(new FavoriteDTO(id: fav.id, name: tmpAsset!.name, icon: tmpAsset.icon!, daily_gain: ((tmpAsset.current-tmpAsset.close)/tmpAsset.close)*100, close: tmpAsset.close, current: tmpAsset.current, user_id: userId.id!, ticker: fav.ticker));
           }
 
           _logger.Log.Information("[INFO] :: Favorites :: success to ID: {msg}", userId.id);
@@ -123,7 +123,7 @@ namespace BetsTrading_Service.Controllers
         }
         
 
-        var newFavorite = new Favorite(id: Guid.NewGuid().ToString(), user_id: newFavRequest.user_id, ticker: newFavRequest.ticker);
+        var newFavorite = new Favorite(id: Guid.NewGuid().ToString(), user_id: newFavRequest.user_id!, ticker: newFavRequest.ticker!);
             
         _dbContext.Favorites.Add(newFavorite);
         _dbContext.SaveChanges();
@@ -189,7 +189,8 @@ namespace BetsTrading_Service.Controllers
             var tmpAsset = _dbContext.FinancialAssets.FirstOrDefault(a => a.ticker == trend.ticker);
             if (tmpAsset != null)
             {
-              trendDTOs.Add(new TrendDTO(id: trend.id, name: tmpAsset.name, icon: tmpAsset.icon , daily_gain: trend.daily_gain, close: tmpAsset.close, current: tmpAsset.current, ticker: trend.ticker));
+              double dailyGain = ((tmpAsset.current - tmpAsset.close) / tmpAsset.close) * 100;
+              trendDTOs.Add(new TrendDTO(id: trend.id, name: tmpAsset.name, icon: tmpAsset.icon! , daily_gain: dailyGain, close: tmpAsset.close, current: tmpAsset.current, ticker: trend.ticker));
             }
             else
             {
@@ -220,7 +221,6 @@ namespace BetsTrading_Service.Controllers
 
     }
 
-
     [HttpPost("UserBets")]
     public IActionResult UserBets([FromBody] idRequest userInfoRequest)
     {
@@ -242,11 +242,11 @@ namespace BetsTrading_Service.Controllers
           var tmpAsset = _dbContext.FinancialAssets.Where(a => a.ticker ==  bet.ticker).FirstOrDefault();
           
           var tmpBetZone = _dbContext.BetZones.Where(bz => bz.id == bet.bet_zone).FirstOrDefault();
-          TimeSpan timeMargin = (TimeSpan)(tmpBetZone!.end_date - tmpBetZone!.start_date);
+          TimeSpan timeMargin = (TimeSpan)(tmpBetZone!.end_date - tmpBetZone!.start_date)!;
 
-          betDTOs.Add(new BetDTO(id: bet.id, user_id: userInfoRequest.id, ticker: bet.ticker, name: tmpAsset.name, bet_amount: bet.bet_amount, 
+          betDTOs.Add(new BetDTO(id: bet.id, user_id: userInfoRequest.id!, ticker: bet.ticker, name: tmpAsset!.name!, bet_amount: bet.bet_amount, 
             origin_value: bet.origin_value, current_value: tmpAsset.current, target_value: tmpBetZone.target_value, target_margin: tmpBetZone.bet_margin, target_date: tmpBetZone.start_date, target_odds: tmpBetZone.target_odds, 
-            target_won: bet.target_won, icon_path: tmpAsset.icon, type: tmpBetZone.type, date_margin: timeMargin.Days ));
+            target_won: bet.target_won, icon_path: tmpAsset.icon!, type: tmpBetZone.type, date_margin: timeMargin.Days ));
 
         }
 
@@ -264,7 +264,6 @@ namespace BetsTrading_Service.Controllers
         return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
     }
-
 
     [HttpPost("TopUsers")]
     public IActionResult TopUsers([FromBody] idRequest userInfoRequest)
@@ -357,7 +356,6 @@ namespace BetsTrading_Service.Controllers
       }
 
     }
-
 
     [HttpPost("UploadPic")]
     public IActionResult UploadPic(uploadPicRequest uploadPicImageRequest)

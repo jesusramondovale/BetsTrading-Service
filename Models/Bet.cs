@@ -6,7 +6,10 @@ namespace BetsTrading_Service.Models
   {
 
     // Empty constructor
-    public Bet() { }
+    public Bet() {
+      this.user_id = "";
+      this.ticker = "";
+    }
 
     // Full constructor
     public Bet(int id, string user_id , string ticker,
