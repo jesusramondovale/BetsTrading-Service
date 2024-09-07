@@ -6,10 +6,10 @@ namespace BetsTrading_Service.Requests
   {
     [Required]
     [StringLength(100, MinimumLength = 20)]
-    public string? id { get; set; }
+    public string? user_id { get; set; }
 
     [Required]
-    public string? item_name{ get; set; }
+    public string? ticker{ get; set; }
 
 
   }
