@@ -22,6 +22,99 @@ namespace BetsTrading_Service.Controllers
      
     }
 
+
+    [HttpPost("SignIn")]
+    public IActionResult SignIn([FromBody] SignUpRequest signUpRequest)
+    {
+      Console.WriteLine("SignIn() called");
+      Console.WriteLine("Requesst -> " + signUpRequest.FullName);
+
+      try
+      {
+        var existingUser = _dbContext.Users
+            .FirstOrDefault(u => u.username == signUpRequest.Username || u.email == signUpRequest.Email);
+
+        if (existingUser != null)
+        {
+          Console.WriteLine("Conflict!");
+          return Conflict(new { Message = "Username, email or ID already exists" });
+        }
+
+        var newUser = new User(
+          signUpRequest.Token ?? Guid.NewGuid().ToString(),
+          signUpRequest.IdCard ?? "-",
+          signUpRequest.Fcm ?? "-",
+          signUpRequest.FullName ?? "-",
+          signUpRequest.Password ?? "-",
+          signUpRequest.Country ?? "",
+          signUpRequest.Gender ?? "-",
+          signUpRequest.Email ?? "-",
+          signUpRequest.Birthday ?? DateTime.UtcNow,
+          DateTime.UtcNow,
+          DateTime.UtcNow,
+          signUpRequest.CreditCard ?? "nullCreditCard",
+          signUpRequest.Username ?? "ERROR",
+          signUpRequest.ProfilePic ?? null!,
+          0);
+
+        newUser.is_active = true;
+        newUser.token_expiration = DateTime.UtcNow.AddDays(SESSION_EXP_DAYS);
+
+        _dbContext.Users.Add(newUser);
+        _dbContext.SaveChanges();
+
+        _logger.Log.Information("[AUTH] :: SignIn :: Success with user ID : {userID}", newUser.id);
+        return Ok(new { Message = "Registration succesfull!", UserId = newUser.id }); // SUCCESS
+
+      }
+
+      catch (Exception ex)
+      {
+        _logger.Log.Error("[AUTH] :: SignIn :: Error : {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Internal server error! ", Error = ex.Message });
+      }
+    }
+
+    [HttpPost("GoogleQuickRegister")]
+    public IActionResult GoogleQuickRegister(googleSignRequest isGoogledRequest)
+    {
+
+      Console.WriteLine("GoogleQuickRegister() called");
+      SignUpRequest signUpRequest = new SignUpRequest();
+      signUpRequest.Token = isGoogledRequest.id;
+      if (!string.IsNullOrEmpty(isGoogledRequest.email))
+      {
+        signUpRequest.Username = isGoogledRequest.email.Split('@')[0];
+      }
+      else
+      {
+        signUpRequest.Username = isGoogledRequest.displayName;
+      }
+
+      signUpRequest.FullName = isGoogledRequest.displayName;
+      signUpRequest.Fcm = isGoogledRequest.fcm;
+      signUpRequest.Email = isGoogledRequest.email;
+      signUpRequest.ProfilePic = isGoogledRequest.photoUrl;
+      signUpRequest.Birthday = isGoogledRequest.birthday;
+      signUpRequest.Country = isGoogledRequest.country;
+      var signInResult = SignIn(signUpRequest);
+
+
+      if (signInResult is OkObjectResult)
+      {
+        Console.WriteLine("SignIn external() OK");
+        _logger.Log.Information("[AUTH] :: GoogleQuickRegister :: Success with token : {token}", signUpRequest.Token);
+        return Ok(new { Message = "User quick-registered", UserId = signUpRequest.Token });
+      }
+      else
+      {
+        _logger.Log.Error("[AUTH] :: GoogleQuickRegister :: Error: Internal SignIn error!");
+        Console.WriteLine("SignIn() INTERNAL SERVER ERROR");
+        return StatusCode(500, new { Message = "Internal server error! ", Error = "Internal server error  while google quick-regist" });
+      }
+
+    }
+
     [HttpPost("LogIn")]
     public IActionResult LogIn([FromBody] Requests.LoginRequest loginRequest)
     {    
@@ -157,56 +250,33 @@ namespace BetsTrading_Service.Controllers
       }       
     }
 
-    [HttpPost("SignIn")]
-    public IActionResult SignIn([FromBody] SignUpRequest signUpRequest)
+    [HttpPost("RefreshFCM")]
+    public IActionResult Verify([FromBody] fcmTokenRequest tokenRequest)
     {
-      Console.WriteLine("SignIn() called");
-      Console.WriteLine("Requesst -> " + signUpRequest.FullName);
-
       try
       {
-        var existingUser = _dbContext.Users
-            .FirstOrDefault(u => u.username == signUpRequest.Username || u.email == signUpRequest.Email);
+        var user = _dbContext.Users.FirstOrDefault(u => u.id == tokenRequest.user_id);
 
-        if (existingUser != null)
+        if (user != null)
         {
-          Console.WriteLine("Conflict!");
-          return Conflict(new { Message = "Username, email or ID already exists" });
+          user.fcm = tokenRequest.fcm_token!;
+          _dbContext.SaveChanges();
+          _logger.Log.Information("[AUTH] :: RefreshFCM :: Success with User ID {idCard}", tokenRequest.user_id);
+          return Ok(new { Message = "ID saved successfully", UserId = user.id });
         }
-
-        var newUser = new User(
-          signUpRequest.Token ?? Guid.NewGuid().ToString(),
-          signUpRequest.IdCard ?? "-",
-          signUpRequest.FullName ?? "-",
-          signUpRequest.Password ?? "-",
-          signUpRequest.Country ?? "",
-          signUpRequest.Gender ?? "-",
-          signUpRequest.Email ?? "-",
-          signUpRequest.Birthday ?? DateTime.UtcNow,
-          DateTime.UtcNow,
-          DateTime.UtcNow,
-          signUpRequest.CreditCard ?? "nullCreditCard",
-          signUpRequest.Username ?? "ERROR",
-          signUpRequest.ProfilePic ?? null!,
-          0);
-
-        newUser.is_active = true;
-        newUser.token_expiration = DateTime.UtcNow.AddDays(SESSION_EXP_DAYS);
-
-        _dbContext.Users.Add(newUser);
-        _dbContext.SaveChanges();
-
-        _logger.Log.Information("[AUTH] :: SignIn :: Success with user ID : {userID}", newUser.id);
-        return Ok(new { Message = "Registration succesfull!", UserId = newUser.id }); // SUCCESS
-
+        else
+        {
+          _logger.Log.Error("[AUTH] :: RefreshFCM :: User not found with User ID {id}", tokenRequest.user_id);
+          return NotFound(new { Message = "User not found" });
+        }
       }
-
       catch (Exception ex)
       {
-        _logger.Log.Error("[AUTH] :: SignIn :: Error : {msg}", ex.Message);
-        return StatusCode(500, new { Message = "Internal server error! ", Error = ex.Message });
-      }     
+        _logger.Log.Error("[AUTH] :: RefreshFCM :: Internal Server Error : {ex.Message}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
     }
+
 
     [HttpPost("Verify")]
     public IActionResult Verify([FromBody] idCardRequest idCardRequest)
@@ -236,44 +306,7 @@ namespace BetsTrading_Service.Controllers
     }
 
 
-    [HttpPost("GoogleQuickRegister")]
-    public IActionResult GoogleQuickRegister(googleSignRequest isGoogledRequest)
-    {
       
-      Console.WriteLine("GoogleQuickRegister() called");
-      SignUpRequest signUpRequest = new SignUpRequest();
-      signUpRequest.Token = isGoogledRequest.id;
-      if (!string.IsNullOrEmpty(isGoogledRequest.email))
-      {
-        signUpRequest.Username = isGoogledRequest.email.Split('@')[0];
-      }
-      else
-      {
-        signUpRequest.Username = isGoogledRequest.displayName;
-      }
-
-      signUpRequest.FullName = isGoogledRequest.displayName;
-      signUpRequest.Email = isGoogledRequest.email;
-      signUpRequest.ProfilePic = isGoogledRequest.photoUrl;
-      signUpRequest.Birthday = isGoogledRequest.birthday;
-      signUpRequest.Country = isGoogledRequest.country;
-      var signInResult = SignIn(signUpRequest);
-
-
-      if (signInResult is OkObjectResult)
-      {
-        Console.WriteLine("SignIn external() OK");
-        _logger.Log.Information("[AUTH] :: GoogleQuickRegister :: Success with token : {token}", signUpRequest.Token);
-        return Ok(new { Message = "User quick-registered", UserId = signUpRequest.Token });
-      }
-      else
-      {
-        _logger.Log.Error("[AUTH] :: GoogleQuickRegister :: Error: Internal SignIn error!");
-        Console.WriteLine("SignIn() INTERNAL SERVER ERROR");
-        return StatusCode(500, new { Message = "Internal server error! ", Error = "Internal server error  while google quick-regist" });
-      }
-
-    }   
   }
 }
 

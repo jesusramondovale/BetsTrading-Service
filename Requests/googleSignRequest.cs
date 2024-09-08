@@ -10,6 +10,10 @@ namespace BetsTrading_Service.Requests
     [StringLength(100, MinimumLength = 21)]
     public string? id { get; set; }
 
+    [Required]
+    [StringLength(100, MinimumLength = 21)]
+    public string? fcm { get; set; }
+
     public DateTime? birthday { get; set; }
 
     [Required]
@@ -18,7 +22,6 @@ namespace BetsTrading_Service.Requests
     [Required]
     [StringLength(100, MinimumLength = 1)]
     public string? displayName { get; set; }
-    
 
     [Required]
     [StringLength(100, MinimumLength = 4)]

@@ -12,6 +12,9 @@ namespace BetsTrading_Service.Requests
     public string? IdCard { get; set; }
 
     [Required]
+    public string? Fcm { get; set; }
+    
+    [Required]
     [StringLength(100, MinimumLength = 3)]
     public string? FullName { get; set; }
 

@@ -11,6 +11,20 @@ namespace BetsTrading_Service.Requests
 
   }
 
+  public class fcmTokenRequest
+  {
+
+    [Required]
+    [StringLength(100, MinimumLength = 1)]
+    public string? user_id { get; set; }
+
+    [Required]
+    [StringLength(200, MinimumLength = 1)]
+    public string? fcm_token { get; set; }
+
+
+  }
+
   public class idCardRequest
   {
 

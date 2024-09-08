@@ -6,8 +6,10 @@ using Newtonsoft.Json.Linq;
 using BetsTrading_Service.Database;
 using BetsTrading_Service.Interfaces;
 using BetsTrading_Service.Models;
+using BetsTrading_Service.Services;
 using Microsoft.EntityFrameworkCore;
 using System.Collections.Generic;
+using BetsTrading_Service.Locale;
 
 namespace BetsTrading_Service.Services
 {
@@ -40,7 +42,7 @@ namespace BetsTrading_Service.Services
           var market_trends = data["market_trends"];
 
           var trends = new List<Trend>();
-          var mostActive = data["market_trends"].FirstOrDefault(x => (string)x["title"] == "Most active")?["results"];
+          var mostActive = data["market_trends"]!.FirstOrDefault(x => (string)x["title"]! == "Most active")?["results"];
 
           if (mostActive != null)
           {
@@ -49,14 +51,14 @@ namespace BetsTrading_Service.Services
             {
               if (i <= MAX_TRENDS_ELEMENTS)
               {
-                double dailyGain = ((string)item["price_movement"]["movement"] == "Down" ?
-                                        -(double)item["price_movement"]["value"] :
-                                         (double)item["price_movement"]["value"]);
-                double close = ((string)item["price_movement"]["movement"] == "Down" ?
-                               (double)item["extracted_price"] + (double)item["price_movement"]["value"] :
-                               (double)item["extracted_price"] - (double)item["price_movement"]["value"]);
+                double dailyGain = ((string)item["price_movement"]!["movement"]! == "Down" ?
+                                        -(double)item["price_movement"]!["value"]! :
+                                         (double)item["price_movement"]!["value"]!);
+                double close = ((string)item["price_movement"]!["movement"]! == "Down" ?
+                               (double)item["extracted_price"]! + (double)item["price_movement"]!["value"]! :
+                               (double)item["extracted_price"]! - (double)item["price_movement"]!["value"]!);
 
-                string ticker = (string)item["stock"];
+                string ticker = (string)item!["stock"]!;
                 var currentAsset = _dbContext.FinancialAssets.Where(fa => fa.ticker == ticker.Replace(":", ".")).FirstOrDefault();
                 
                 // Create new asset
@@ -64,12 +66,12 @@ namespace BetsTrading_Service.Services
                 {
                   
                   FinancialAsset tmpAsset = new FinancialAsset(
-                      name: (string)item["name"],
+                      name: (string)item["name"]!,
                       group: "Shares",
                       icon: "null",
                       country: GetCountryByTicker(ticker.Replace(":", ".")),
                       ticker: ticker.Replace(":","."),
-                      current: (double)item["extracted_price"],
+                      current: (double)item["extracted_price"]!,
                       close: close
                   );
                   _dbContext.FinancialAssets.Add(tmpAsset);
@@ -79,7 +81,7 @@ namespace BetsTrading_Service.Services
                 // Update existent asset
                 else if (currentAsset != null) 
                 {
-                  currentAsset.current = (double)item["extracted_price"];
+                  currentAsset.current = (double)item["extracted_price"]!;
                   currentAsset.close = close;
                                     
                   _dbContext.FinancialAssets.Update(currentAsset);
@@ -99,6 +101,13 @@ namespace BetsTrading_Service.Services
 
           _dbContext.Trends.AddRange(trends);
           _dbContext.SaveChanges();
+
+          FirebaseNotificationService firebaseNotificationService = new FirebaseNotificationService();
+          
+          foreach (User user in _dbContext.Users.ToList())
+          {
+            _ = firebaseNotificationService.SendNotificationToUser(user.fcm, "Betrader", LocalizedTexts.GetTranslationByCountry(user.country,"updatedTrends"));
+          }
 
           transaction.Commit();
         }
@@ -206,7 +215,7 @@ namespace BetsTrading_Service.Services
       {
         var jsonResponse = await response.Content.ReadAsStringAsync();
         var data = JObject.Parse(jsonResponse);
-        return data["url"].ToString(); 
+        return data["url"]!.ToString(); 
       }
       else
       {

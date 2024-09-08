@@ -2,22 +2,23 @@
 {
   public class User
   {
-    public User(string id, string? idcard, string fullname, string? password,
+    public User(string id,  string? idcard, string fcm, string fullname, string? password,
                 string? country, string? gender,
                 string email, DateTime birthday, DateTime signin_date,
                 DateTimeOffset last_session, string? credit_card, string username)
     {
       this.id = id;
-      this.idcard = idcard;
+      this.idcard = idcard!;
+      this.fcm = fcm;
       this.fullname = fullname;
-      this.password = password; // SHA-256
-      this.country = country;
-      this.gender = gender;
+      this.password = password!; // SHA-256
+      this.country = country!;
+      this.gender = gender!;
       this.email = email;
       this.birthday = birthday;
       this.signin_date = signin_date;
       this.last_session = last_session;
-      this.credit_card = credit_card;
+      this.credit_card = credit_card!;
       this.username = username;
       this.points = 0;
 
@@ -29,13 +30,14 @@
       profile_pic = null;
     }
 
-    public User(string id, string idcard, string fullname, string password,
+    public User(string id, string idcard, string fcm, string fullname, string password,
                 string country, string gender,
                 string email, DateTime birthday, DateTime signin_date,
                 DateTimeOffset last_session, string credit_card, string username, string profile_pic, int points)
     {
       this.id = id;
       this.idcard = idcard!;
+      this.fcm = fcm;
       this.fullname = fullname;
       this.password = password!;
       this.country = country!;
@@ -58,6 +60,7 @@
 
 
     public string id { get; private set; }
+    public string fcm { get; set; }
     public string idcard { get; set; }
     public string fullname { get; private set; }
     public string password { get; private set; }
