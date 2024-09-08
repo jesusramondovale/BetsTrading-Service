@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "betrader-v1",
+  "private_key_id": "58fcd3eac7216c7c1a35dafe52bfafa6aab341e2",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDdCuCYDmzZehLu\ncxlphyWM98fO/Cghvu+y6BHHRJt8RF1GGTi4bmnWr3LHcQ9RmYeoDcgmdiKOP2hn\n/ywnk9Ehq4iRVjSJ7n8uCAUbKAP0Q9amCMQd48NsM//gYTmtvI7JAnnEzQdKJ88I\n2APIwKZZW6nTj+cb2TiDZZtc3WwDKQCJDPQqaBPfGPHdTTFVtOXr8/7YAUXgRMnx\npUrTzJ2ZgX5jkZCR8hSU/UNfAx4jJVHXwEB4o62PrYY5hO0mb9cm/euvtkjR+oSl\nDHs7Zh9QvoO4KF5Yx5uMVn/+EDSetsEISMVNY+USTEJrExz7G6RZuwi5pBtkTDwP\nOdPh/KKfAgMBAAECggEADPXrA49vXqfgcOUEm7u5MTuDSdKRydTBU9sOojTJulVJ\n2mcQYwpthne4G61rgzkLPrvVvTrJ10+TE1H5Dulrmdu0c/OH77R+KYuxcCbkmg+m\nOz47vZYexC5SXDlnLkj/+Eix+h7P3oKLpA5o1/5C/FQgsFwS/+UfNRK7ZtkNN19P\neHd66fyOCcokyjvwmkD88RdnC405bdiLBZMys1iD2+NNnJXpMEpDosuSwKetzvI0\nwwNPyYpswdCLKXbIfy89pbux7E9v9WZ8Q4B3f91uoEFd5dsJlu2RqcH+RvOGsFhU\n/rfAS2Z7zULPb1kx7ieXKhndQjMVw+C6jjLY6i/AGQKBgQD4HmXOzVB0SAu0y/CG\nWHr1wQoGj7bFAYadLaTCyWXHCw3P177ZY5NO1NeD1Mihd8h05Lrs+cFDFP65o2U+\n2KGwIPWlejMP7Ob99iukyrcwbZkDwgoFMZCMJr1RlCX944euuS1nZ9KlyNjUk2eG\n1/1bAwnpDTQeis3HAI3yldbvuQKBgQDkEE5vr9stde32PuolYHonPl0uA6sA5Thd\nTAZty9Fo1w6DUvEMnUTJ+8/CQZPTnP3sMoLicDUQi+drwQYfF+uwhZ6qLarbQGHp\n090S1DRfjjoHTgOvGgpaJ+Xikhzy4zHA7fjdEhBwCU1GswweuXig25Au00mHyab1\nu09RTZhhFwKBgQDPQ8VT/ZrJqC1vODWSZHNCu6D+XisVYvLqdeh+dvK4VPmSt+zL\neCzj21S04Zk/mOoxC6lCsFfLC8zFkkLPPvPCR6YsN2pUUVecqnlGzbg9kjASPZNV\nR1QyX2IitZkO/3SmdjYBfW8v4hmPahs/P0p7Loymy8rQAK9pH4N0M8s6sQKBgQCi\nZcYkm5m77mzLWxOKGAADr9HUMUJ0ecTAEqHFT0xHllO8SbRh4h8YoRnY3q9wEStz\nJKi0q2ft52GcBi/gtjzbTtqjna87PsY6JeYXQUol/PXvO6s95ZIXjq+QvbCleAh2\ntD3w1askzErdnCN2QWXXTWGHJmcGrR4Zfw7E+zcVcwKBgE/FCEw6EjRntPPIPmct\nBwuQ4ZjTeA0JGUtfZXOsaO0c1Cfu9T+M/6wdLuczEJMnRpb7+05Db3W/h/G5FcAL\nweIllfrUdLL7zb/AE+te7G+zyo4ioHcSzp/cqunVjd8wcfiY8HoS8ITbfCsGA3yX\n8REYx2i1A/cajVWBdcY4OzZn\n-----END PRIVATE KEY-----\n",
+  "client_email": "firebase-adminsdk-rzk13@betrader-v1.iam.gserviceaccount.com",
+  "client_id": "114847063324276776980",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-rzk13%40betrader-v1.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
