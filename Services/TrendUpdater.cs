@@ -106,7 +106,7 @@ namespace BetsTrading_Service.Services
           
           foreach (User user in _dbContext.Users.ToList())
           {
-            _ = firebaseNotificationService.SendNotificationToUser(user.fcm, "Betrader", LocalizedTexts.GetTranslationByCountry(user.country,"updatedTrends"));
+            //_ = firebaseNotificationService.SendNotificationToUser(user.fcm, "Betrader", LocalizedTexts.GetTranslationByCountry(user.country,"updatedTrends"));
           }
 
           transaction.Commit();
