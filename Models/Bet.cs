@@ -40,13 +40,14 @@ namespace BetsTrading_Service.Models
 
   public class BetDTO
   {
-    public BetDTO(string user_id, string ticker, string name,
+    public BetDTO(int id, string user_id, string ticker, string name,
                       double bet_amount, double origin_value, double current_value,
                       double target_value, double target_margin, DateTime target_date,
                       double target_odds, bool target_won, string icon_path, int type, int date_margin)
 
     {
       
+      this.id = id;
       this.user_id = user_id;
       this.ticker = ticker;
       this.name = name;
@@ -80,7 +81,5 @@ namespace BetsTrading_Service.Models
     public int type { get; set; }
     public int date_margin { get; set; }
 
-
   }
-
 }

@@ -29,7 +29,6 @@ namespace BetsTrading_Service.Services
           data.Add(entry.Key, entry.Value);
         }
       }
-
       
       var message = new Message()
       {

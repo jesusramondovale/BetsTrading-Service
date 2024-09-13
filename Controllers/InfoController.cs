@@ -106,34 +106,37 @@ namespace BetsTrading_Service.Controllers
     }
 
     [HttpPost("NewFavorite")]
-    public IActionResult NewFavorite([FromBody] newFavoriteRequest newFavRequest)
+    public async Task<IActionResult> NewFavorite([FromBody] newFavoriteRequest newFavRequest)
     {
-      try
+      using (var transaction = await _dbContext.Database.BeginTransactionAsync())
       {
-        var assetts = _dbContext.FinancialAssets.ToList();
-        var trends = _dbContext.Trends.ToList();
-        var fav = _dbContext.Favorites.FirstOrDefault(fav => fav.user_id == newFavRequest.user_id && fav.ticker == newFavRequest.ticker);
-
-        if (null != fav)
+        try
         {
-          _dbContext.Favorites.Remove(fav);
-          _dbContext.SaveChanges();
+          var assetts = _dbContext.FinancialAssets.ToList();
+          var trends = _dbContext.Trends.ToList();
+          var fav = _dbContext.Favorites.FirstOrDefault(fav => fav.user_id == newFavRequest.user_id && fav.ticker == newFavRequest.ticker);
+
+          if (null != fav)
+          {
+            _dbContext.Favorites.Remove(fav);
+            await _dbContext.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return Ok(new { });
+          }
+
+          var newFavorite = new Favorite(id: Guid.NewGuid().ToString(), user_id: newFavRequest.user_id!, ticker: newFavRequest.ticker!);
+          _dbContext.Favorites.Add(newFavorite);
+          await _dbContext.SaveChangesAsync();
+          await transaction.CommitAsync();
+
           return Ok(new { });
-
         }
-        
-
-        var newFavorite = new Favorite(id: Guid.NewGuid().ToString(), user_id: newFavRequest.user_id!, ticker: newFavRequest.ticker!);
-            
-        _dbContext.Favorites.Add(newFavorite);
-        _dbContext.SaveChanges();
-
-        return Ok(new { });
-      }
-      catch (Exception ex)
-      {
-        _logger.Log.Error("[INFO] :: New favorite :: Internal server error: {msg}", ex.Message);
-        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+        catch (Exception ex)
+        {
+          await transaction.RollbackAsync();
+          _logger.Log.Error("[INFO] :: NewFavorite :: Internal server error: {msg}", ex.Message);
+          return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+        }
       }
     }
 
@@ -246,47 +249,47 @@ namespace BetsTrading_Service.Controllers
         return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
     }
-    
 
     [HttpPost("UploadPic")]
-    public IActionResult UploadPic(uploadPicRequest uploadPicImageRequest)
+    public async Task<IActionResult> UploadPic(uploadPicRequest uploadPicImageRequest)
     {
-
-      try
+      using (var transaction = await _dbContext.Database.BeginTransactionAsync())
       {
-        var user = _dbContext.Users
-            .FirstOrDefault(u => u.id == uploadPicImageRequest.id);
-
-        if (user != null && uploadPicImageRequest.Profilepic != "")
+        try
         {
-          if (user.is_active && user.token_expiration > DateTime.UtcNow)
+          var user = _dbContext.Users.FirstOrDefault(u => u.id == uploadPicImageRequest.id);
+
+          if (user != null && uploadPicImageRequest.Profilepic != "")
           {
-            user.profile_pic = uploadPicImageRequest.Profilepic;
-            _dbContext.SaveChanges();
-            _logger.Log.Information("[INFO] :: UploadPic :: Success on profile pic updating for ID: {msg}", uploadPicImageRequest.id);
-            return Ok(new { Message = "Profile pic succesfully updated!", UserId = user.id });
+            if (user.is_active && user.token_expiration > DateTime.UtcNow)
+            {
+              user.profile_pic = uploadPicImageRequest.Profilepic;
+              await _dbContext.SaveChangesAsync();
+              await transaction.CommitAsync();
+
+              _logger.Log.Information("[INFO] :: UploadPic :: Success on profile pic updating for ID: {msg}", uploadPicImageRequest.id);
+              return Ok(new { Message = "Profile pic successfully updated!", UserId = user.id });
+            }
+            else
+            {
+              _logger.Log.Warning("[INFO] :: UploadPic :: No active session or session expired for ID: {msg}", uploadPicImageRequest.id);
+              return BadRequest(new { Message = "No active session or session expired" });
+            }
           }
           else
           {
-            _logger.Log.Warning("[INFO] :: UploadPic :: No active session or session expired for ID: {msg}", uploadPicImageRequest.id);
-            return BadRequest(new { Message = "No active session or session expired" });
+            _logger.Log.Error("[INFO] :: UploadPic :: User token not found: {msg}", uploadPicImageRequest.id);
+            return NotFound(new { Message = "User token not found" });
           }
         }
-        else
+        catch (Exception ex)
         {
-          _logger.Log.Error("[INFO] :: UploadPic :: User token not found: {msg}", uploadPicImageRequest.id);
-          return NotFound(new { Message = "User token not found" });
+          await transaction.RollbackAsync();
+          _logger.Log.Error("[INFO] :: UploadPic :: Internal server error: {msg}", ex.Message);
+          return StatusCode(500, new { Message = "Server error", Error = ex.Message });
         }
       }
-      catch (Exception ex)
-      {
-        _logger.Log.Error("[INFO] :: UploadPic :: Internal server error: {msg}", ex.Message);
-        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
-      }
-      
-      
     }
-
 
   }
 }
