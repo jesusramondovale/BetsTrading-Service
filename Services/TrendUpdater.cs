@@ -1,5 +1,4 @@
-﻿
-using System;
+﻿using System;
 using System.Collections;
 using SerpApi;
 using Newtonsoft.Json.Linq;
@@ -103,11 +102,14 @@ namespace BetsTrading_Service.Services
           _dbContext.SaveChanges();
 
           FirebaseNotificationService firebaseNotificationService = new FirebaseNotificationService();
-          
+
+          #if !DEBUG
           foreach (User user in _dbContext.Users.ToList())
           {
-            _ = firebaseNotificationService.SendNotificationToUser(user.fcm, "Betrader", LocalizedTexts.GetTranslationByCountry(user.country,"updatedTrends"));
+           
+              _ = firebaseNotificationService.SendNotificationToUser(user.fcm, "Betrader", LocalizedTexts.GetTranslationByCountry(user.country,"updatedTrends"));
           }
+          #endif
 
           transaction.Commit();
         }
@@ -232,7 +234,11 @@ namespace BetsTrading_Service.Services
     private readonly ICustomLogger _customLogger;
     private Timer _timer;
 
+    #pragma warning disable CS8618 
+    #pragma warning disable IDE0290
     public TrendUpdaterHostedService(IServiceProvider serviceProvider, ICustomLogger customLogger)
+    #pragma warning restore IDE0290 
+    #pragma warning restore CS8618 
     {
       _serviceProvider = serviceProvider;
       _customLogger = customLogger;

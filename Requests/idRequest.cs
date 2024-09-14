@@ -22,7 +22,6 @@ namespace BetsTrading_Service.Requests
     [StringLength(200, MinimumLength = 1)]
     public string? fcm_token { get; set; }
 
-
   }
 
   public class idCardRequest
@@ -33,7 +32,6 @@ namespace BetsTrading_Service.Requests
     public string? id { get; set; }
 
     public string? idCard { get; set; }
-
 
   }
 

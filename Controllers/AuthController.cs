@@ -22,56 +22,54 @@ namespace BetsTrading_Service.Controllers
      
     }
 
-
     [HttpPost("SignIn")]
-    public IActionResult SignIn([FromBody] SignUpRequest signUpRequest)
+    public async Task<IActionResult> SignIn([FromBody] SignUpRequest signUpRequest)
     {
-      Console.WriteLine("SignIn() called");
-      Console.WriteLine("Requesst -> " + signUpRequest.FullName);
-
-      try
+      using (var transaction = await _dbContext.Database.BeginTransactionAsync())
       {
-        var existingUser = _dbContext.Users
-            .FirstOrDefault(u => u.username == signUpRequest.Username || u.email == signUpRequest.Email);
-
-        if (existingUser != null)
+        try
         {
-          Console.WriteLine("Conflict!");
-          return Conflict(new { Message = "Username, email or ID already exists" });
+          var existingUser = _dbContext.Users
+              .FirstOrDefault(u => u.username == signUpRequest.Username || u.email == signUpRequest.Email);
+
+          if (existingUser != null)
+          {
+            return Conflict(new { Message = "Username, email or ID already exists" });
+          }
+
+          var newUser = new User(
+              signUpRequest.Token ?? Guid.NewGuid().ToString(),
+              signUpRequest.IdCard ?? "-",
+              signUpRequest.Fcm ?? "-",
+              signUpRequest.FullName ?? "-",
+              signUpRequest.Password ?? "-",
+              signUpRequest.Country ?? "",
+              signUpRequest.Gender ?? "-",
+              signUpRequest.Email ?? "-",
+              signUpRequest.Birthday ?? DateTime.UtcNow,
+              DateTime.UtcNow,
+              DateTime.UtcNow,
+              signUpRequest.CreditCard ?? "nullCreditCard",
+              signUpRequest.Username ?? "ERROR",
+              signUpRequest.ProfilePic ?? null!,
+              0);
+
+          newUser.is_active = true;
+          newUser.token_expiration = DateTime.UtcNow.AddDays(SESSION_EXP_DAYS);
+
+          _dbContext.Users.Add(newUser);
+          await _dbContext.SaveChangesAsync();
+          await transaction.CommitAsync();
+
+          _logger.Log.Information("[AUTH] :: SignIn :: Success with user ID : {userID}", newUser.id);
+          return Ok(new { Message = "Registration successful!", UserId = newUser.id });
         }
-
-        var newUser = new User(
-          signUpRequest.Token ?? Guid.NewGuid().ToString(),
-          signUpRequest.IdCard ?? "-",
-          signUpRequest.Fcm ?? "-",
-          signUpRequest.FullName ?? "-",
-          signUpRequest.Password ?? "-",
-          signUpRequest.Country ?? "",
-          signUpRequest.Gender ?? "-",
-          signUpRequest.Email ?? "-",
-          signUpRequest.Birthday ?? DateTime.UtcNow,
-          DateTime.UtcNow,
-          DateTime.UtcNow,
-          signUpRequest.CreditCard ?? "nullCreditCard",
-          signUpRequest.Username ?? "ERROR",
-          signUpRequest.ProfilePic ?? null!,
-          0);
-
-        newUser.is_active = true;
-        newUser.token_expiration = DateTime.UtcNow.AddDays(SESSION_EXP_DAYS);
-
-        _dbContext.Users.Add(newUser);
-        _dbContext.SaveChanges();
-
-        _logger.Log.Information("[AUTH] :: SignIn :: Success with user ID : {userID}", newUser.id);
-        return Ok(new { Message = "Registration succesfull!", UserId = newUser.id }); // SUCCESS
-
-      }
-
-      catch (Exception ex)
-      {
-        _logger.Log.Error("[AUTH] :: SignIn :: Error : {msg}", ex.Message);
-        return StatusCode(500, new { Message = "Internal server error! ", Error = ex.Message });
+        catch (Exception ex)
+        {
+          await transaction.RollbackAsync();
+          _logger.Log.Error("[AUTH] :: SignIn :: Error : {msg}", ex.Message);
+          return StatusCode(500, new { Message = "Internal server error!", Error = ex.Message });
+        }
       }
     }
 
@@ -116,43 +114,45 @@ namespace BetsTrading_Service.Controllers
     }
 
     [HttpPost("LogIn")]
-    public IActionResult LogIn([FromBody] Requests.LoginRequest loginRequest)
-    {    
-      try
+    public async Task<IActionResult> LogIn([FromBody] Requests.LoginRequest loginRequest)
+    {
+      using (var transaction = await _dbContext.Database.BeginTransactionAsync())
       {
-        var user = _dbContext.Users
-            .FirstOrDefault(u => u.username == loginRequest.Username ||
-                                  u.email == loginRequest.Username);
-
-        if (user != null) // User exists, verify password
+        try
         {
-          if (user.password == loginRequest.Password)
-          {
+          var user = _dbContext.Users
+              .FirstOrDefault(u => u.username == loginRequest.Username || u.email == loginRequest.Username);
 
-            user.last_session = DateTime.UtcNow;
-            user.token_expiration = DateTime.UtcNow.AddDays(SESSION_EXP_DAYS);
-            user.is_active = true;
-            _dbContext.SaveChanges();
-            _logger.Log.Information("[AUTH] :: LogIn :: Sucess. User ID: {userId}", user.id);
-            return Ok(new { Message = "LogIn SUCCESS", UserId = user.id });
+          if (user != null)
+          {
+            if (user.password == loginRequest.Password)
+            {
+              user.last_session = DateTime.UtcNow;
+              user.token_expiration = DateTime.UtcNow.AddDays(SESSION_EXP_DAYS);
+              user.is_active = true;
+              await _dbContext.SaveChangesAsync();
+              await transaction.CommitAsync();
+
+              _logger.Log.Information("[AUTH] :: LogIn :: Success. User ID: {userId}", user.id);
+              return Ok(new { Message = "LogIn SUCCESS", UserId = user.id });
+            }
+            else
+            {
+              return BadRequest(new { Message = "Incorrect password. Try again" });
+            }
           }
           else
           {
-            _logger.Log.Warning("[AUTH] :: LogIn ::BadRequest on LogIn: Bad pass");
-            return BadRequest(new { Message = "Incorrect password. Try again" }); // Invalid password
+            return NotFound(new { Message = "User or email not found" });
           }
         }
-        else // Unexistent user
+        catch (Exception ex)
         {
-          _logger.Log.Warning("[AUTH] :: LogIn :: User not found  with username: {logInRequest}", loginRequest.Username);
-          return NotFound(new { Message = "User or email not found" }); // User not found
+          await transaction.RollbackAsync();
+          _logger.Log.Error("[AUTH] :: LogIn :: Internal server error: {msg}", ex.Message);
+          return StatusCode(500, new { Message = "Server error", Error = ex.Message });
         }
       }
-      catch (Exception ex)
-      {
-        _logger.Log.Error("[AUTH] :: LogIn :: InternaStatusCode on LogIn with request: {logInRequest}", loginRequest.ToString());
-        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
-      }               
     }
 
     [HttpPost("GoogleLogIn")]
@@ -188,32 +188,36 @@ namespace BetsTrading_Service.Controllers
     }
 
     [HttpPost("LogOut")]
-    public IActionResult LogOut([FromBody] idRequest logOutRequest)
-    {    
-      try
+    public async Task<IActionResult> LogOut([FromBody] idRequest logOutRequest)
+    {
+      using (var transaction = await _dbContext.Database.BeginTransactionAsync())
       {
-        var user = _dbContext.Users.FirstOrDefault(u => u.id == logOutRequest.id);
-
-        if (user != null)
+        try
         {
-          user.last_session = DateTime.UtcNow;
-          user.is_active = false;
-          _dbContext.SaveChanges();
-          _logger.Log.Information("[AUTH] :: LogOut :: Success on user {username}", user.username);
-          return Ok(new { Message = "LogOut SUCCESS", UserId = user.id });
+          var user = _dbContext.Users.FirstOrDefault(u => u.id == logOutRequest.id);
 
+          if (user != null)
+          {
+            user.last_session = DateTime.UtcNow;
+            user.is_active = false;
+            await _dbContext.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            _logger.Log.Information("[AUTH] :: LogOut :: Success on user {username}", user.username);
+            return Ok(new { Message = "LogOut SUCCESS", UserId = user.id });
+          }
+          else
+          {
+            return NotFound(new { Message = "User or email not found" });
+          }
         }
-        else
+        catch (Exception ex)
         {
-          _logger.Log.Error("[AUTH] :: LogOut :: Not found. ID {id}", logOutRequest.id);
-          return NotFound(new { Message = "User or email not found" }); // User not found
+          await transaction.RollbackAsync();
+          _logger.Log.Error("[AUTH] :: LogOut :: Error: {msg}", ex.Message);
+          return StatusCode(500, new { Message = "Server error", Error = ex.Message });
         }
       }
-      catch (Exception ex)
-      {
-        _logger.Log.Error("[AUTH] :: LogOut :: Error : {ex.Message}", ex.Message);
-        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
-      }    
     }
 
     [HttpPost("IsLoggedIn")]
@@ -251,62 +255,70 @@ namespace BetsTrading_Service.Controllers
     }
 
     [HttpPost("RefreshFCM")]
-    public IActionResult Verify([FromBody] fcmTokenRequest tokenRequest)
+    public async Task<IActionResult> RefreshFCM([FromBody] fcmTokenRequest tokenRequest)
     {
-      try
+      using (var transaction = await _dbContext.Database.BeginTransactionAsync())
       {
-        var user = _dbContext.Users.FirstOrDefault(u => u.id == tokenRequest.user_id);
+        try
+        {
+          var user = _dbContext.Users.FirstOrDefault(u => u.id == tokenRequest.user_id);
 
-        if (user != null)
-        {
-          user.fcm = tokenRequest.fcm_token!;
-          _dbContext.SaveChanges();
-          _logger.Log.Information("[AUTH] :: RefreshFCM :: Success with User ID {idCard}", tokenRequest.user_id);
-          return Ok(new { Message = "ID saved successfully", UserId = user.id });
+          if (user != null)
+          {
+            user.fcm = tokenRequest.fcm_token!;
+            await _dbContext.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            _logger.Log.Information("[AUTH] :: RefreshFCM :: Success with User ID {id}", tokenRequest.user_id);
+            return Ok(new { Message = "FCM token updated successfully", UserId = user.id });
+          }
+          else
+          {
+            return NotFound(new { Message = "User not found" });
+          }
         }
-        else
+        catch (Exception ex)
         {
-          _logger.Log.Error("[AUTH] :: RefreshFCM :: User not found with User ID {id}", tokenRequest.user_id);
-          return NotFound(new { Message = "User not found" });
+          await transaction.RollbackAsync();
+          _logger.Log.Error("[AUTH] :: RefreshFCM :: Internal Server Error: {msg}", ex.Message);
+          return StatusCode(500, new { Message = "Server error", Error = ex.Message });
         }
-      }
-      catch (Exception ex)
-      {
-        _logger.Log.Error("[AUTH] :: RefreshFCM :: Internal Server Error : {ex.Message}", ex.Message);
-        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
     }
-
 
     [HttpPost("Verify")]
-    public IActionResult Verify([FromBody] idCardRequest idCardRequest)
+    public async Task<IActionResult> Verify([FromBody] idCardRequest idCardRequest)
     {
-      try
+      using (var transaction = await _dbContext.Database.BeginTransactionAsync())
       {
-        var user = _dbContext.Users.FirstOrDefault(u => u.id == idCardRequest.id);
+        try
+        {
+          var user = _dbContext.Users.FirstOrDefault(u => u.id == idCardRequest.id);
 
-        if (user != null)
-        {
-          user.idcard = idCardRequest.idCard!;
-          _dbContext.SaveChanges();
-          _logger.Log.Information("[AUTH] :: Verify :: Success with ID Card {idCard}", idCardRequest.idCard);
-          return Ok(new { Message = "ID saved successfully", UserId = user.id });
+          if (user != null)
+          {
+            user.idcard = idCardRequest.idCard!;
+            await _dbContext.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            _logger.Log.Information("[AUTH] :: Verify :: Success with ID Card {idCard}", idCardRequest.idCard);
+            return Ok(new { Message = "ID card updated successfully", UserId = user.id });
+          }
+          else
+          {
+            return NotFound(new { Message = "User not found" });
+          }
         }
-        else
+        catch (Exception ex)
         {
-          _logger.Log.Error("[AUTH] :: Verify :: User not found with ID {id}", idCardRequest.id);
-          return NotFound(new { Message = "User not found" });
+          await transaction.RollbackAsync();
+          _logger.Log.Error("[AUTH] :: Verify :: Internal Server Error: {msg}", ex.Message);
+          return StatusCode(500, new { Message = "Server error", Error = ex.Message });
         }
-      }
-      catch (Exception ex)
-      {
-        _logger.Log.Error("[AUTH] :: Verify :: Internal Server Error : {ex.Message}", ex.Message);
-        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
     }
 
 
-      
   }
 }
 

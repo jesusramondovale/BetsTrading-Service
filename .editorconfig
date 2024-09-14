@@ -1,0 +1,4 @@
+﻿[*.cs]
+
+# CS0184: 'La expresión dada de la expresión "is" nunca tiene el tipo provisto
+dotnet_diagnostic.CS0184.severity = silent
