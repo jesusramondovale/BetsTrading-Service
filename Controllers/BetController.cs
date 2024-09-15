@@ -41,17 +41,20 @@ namespace BetsTrading_Service.Controllers
         foreach (var bet in bets)
         {
           var tmpAsset = await _dbContext.FinancialAssets.FirstOrDefaultAsync(a => a.ticker == bet.ticker);
-          var tmpBetZone = await _dbContext.BetZones.FirstOrDefaultAsync(bz => bz.id == bet.bet_zone);
-          TimeSpan timeMargin = (TimeSpan)(tmpBetZone!.end_date - tmpBetZone!.start_date)!;
+          if (null != tmpAsset)
+          {
+            double tmpAssetDailyGain = (tmpAsset.current - tmpAsset.close)/ tmpAsset.close;
+            var tmpBetZone = await _dbContext.BetZones.FirstOrDefaultAsync(bz => bz.id == bet.bet_zone);
+            TimeSpan timeMargin = (TimeSpan)(tmpBetZone!.end_date - tmpBetZone!.start_date)!;
 
-          betDTOs.Add(new BetDTO(id: bet.id, user_id: userInfoRequest.id!, ticker: bet.ticker, name: tmpAsset!.name!,
-            bet_amount: bet.bet_amount, origin_value: bet.origin_value, current_value: tmpAsset.current, 
-            target_value: tmpBetZone.target_value, target_margin: tmpBetZone.bet_margin, target_date: tmpBetZone.start_date, 
-            target_odds: tmpBetZone.target_odds, target_won: bet.target_won, icon_path: tmpAsset.icon!, 
-            type: tmpBetZone.type, date_margin: timeMargin.Days));
+            betDTOs.Add(new BetDTO(id: bet.id, user_id: userInfoRequest.id!, ticker: bet.ticker, name: tmpAsset!.name!,
+              bet_amount: bet.bet_amount, daily_gain: tmpAssetDailyGain, origin_value: bet.origin_value, current_value: tmpAsset.current,
+              target_value: tmpBetZone.target_value, target_margin: tmpBetZone.bet_margin, target_date: tmpBetZone.start_date,
+              target_odds: tmpBetZone.target_odds, target_won: bet.target_won, icon_path: tmpAsset.icon!,
+              type: tmpBetZone.type, date_margin: timeMargin.Days));
+
+          }
         }
-
-          
 
         return Ok(new { Message = "UserBets SUCCESS", Bets = betDTOs });
       }

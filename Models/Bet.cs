@@ -41,7 +41,7 @@ namespace BetsTrading_Service.Models
   public class BetDTO
   {
     public BetDTO(int id, string user_id, string ticker, string name,
-                      double bet_amount, double origin_value, double current_value,
+                      double bet_amount, double daily_gain, double origin_value, double current_value,
                       double target_value, double target_margin, DateTime target_date,
                       double target_odds, bool target_won, string icon_path, int type, int date_margin)
 
@@ -52,6 +52,7 @@ namespace BetsTrading_Service.Models
       this.ticker = ticker;
       this.name = name;
       this.bet_amount = bet_amount;
+      this.daily_gain = daily_gain;
       this.origin_value = origin_value;
       this.current_value = current_value;
       this.target_value = target_value;
@@ -70,6 +71,7 @@ namespace BetsTrading_Service.Models
     public string name { get; set; }
     public string ticker { get; set; }
     public double bet_amount { get; set; }
+    public double daily_gain { get; set; }
     public double origin_value { get; set; }
     public double current_value { get; set; }
     public double target_value { get; set; }
