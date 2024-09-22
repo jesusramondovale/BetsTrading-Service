@@ -79,7 +79,7 @@
     public DateTimeOffset? last_password_change { get; private set; }
     public string? profile_pic { get; set; }
 
-    public int points{ get; set; }
+    public double points{ get; set; }
 
   }
 

@@ -75,9 +75,14 @@ namespace BetsTrading_Service.Controllers
         try
         {
           var betZone = await _dbContext.BetZones.FirstOrDefaultAsync(bz => bz.id == betRequest.bet_zone);
+          var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.id == betRequest.user_id);
 
           if (betZone == null) 
             throw new Exception("Unexistent bet zone");
+          if (user == null)
+            throw new Exception("Unexistent user");
+          if (betRequest.bet_amount > user.points)
+            throw new Exception("Not enough points");
 
           var newBet = new Bet(user_id: betRequest.user_id!, ticker: betRequest.ticker!, bet_amount: betRequest.bet_amount, 
                                origin_value: betRequest.origin_value, target_value: betZone!.target_value, 
@@ -86,6 +91,7 @@ namespace BetsTrading_Service.Controllers
           if (newBet != null)
           {
             _dbContext.Bet.Add(newBet);
+            user.points = user.points - Math.Abs(betRequest.bet_amount);
             await _dbContext.SaveChangesAsync();
             await transaction.CommitAsync();
             _logger.Log.Information("[INFO] :: NewBet :: Bet created successfully for user: {msg}", betRequest.user_id);
