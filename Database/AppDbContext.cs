@@ -44,6 +44,19 @@
         entity.Property(e => e.name).IsRequired();
       });
 
+      modelBuilder
+        .Entity<BetZone>()
+        .Property(e => e.start_date)
+        .HasConversion(v => v, v => DateTime.SpecifyKind(v, DateTimeKind.Utc))
+        .HasColumnType("timestamp without time zone");
+
+      modelBuilder
+          .Entity<BetZone>()
+          .Property(e => e.end_date)
+          .HasConversion(v => v, v => DateTime.SpecifyKind(v, DateTimeKind.Utc))
+          .HasColumnType("timestamp without time zone");
+
+
       base.OnModelCreating(modelBuilder);
     }
 

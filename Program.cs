@@ -33,14 +33,16 @@ public class Program
       builder.Services.AddDbContext<AppDbContext>(options =>
           options.UseNpgsql(connectionString));
 
+
       builder.Services.AddControllers();
       builder.Services.AddEndpointsApiExplorer();
       builder.Services.AddSwaggerGen();
       builder.Services.AddTransient<AuthController>();
       builder.Services.AddTransient<InfoController>();
       builder.Services.AddTransient<FinancialAssetsController>();
-      builder.Services.AddScoped<TrendUpdater>(); 
-      builder.Services.AddHostedService<TrendUpdaterHostedService>(); 
+      builder.Services.AddScoped<Updater>(); 
+      builder.Services.AddHostedService<UpdaterHostedService>();
+      builder.Services.AddSingleton<FirebaseNotificationService>();
 
       builder.Services.AddHsts(options =>
       {
@@ -63,6 +65,7 @@ public class Program
       });
 
       var app = builder.Build();
+      AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
       // Development middleware
       if (app.Environment.IsDevelopment())

@@ -10,30 +10,43 @@ namespace BetsTrading_Service.Locale
     public static Dictionary<string, Dictionary<string, string>> Translations = new Dictionary<string, Dictionary<string, string>>()
     {
         { "en", new Dictionary<string, string>()
-            {
-                { "updatedTrends", "Updated trends!" }
-            }
-        },
+        {
+              { "updatedTrends", "Updated trends!" },
+              { "youWon", "You've won {0} points on {1}!" }
+        }
+            },
         { "es", new Dictionary<string, string>()
             {
-                { "updatedTrends", "Tendencias actualizadas!" }
+                { "updatedTrends", "Tendencias actualizadas!" },
+                { "youWon", "¡Has ganado {0} puntos en {1}!" }
             }
         },
         { "fr", new Dictionary<string, string>()
             {
-                { "updatedTrends", "Tendances mises à jour!" }
+                { "updatedTrends", "Tendances mises à jour!" },
+                { "youWon", "Vous avez gagné {0} points sur {1} !" }
             }
         },
         { "it", new Dictionary<string, string>()
             {
-                { "updatedTrends", "Tendenze aggiornate!" }
+                { "updatedTrends", "Tendenze aggiornate!" },
+                { "youWon", "Hai vinto {0} punti su {1}!" }
             }
         },
         { "de", new Dictionary<string, string>()
             {
-                { "updatedTrends", "Aktualisierte Trends!" }
+                { "updatedTrends", "Aktualisierte Trends!" },
+                { "youWon", "Du hast {0} Punkte auf {1} gewonnen!" }
             }
-        }
+        },
+        { "pt", new Dictionary<string, string>()
+            {
+                { "updatedTrends", "Tendências atualizadas!" },
+                { "youWon", "Você ganhou {0} pontos em {1}!" }
+            }
+        },
+
+
     };
 
     public static string GetTranslationByCountry(string countryCode, string key)
@@ -47,6 +60,8 @@ namespace BetsTrading_Service.Locale
         { "IT", "it" },
         { "DE", "de" },
         { "FR", "fr" },
+        { "PT", "pt" },
+        { "BR", "pt" },
     };
 
       countryCode = countryCode.ToUpper();

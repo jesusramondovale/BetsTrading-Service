@@ -5,7 +5,7 @@
     public User(string id,  string? idcard, string fcm, string fullname, string? password,
                 string? country, string? gender,
                 string email, DateTime birthday, DateTime signin_date,
-                DateTimeOffset last_session, string? credit_card, string username)
+                DateTime last_session, string? credit_card, string username)
     {
       this.id = id;
       this.idcard = idcard!;
@@ -33,7 +33,7 @@
     public User(string id, string idcard, string fcm, string fullname, string password,
                 string country, string gender,
                 string email, DateTime birthday, DateTime signin_date,
-                DateTimeOffset last_session, string credit_card, string username, string profile_pic, int points)
+                DateTime last_session, string credit_card, string username, string profile_pic, int points)
     {
       this.id = id;
       this.idcard = idcard!;
@@ -69,14 +69,14 @@
     public string email { get; private set; }
     public DateTime birthday { get; private set; }
     public DateTime signin_date { get; private set; }
-    public DateTimeOffset last_session { get; set; }
+    public DateTime last_session { get; set; }
     public string credit_card { get; private set; }
     public string username { get; private set; }
-    public DateTimeOffset? token_expiration { get;  set; }
+    public DateTime? token_expiration { get;  set; }
     public bool is_active { get; set; }
     public int failed_attempts { get; private set; }
-    public DateTimeOffset? last_login_attempt { get; private set; }
-    public DateTimeOffset? last_password_change { get; private set; }
+    public DateTime? last_login_attempt { get; private set; }
+    public DateTime? last_password_change { get; private set; }
     public string? profile_pic { get; set; }
 
     public double points{ get; set; }

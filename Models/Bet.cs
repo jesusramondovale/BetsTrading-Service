@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore.Storage.ValueConversion.Internal;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace BetsTrading_Service.Models
 {
@@ -15,7 +16,7 @@ namespace BetsTrading_Service.Models
     public Bet(string user_id , string ticker,
                       double bet_amount, double origin_value,
                       double target_value, double target_margin,
-                      bool target_won, int bet_zone) 
+                      bool target_won, bool finished, bool paid, int bet_zone) 
     
     {
       this.user_id = user_id;
@@ -23,6 +24,8 @@ namespace BetsTrading_Service.Models
       this.bet_amount = bet_amount;
       this.origin_value = origin_value;
       this.target_won = target_won;
+      this.finished = finished;
+      this.paid = paid;
       this.bet_zone = bet_zone;
     }
         
@@ -33,6 +36,8 @@ namespace BetsTrading_Service.Models
     public double bet_amount{ get;  set; }
     public double origin_value { get;  set; }
     public bool target_won { get; set; }
+    public bool finished { get; set; }
+    public bool paid { get; set; }
     public int bet_zone{ get; set; }
 
 
@@ -76,7 +81,7 @@ namespace BetsTrading_Service.Models
     public double current_value { get; set; }
     public double target_value { get; set; }
     public double target_margin { get; set; }
-    public DateTime target_date { get; set; }
+    public DateTime? target_date { get; set; }
     public double target_odds { get; set; }
     public bool target_won { get; set; }
     public string icon_path { get; set; }
