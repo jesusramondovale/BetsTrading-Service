@@ -2,6 +2,7 @@
 using FirebaseAdmin;
 using FirebaseAdmin.Messaging;
 using Google.Apis.Auth.OAuth2;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace BetsTrading_Service.Services
 {
@@ -20,8 +21,11 @@ namespace BetsTrading_Service.Services
 
     public async Task SendNotificationToUser(string deviceToken, string title, string body, Dictionary<string, string> additionalData = null!)
     {
-      var data = new Dictionary<string, string>();
-            
+      var data = new Dictionary<string, string>
+      {
+          { "id", Guid.NewGuid().ToString() }  // Random ID to avoid stacking notifications
+      };
+
       if (additionalData != null)
       {
         foreach (var entry in additionalData)
@@ -29,16 +33,19 @@ namespace BetsTrading_Service.Services
           data.Add(entry.Key, entry.Value);
         }
       }
+
       
+
       var message = new Message()
       {
         Token = deviceToken,  // Firebase Cloud Messaging Token (User token)
         Notification = new Notification
         {
           Title = title,  
-          Body = body
+          Body = body,
         },
-        Data = data 
+        Data = data
+
       };
 
       try

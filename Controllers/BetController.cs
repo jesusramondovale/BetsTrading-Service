@@ -86,7 +86,7 @@ namespace BetsTrading_Service.Controllers
 
           var newBet = new Bet(user_id: betRequest.user_id!, ticker: betRequest.ticker!, bet_amount: betRequest.bet_amount, 
                                origin_value: betRequest.origin_value, target_value: betZone!.target_value, 
-                               target_margin: betZone.bet_margin, target_won: false, bet_zone: betRequest.bet_zone);
+                               target_margin: betZone.bet_margin, target_won: false, finished: false, paid: false, bet_zone: betRequest.bet_zone);
 
           if (newBet != null)
           {
