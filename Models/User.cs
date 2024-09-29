@@ -20,11 +20,11 @@
       this.last_session = last_session;
       this.credit_card = credit_card!;
       this.username = username;
-      this.points = 0;
 
       token_expiration = null;
       is_active = true;
       failed_attempts = 0;
+      points = 0.0;
       last_login_attempt = null;
       last_password_change = null;
       profile_pic = null;
@@ -33,7 +33,7 @@
     public User(string id, string idcard, string fcm, string fullname, string password,
                 string country, string gender,
                 string email, DateTime birthday, DateTime signin_date,
-                DateTime last_session, string credit_card, string username, string profile_pic, int points)
+                DateTime last_session, string credit_card, string username, string profile_pic, double points)
     {
       this.id = id;
       this.idcard = idcard!;
@@ -78,7 +78,6 @@
     public DateTime? last_login_attempt { get; private set; }
     public DateTime? last_password_change { get; private set; }
     public string? profile_pic { get; set; }
-
     public double points{ get; set; }
 
   }

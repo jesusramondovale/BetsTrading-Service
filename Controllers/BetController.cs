@@ -51,7 +51,7 @@ namespace BetsTrading_Service.Controllers
               bet_amount: bet.bet_amount, daily_gain: tmpAssetDailyGain, origin_value: bet.origin_value, current_value: tmpAsset.current,
               target_value: tmpBetZone.target_value, target_margin: tmpBetZone.bet_margin, target_date: tmpBetZone.start_date,
               target_odds: tmpBetZone.target_odds, target_won: bet.target_won, icon_path: tmpAsset.icon!,
-              type: tmpBetZone.type, date_margin: timeMargin.Days));
+              type: tmpBetZone.type, date_margin: timeMargin.Days, bet_zone: bet.bet_zone));
 
           }
         }
@@ -115,7 +115,7 @@ namespace BetsTrading_Service.Controllers
       
       try
       {
-        var betZones = await _dbContext.BetZones.Where(bz => bz.ticker == ticker.id).ToListAsync();
+        var betZones = await _dbContext.BetZones.Where(bz => bz.ticker == ticker.id && bz.active == true).ToListAsync();
 
         if (betZones.Any())
         {
@@ -135,6 +135,34 @@ namespace BetsTrading_Service.Controllers
       }
       
     }
+
+    [HttpPost("GetBetZone")]
+    public async Task<IActionResult> GetBetZone([FromBody] integerIdRequest betZoneId)
+    {
+
+      try
+      {
+        var betZone = await _dbContext.BetZones.FirstOrDefaultAsync(bz => bz.id == betZoneId.id);
+
+        if (null != betZone)
+        {
+          _logger.Log.Information("[INFO] :: GetBetZone :: Success on ticker: {msg}", betZoneId.id);
+          return Ok(new { bets = new List<BetZone> { betZone } });
+        }
+        else
+        {
+          _logger.Log.Warning("[INFO] :: GetBetZone :: Bet not found for ID: {msg}", betZoneId.id);
+          return NotFound(new { Message = "No bets found for this ticker" });
+        }
+      }
+      catch (Exception ex)
+      {
+        _logger.Log.Error("[INFO] :: GetBetZone :: Internal server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+
+    }
+
 
     [HttpPost("DeleteRecentBet")]
     public async Task<IActionResult> DeleteRecentBet([FromBody] idRequest betIdRequest)
