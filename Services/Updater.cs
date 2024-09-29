@@ -32,20 +32,20 @@ namespace BetsTrading_Service.Services
 
     }
 
-
+    #region Update Assets
     //TO-DO: Update assets values 
     public void UpdateAssets()
     {
       //TO-DO
     }
+    #endregion
 
+    #region Update Bets
     public void SetFinishedBets()
     {
-
       _logger.Log.Debug("[Updater] :: SetFinishedBets() called!");
       using (var transaction = _dbContext.Database.BeginTransaction())
       {
-
         try
         {
 
@@ -54,7 +54,7 @@ namespace BetsTrading_Service.Services
              .Select(bz => bz.id)
              .ToList();
           
-          if (null != betsZonesToCheck)
+          if (0 != betsZonesToCheck.Count)
           {
             var betsToMark = _dbContext.Bet.Where(b => betsZonesToCheck.Contains(b.bet_zone) && b.finished == false).ToList();
 
@@ -86,11 +86,50 @@ namespace BetsTrading_Service.Services
           _logger.Log.Error("[Updater] :: SetFinishedBets() unexpected error :", ex.ToString());
           transaction.Rollback();
         }
+      }
+    }
+    public void SetInactiveBets()
+    {
+      _logger.Log.Debug("[Updater] :: SetInactiveBets() called!");
+      using (var transaction = _dbContext.Database.BeginTransaction())
+      {
+        try
+        {
+          List <BetZone> betZonesToCheck = _dbContext.BetZones
+             .Where(bz => bz.start_date <= DateTime.Now)
+             .ToList();
+         
+          foreach (var currentBetZone in betZonesToCheck)
+          {
+            currentBetZone.active = false;
+            _dbContext.BetZones.Update(currentBetZone);
+          }
+
+          _dbContext.SaveChanges();
+          transaction.Commit();
+          _logger.Log.Debug("[Updater] :: SetInactiveBets() ended succesfrully!");
+
+        }
+        
+        catch (DbUpdateConcurrencyException ex)
+        {
+          _logger.Log.Error("[Updater] :: SetInactiveBets() concurrency error :", ex.ToString());
+          transaction.Rollback();
+        }
+        catch (SerpApiSearchException ex)
+        {
+          _logger.Log.Error("[Updater] :: SetInactiveBets() SerpApi error :", ex.ToString());
+          transaction.Rollback();
+        }
+        catch (Exception ex)
+        {
+          _logger.Log.Error("[Updater] :: SetInactiveBets() unexpected error :", ex.ToString());
+          transaction.Rollback();
+        }
 
       }
 
     }
-    
     public void UpdateBets()
     {
       _logger.Log.Debug("[Updater] :: UpdateBets() called!");
@@ -169,7 +208,6 @@ namespace BetsTrading_Service.Services
 
       }
     }
-
     public void PayBets()
     {
       _logger.Log.Debug("[Updater] :: PayBets() called!");
@@ -231,7 +269,9 @@ namespace BetsTrading_Service.Services
 
       }
     }
+    #endregion
 
+    #region Update Trends
     public void UpdateTrends()
     {
       using (var transaction = _dbContext.Database.BeginTransaction())
@@ -246,7 +286,7 @@ namespace BetsTrading_Service.Services
           var trends = new List<Trend>();
           var mostActive = data["market_trends"]!.FirstOrDefault(x => (string)x["title"]! == "Most active")?["results"];
 
-          if (mostActive != null)
+          if (null != mostActive && mostActive.Count() != 0)
           {
             int i = 1;
             foreach (var item in mostActive)
@@ -333,7 +373,9 @@ namespace BetsTrading_Service.Services
         }
       }
     }
+    #endregion
 
+    #region Private methods
     public static string GetCountryByTicker(string ticker)
     {
       // Separar el ticker en dos partes: nombre del activo y mercado
@@ -427,24 +469,22 @@ namespace BetsTrading_Service.Services
         throw new Exception("Error fetching icon from Google API.");
       }
     }
-
+    #endregion
   }
 
   public class UpdaterHostedService : IHostedService, IDisposable
   {
-    const int SIX_HOURS = 21600;
-    const int ONE_HOUR = 3600;
+    const int SIX_HOURS = 21600; //6h in seconds
+    const int ONE_HOUR = 3600; //1h in seconds
     private readonly IServiceProvider _serviceProvider;
     private readonly ICustomLogger _customLogger;
-    private Timer _trendsTimer;
-    private Timer _assetsTimer;
-    private Timer _betsTimer;
+    private Timer? _trendsTimer;
+    private Timer? _assetsTimer;
+    private Timer? _betsTimer;
 
-#pragma warning disable CS8618
-#pragma warning disable IDE0290
+
     public UpdaterHostedService(IServiceProvider serviceProvider, ICustomLogger customLogger)
-    #pragma warning restore IDE0290 
-    #pragma warning restore CS8618 
+
     {
       _serviceProvider = serviceProvider;
       _customLogger = customLogger;
@@ -456,14 +496,12 @@ namespace BetsTrading_Service.Services
       
       #if !DEBUG
         _assetsTimer = new Timer(ExecuteUpdateAssets!, null, TimeSpan.Zero, TimeSpan.FromSeconds(ONE_HOUR));
-        _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromHours(3), TimeSpan.FromSeconds(SIX_HOURS));
+        _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.Zero, TimeSpan.FromSeconds(SIX_HOURS));
         _betsTimer = new Timer(ExecuteUpdateBets!, null, TimeSpan.Zero, TimeSpan.FromSeconds(ONE_HOUR));
       #endif
       
       return Task.CompletedTask;
     }
-
-
 
     private void ExecuteUpdateBets(object state)
     {
@@ -473,6 +511,7 @@ namespace BetsTrading_Service.Services
         var updaterService = scopedServices.GetRequiredService<Updater>();
         _customLogger.Log.Information("[UpdaterHostedService] :: Executing UpdateBets service.");
         updaterService.UpdateBets();
+        updaterService.SetInactiveBets();
         updaterService.SetFinishedBets();
         updaterService.PayBets();
       }
@@ -509,9 +548,9 @@ namespace BetsTrading_Service.Services
 
     public void Dispose()
     {
-      _trendsTimer?.Dispose();
-      _assetsTimer.Dispose();
-      _assetsTimer.Dispose();
+      _trendsTimer!.Dispose();
+      _assetsTimer!.Dispose();
+      _betsTimer!.Dispose();
     }
   }
 

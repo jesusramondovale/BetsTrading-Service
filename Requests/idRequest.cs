@@ -11,6 +11,14 @@ namespace BetsTrading_Service.Requests
 
   }
 
+  public class integerIdRequest
+  {
+
+    [Required]
+    public int? id { get; set; }
+
+  }
+
   public class fcmTokenRequest
   {
 
