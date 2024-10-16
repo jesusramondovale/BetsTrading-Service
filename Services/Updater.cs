@@ -40,7 +40,128 @@ namespace BetsTrading_Service.Services
     }
     #endregion
 
+    #region Create Bets
+    
+    public void CreateBets()
+    {
+      _logger.Log.Debug("[Updater] :: CreateBets() called!");
+
+      using (var transaction = _dbContext.Database.BeginTransaction())
+      {
+        try
+        {
+          var financialAssets = _dbContext.FinancialAssets.ToList();
+
+          foreach (var asset in financialAssets)
+          {
+            
+            double upperTargetValue = asset.current * 1.2;
+            double lowerTargetValue = asset.current * 0.8;
+            double closeValue = asset.close;
+            
+            double betMargin = (1.2 - 0.8) * 100; 
+            
+            BetZone upperBetZone = new BetZone(
+                asset.ticker!,               // ticker
+                upperTargetValue,           // target_value
+                betMargin,                  // bet_margin
+                DateTime.Now.AddDays(1),    // start_date
+                DateTime.Now.AddDays(6),    // end_date
+                (asset.current >= asset.close ? 1.2 : 2.5)  // target_odds 
+            );
+            
+            BetZone lowerBetZone = new BetZone(
+                asset.ticker!,               // ticker
+                lowerTargetValue,           // target_value
+                betMargin,                  // bet_margin
+                DateTime.Now.AddDays(1),    // start_date
+                DateTime.Now.AddDays(6),    // end_date
+                (asset.current < asset.close ? 1.2 : 2.5)   // target_odds
+            );
+
+            
+            _dbContext.BetZones.Add(upperBetZone);
+            _dbContext.BetZones.Add(lowerBetZone);
+          }
+
+          _dbContext.SaveChanges();
+          transaction.Commit();
+          _logger.Log.Debug("[Updater] :: CreateBets() completed successfully!");
+        }
+        catch (Exception ex)
+        {
+          _logger.Log.Error("[Updater] :: CreateBets() error: ", ex.ToString());
+          transaction.Rollback();
+        }
+      }
+    }
+
+    #endregion
+
     #region Update Bets
+
+    public void AdjustTargetOdds()
+    {
+      _logger.Log.Debug("[Updater] :: AdjustTargetOdds() called!");
+
+      using (var transaction = _dbContext.Database.BeginTransaction())
+      {
+        try
+        {
+          var betZones = _dbContext.BetZones.ToList();
+
+          foreach (var betZone in betZones)
+          {
+            var correspondingBetZone = _dbContext.BetZones
+                .FirstOrDefault(bz => bz.ticker == betZone.ticker &&
+                                      bz.start_date == betZone.start_date &&
+                                      bz.end_date == betZone.end_date &&
+                                      bz.id != betZone.id);
+
+            if (correspondingBetZone == null)
+            {
+              _logger.Log.Warning("[Updater] :: Opposite betZone not found for ticker: {0} on period {1}-{2}",
+                                  betZone.ticker, betZone.start_date, betZone.end_date);
+              continue;
+            }
+            
+            var betsCurrentZone = _dbContext.Bet.Where(b => b.bet_zone == betZone.id).ToList();
+            var betsOppositeZone = _dbContext.Bet.Where(b => b.bet_zone == correspondingBetZone.id).ToList();
+            
+            double totalBetCurrentZone = betsCurrentZone.Sum(b => b.bet_amount);
+            double totalBetOppositeZone = betsOppositeZone.Sum(b => b.bet_amount);
+            
+            if (totalBetCurrentZone == 0 || totalBetOppositeZone == 0)
+            {
+              _logger.Log.Warning("[Updater] :: Zero bets for BetZone with ID {0}", betZone.id);
+              continue;
+            }
+            
+            double newOddsCurrentZone = (totalBetOppositeZone / totalBetCurrentZone) * 0.99;
+            double newOddsOppositeZone = (totalBetCurrentZone / totalBetOppositeZone) * 0.99;
+
+            
+            betZone.target_odds = newOddsCurrentZone;
+            _dbContext.BetZones.Update(betZone);
+
+            correspondingBetZone.target_odds = newOddsOppositeZone;
+            _dbContext.BetZones.Update(correspondingBetZone);
+
+            _logger.Log.Debug("[Updater] :: Ajustado target_odds en BetZone {0}: CurrentZoneOdds = {1}, OppositeZoneOdds = {2}",
+                              betZone.id, newOddsCurrentZone, newOddsOppositeZone);
+          }
+
+          _dbContext.SaveChanges();
+          transaction.Commit();
+          _logger.Log.Debug("[Updater] :: AdjustTargetOdds() completado correctamente.");
+        }
+        catch (Exception ex)
+        {
+          _logger.Log.Error("[Updater] :: AdjustTargetOdds() error: ", ex.ToString());
+          transaction.Rollback();
+        }
+      }
+    }
     public void SetFinishedBets()
     {
       _logger.Log.Debug("[Updater] :: SetFinishedBets() called!");
@@ -474,13 +595,12 @@ namespace BetsTrading_Service.Services
 
   public class UpdaterHostedService : IHostedService, IDisposable
   {
-    const int SIX_HOURS = 21600; //6h in seconds
-    const int ONE_HOUR = 3600; //1h in seconds
-    private readonly IServiceProvider _serviceProvider;
+       private readonly IServiceProvider _serviceProvider;
     private readonly ICustomLogger _customLogger;
     private Timer? _trendsTimer;
     private Timer? _assetsTimer;
     private Timer? _betsTimer;
+    private Timer? _createNewBetsTimer;
 
 
     public UpdaterHostedService(IServiceProvider serviceProvider, ICustomLogger customLogger)
@@ -493,14 +613,28 @@ namespace BetsTrading_Service.Services
     public Task StartAsync(CancellationToken cancellationToken)
     {
       _customLogger.Log.Information("[UpdaterHostedService] :: Starting the Updater hosted service.");
+
       
-      #if !DEBUG
-        _assetsTimer = new Timer(ExecuteUpdateAssets!, null, TimeSpan.Zero, TimeSpan.FromSeconds(ONE_HOUR));
-        _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.Zero, TimeSpan.FromSeconds(SIX_HOURS));
-        _betsTimer = new Timer(ExecuteUpdateBets!, null, TimeSpan.Zero, TimeSpan.FromSeconds(ONE_HOUR));
-      #endif
-      
+#if !DEBUG
+        _assetsTimer = new Timer(ExecuteUpdateAssets!, null, TimeSpan.Zero, TimeSpan.FromHours(1));
+        _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.Zero, TimeSpan.FromHours(6));
+        _betsTimer = new Timer(ExecuteUpdateBets!, null, TimeSpan.Zero, TimeSpan.FromHours(1));
+        _createNewBetsTimer = new Timer(ExecuteCreateBets!, null, TimeSpan.Zero, TimeSpan.FromDays(6));
+#endif
+
       return Task.CompletedTask;
+    }
+
+
+    private void ExecuteCreateBets(object state)
+    {
+      using (var scope = _serviceProvider.CreateScope())
+      {
+        var scopedServices = scope.ServiceProvider;
+        var updaterService = scopedServices.GetRequiredService<Updater>();
+        _customLogger.Log.Information("[UpdaterHostedService] :: Executing CreateBets service.");
+        updaterService.CreateBets();
+      }
     }
 
     private void ExecuteUpdateBets(object state)
@@ -511,6 +645,7 @@ namespace BetsTrading_Service.Services
         var updaterService = scopedServices.GetRequiredService<Updater>();
         _customLogger.Log.Information("[UpdaterHostedService] :: Executing UpdateBets service.");
         updaterService.UpdateBets();
+        updaterService.AdjustTargetOdds();
         updaterService.SetInactiveBets();
         updaterService.SetFinishedBets();
         updaterService.PayBets();
