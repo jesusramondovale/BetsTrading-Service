@@ -19,7 +19,7 @@ namespace BetsTrading_Service.Requests
     public string? FullName { get; set; }
 
     //[Required]
-    [StringLength(100, MinimumLength = 6)]
+    [StringLength(100, MinimumLength = 3)]
     public string? Password { get; set; }
 
     //[Required]

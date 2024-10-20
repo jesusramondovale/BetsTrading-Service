@@ -3,6 +3,7 @@ using BetsTrading_Service.Interfaces;
 using BetsTrading_Service.Models;
 using BetsTrading_Service.Requests;
 using Microsoft.AspNetCore.Mvc;
+using BCrypt.Net;
 
 
 namespace BetsTrading_Service.Controllers
@@ -36,13 +37,15 @@ namespace BetsTrading_Service.Controllers
           {
             return Conflict(new { Message = "Username, email or ID already exists" });
           }
-
+          
+          string hashedPassword = BCrypt.Net.BCrypt.HashPassword(signUpRequest.Password);
+          
           var newUser = new User(
               signUpRequest.Token ?? Guid.NewGuid().ToString(),
               signUpRequest.IdCard ?? "-",
               signUpRequest.Fcm ?? "-",
               signUpRequest.FullName ?? "-",
-              signUpRequest.Password ?? "-",
+              hashedPassword,
               signUpRequest.Country ?? "",
               signUpRequest.Gender ?? "-",
               signUpRequest.Email ?? "-",
@@ -125,7 +128,8 @@ namespace BetsTrading_Service.Controllers
 
           if (user != null)
           {
-            if (user.password == loginRequest.Password)
+           
+            if (BCrypt.Net.BCrypt.Verify(loginRequest.Password, user.password))
             {
               user.last_session = DateTime.UtcNow;
               user.token_expiration = DateTime.UtcNow.AddDays(SESSION_EXP_DAYS);
