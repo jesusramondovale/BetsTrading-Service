@@ -44,7 +44,7 @@ namespace BetsTrading_Service.Services
     
     public void CreateBets()
     {
-      _logger.Log.Debug("[Updater] :: CreateBets() called!");
+      _logger.Log.Information("[Updater] :: CreateBets() called!");
 
       using (var transaction = _dbContext.Database.BeginTransaction())
       {
@@ -96,13 +96,36 @@ namespace BetsTrading_Service.Services
       }
     }
 
+    public void RemoveOldBets()
+    {
+      _logger.Log.Information("[Updater] :: RemoveOldBets() called!");
+
+      using (var transaction = _dbContext.Database.BeginTransaction())
+      {
+        try
+        {
+          var oldBetZones = _dbContext.BetZones.Where(bz => bz.start_date < DateTime.Now.AddDays(-15)).ToList();
+          _dbContext.BetZones.RemoveRange(oldBetZones);
+          _dbContext.SaveChanges();
+          transaction.Commit();
+          _logger.Log.Debug("[Updater] :: RemoveOldBets() completed successfully!");
+        }
+        catch (Exception ex)
+        {
+          _logger.Log.Error("[Updater] :: RemoveOldBets() error: ", ex.ToString());
+          transaction.Rollback();
+        }
+      }
+    }
+
+
     #endregion
 
     #region Update Bets
 
     public void AdjustTargetOdds()
     {
-      _logger.Log.Debug("[Updater] :: AdjustTargetOdds() called!");
+      _logger.Log.Information("[Updater] :: AdjustTargetOdds() called!");
 
       using (var transaction = _dbContext.Database.BeginTransaction())
       {
@@ -120,7 +143,7 @@ namespace BetsTrading_Service.Services
 
             if (correspondingBetZone == null)
             {
-              _logger.Log.Warning("[Updater] :: Opposite betZone not found for ticker: {0} on period {1}-{2}",
+              _logger.Log.Debug("[Updater] :: Opposite betZone not found for ticker: {0} on period {1}-{2}",
                                   betZone.ticker, betZone.start_date, betZone.end_date);
               continue;
             }
@@ -153,7 +176,7 @@ namespace BetsTrading_Service.Services
 
           _dbContext.SaveChanges();
           transaction.Commit();
-          _logger.Log.Debug("[Updater] :: AdjustTargetOdds() completado correctamente.");
+          _logger.Log.Debug("[Updater] :: AdjustTargetOdds() completed succesfully.");
         }
         catch (Exception ex)
         {
@@ -164,7 +187,7 @@ namespace BetsTrading_Service.Services
     }
     public void SetFinishedBets()
     {
-      _logger.Log.Debug("[Updater] :: SetFinishedBets() called!");
+      _logger.Log.Information("[Updater] :: SetFinishedBets() called!");
       using (var transaction = _dbContext.Database.BeginTransaction())
       {
         try
@@ -211,7 +234,7 @@ namespace BetsTrading_Service.Services
     }
     public void SetInactiveBets()
     {
-      _logger.Log.Debug("[Updater] :: SetInactiveBets() called!");
+      _logger.Log.Information("[Updater] :: SetInactiveBets() called!");
       using (var transaction = _dbContext.Database.BeginTransaction())
       {
         try
@@ -253,7 +276,7 @@ namespace BetsTrading_Service.Services
     }
     public void UpdateBets()
     {
-      _logger.Log.Debug("[Updater] :: UpdateBets() called!");
+      _logger.Log.Information("[Updater] :: UpdateBets() called!");
       using (var transaction = _dbContext.Database.BeginTransaction())
       {
 
@@ -331,7 +354,7 @@ namespace BetsTrading_Service.Services
     }
     public void PayBets()
     {
-      _logger.Log.Debug("[Updater] :: PayBets() called!");
+      _logger.Log.Information("[Updater] :: PayBets() called!");
       
 
       using (var transaction = _dbContext.Database.BeginTransaction())
@@ -399,7 +422,7 @@ namespace BetsTrading_Service.Services
       {
         try
         {
-          _logger.Log.Debug("[Updater] :: UpdateTrends() called!");
+          _logger.Log.Information("[Updater] :: UpdateTrends() called!");
           GoogleSearch search = new GoogleSearch(ht, API_KEY2);
           JObject data = search.GetJson();
           var market_trends = data["market_trends"];
@@ -615,23 +638,26 @@ namespace BetsTrading_Service.Services
       _customLogger.Log.Information("[UpdaterHostedService] :: Starting the Updater hosted service.");
 
       
-#if !DEBUG
+#if DEBUG
         _assetsTimer = new Timer(ExecuteUpdateAssets!, null, TimeSpan.Zero, TimeSpan.FromHours(1));
         _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.Zero, TimeSpan.FromHours(6));
         _betsTimer = new Timer(ExecuteUpdateBets!, null, TimeSpan.Zero, TimeSpan.FromHours(1));
-        _createNewBetsTimer = new Timer(ExecuteCreateBets!, null, TimeSpan.Zero, TimeSpan.FromDays(6));
+        _createNewBetsTimer = new Timer(ExecuteCleanAndCreateBets!, null, TimeSpan.Zero, TimeSpan.FromDays(6));
 #endif
 
       return Task.CompletedTask;
     }
 
 
-    private void ExecuteCreateBets(object state)
+    private void ExecuteCleanAndCreateBets(object state)
     {
       using (var scope = _serviceProvider.CreateScope())
       {
         var scopedServices = scope.ServiceProvider;
         var updaterService = scopedServices.GetRequiredService<Updater>();
+        _customLogger.Log.Information("[UpdaterHostedService] :: Executing RemoveOldBets service.");
+        updaterService.RemoveOldBets();
+
         _customLogger.Log.Information("[UpdaterHostedService] :: Executing CreateBets service.");
         updaterService.CreateBets();
       }
