@@ -63,7 +63,7 @@
     public string fcm { get; set; }
     public string idcard { get; set; }
     public string fullname { get; private set; }
-    public string password { get; private set; }
+    public string password { get; set; }
     public string country { get; private set; }
     public string gender { get; private set; }
     public string email { get; private set; }

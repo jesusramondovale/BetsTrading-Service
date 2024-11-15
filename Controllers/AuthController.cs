@@ -3,7 +3,7 @@ using BetsTrading_Service.Interfaces;
 using BetsTrading_Service.Models;
 using BetsTrading_Service.Requests;
 using Microsoft.AspNetCore.Mvc;
-using BCrypt.Net;
+
 
 
 namespace BetsTrading_Service.Controllers
@@ -142,12 +142,12 @@ namespace BetsTrading_Service.Controllers
             }
             else
             {
-              return BadRequest(new { Message = "Incorrect password. Try again" });
+              return BadRequest(new { Message = "incorrectPassword" });
             }
           }
           else
           {
-            return NotFound(new { Message = "User or email not found" });
+            return NotFound(new { Message = "userOrEmailNotFound" });
           }
         }
         catch (Exception ex)
@@ -158,6 +158,46 @@ namespace BetsTrading_Service.Controllers
         }
       }
     }
+
+    [HttpPost("ChangePassword")]
+    public async Task<IActionResult> ChangePassword([FromBody] Requests.LoginRequest changepasswordRequest)
+    {
+      using (var transaction = await _dbContext.Database.BeginTransactionAsync())
+      {
+        try
+        {
+          var user = _dbContext.Users
+              .FirstOrDefault(u => u.id == changepasswordRequest.Username);
+
+          if (user != null)
+          {            
+            if (string.IsNullOrWhiteSpace(changepasswordRequest.Password))
+            {
+              return BadRequest(new { Message = "Password cannot be empty" });
+            }
+           
+            string hashedPassword = BCrypt.Net.BCrypt.HashPassword(changepasswordRequest.Password);
+            user.password = hashedPassword;
+            _dbContext.Users.Update(user);
+            await _dbContext.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return Ok(new { Message = "Password updated successfully" });
+
+          }
+          else
+          {
+            return NotFound(new { Message = "User not found" });
+          }
+        }
+        catch (Exception ex)
+        {
+          await transaction.RollbackAsync();
+          _logger.Log.Error("[AUTH] :: ChangePassword :: Internal server error: {msg}", ex.Message);
+          return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+        }
+      }
+    }
+
 
     [HttpPost("GoogleLogIn")]
     public IActionResult GoogleLogIn([FromBody] Requests.LoginRequest loginRequest)
