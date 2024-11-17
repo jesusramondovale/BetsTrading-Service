@@ -19,6 +19,8 @@ namespace BetsTrading_Service.Requests
 
   }
 
+
+
   public class fcmTokenRequest
   {
 
@@ -29,6 +31,18 @@ namespace BetsTrading_Service.Requests
     [Required]
     [StringLength(200, MinimumLength = 1)]
     public string? fcm_token { get; set; }
+
+  }
+
+  public class addCoinsRequest
+  {
+
+    [Required]
+    [StringLength(100, MinimumLength = 1)]
+    public string? user_id { get; set; }
+
+    [Required]
+    public double? reward { get; set; }
 
   }
 
