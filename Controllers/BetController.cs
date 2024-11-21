@@ -43,7 +43,7 @@ namespace BetsTrading_Service.Controllers
           var tmpAsset = await _dbContext.FinancialAssets.FirstOrDefaultAsync(a => a.ticker == bet.ticker);
           if (null != tmpAsset)
           {
-            double tmpAssetDailyGain = (tmpAsset.current - tmpAsset.close)/ tmpAsset.close;
+            double tmpAssetDailyGain = (tmpAsset.current - tmpAsset.close[1])/ tmpAsset.close[1];
             var tmpBetZone = await _dbContext.BetZones.FirstOrDefaultAsync(bz => bz.id == bet.bet_zone);
             TimeSpan timeMargin = (TimeSpan)(tmpBetZone!.end_date - tmpBetZone!.start_date)!;
 

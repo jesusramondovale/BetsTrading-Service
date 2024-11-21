@@ -21,7 +21,7 @@ namespace BetsTrading_Service.Controllers
     }
 
     [HttpPost("AddCoins")]
-    public async Task<IActionResult> AddCoinsAsync([FromBody] addCoinsRequest coinsRequest)
+    public async Task<IActionResult> AddCoins([FromBody] addCoinsRequest coinsRequest)
     {
       using (var transaction = await _dbContext.Database.BeginTransactionAsync())
       {

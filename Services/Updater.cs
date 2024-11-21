@@ -9,6 +9,7 @@ using BetsTrading_Service.Services;
 using Microsoft.EntityFrameworkCore;
 using System.Collections.Generic;
 using BetsTrading_Service.Locale;
+using System.Net.Http;
 
 namespace BetsTrading_Service.Services
 {
@@ -17,7 +18,7 @@ namespace BetsTrading_Service.Services
     const int MAX_TRENDS_ELEMENTS = 5;
     private const string API_KEY= "d9661ef0baa78e225f4ee66ebfb7474202d1cafa808501d174785b04e30a9964";
     private const string API_KEY2 = "d6dc56018991c867fd854be0cc0f2ecf3507d2c45c147516273ed7e91063b248";
-    private Hashtable ht = new Hashtable() { { "engine", "google_finance_markets" }, { "trend", "most-active" } };
+    private Hashtable ht = new Hashtable() {{ "engine", "google_finance" }, { "trend", "most-active" }, { "window", "1M" } };
     private static readonly HttpClient client = new HttpClient();
 
     private readonly FirebaseNotificationService _firebaseNotificationService;
@@ -33,15 +34,109 @@ namespace BetsTrading_Service.Services
     }
 
     #region Update Assets
-    //TO-DO: Update assets values 
+
     public void UpdateAssets()
     {
-      //TO-DO
+      using (var transaction = _dbContext.Database.BeginTransaction())
+      {
+        try
+        {
+          _logger.Log.Information("[Updater] :: UpdateAssets() called!");
+
+
+          var selectedAssets = _dbContext.FinancialAssets.Where(fa => fa.open!.Count.Equals(1)).ToList();
+          selectedAssets.Reverse();
+
+          if (selectedAssets.Count == 0)
+          {
+            _logger.Log.Warning("[Updater] :: UpdateAssets() :: No assets found for the specified IDs.");
+            return;
+          }
+          
+          using (HttpClient httpClient = new HttpClient())
+          {
+            foreach (var asset in selectedAssets)
+            {
+              string symbol = asset.ticker!.Split('.')[0]; 
+              string apiUrl = $"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&apikey=JHG6XNRKWBLRCWX4";
+              HttpResponseMessage response = httpClient.GetAsync(apiUrl).Result;
+
+              if (response.IsSuccessStatusCode)
+              {
+                string responseData = response.Content.ReadAsStringAsync().Result;
+                JObject jsonData = JObject.Parse(responseData);
+
+                var timeSeries = jsonData["Time Series (Daily)"];
+                if (timeSeries != null)
+                {
+                  var closePrices = new List<double>();
+                  var openPrices = new List<double>();
+                  var maxPrices = new List<double>();
+                  var minPrices = new List<double>();
+
+
+                  if (timeSeries is JObject timeSeriesObject)
+                  {
+                    foreach (var dayEntry in timeSeriesObject)
+                    {
+                      string date = dayEntry.Key; 
+                      var dayData = dayEntry.Value;
+
+                      double open = (double)dayData!["1. open"]!;
+                      double high = (double)dayData["2. high"]!;
+                      double low = (double)dayData["3. low"]!;
+                      double close = (double)dayData["4. close"]!;
+
+                      openPrices.Add(open);
+                      maxPrices.Add(high);
+                      minPrices.Add(low);
+                      closePrices.Add(close);
+                    }
+                  }
+                  else
+                  {
+                    _logger.Log.Warning("[Updater] :: Time Series data is not in the expected format.");
+                  }
+
+                  
+                  asset.current = closePrices.First(); 
+                  asset.close = closePrices;          
+                  asset.open = openPrices;           
+                  asset.daily_max = maxPrices;       
+                  asset.daily_min = minPrices;      
+
+                  
+                  _dbContext.FinancialAssets.Update(asset);
+                  _dbContext.SaveChanges();
+                }
+                else
+                {
+                  _logger.Log.Warning($"[Updater] :: No time series data found for ticker: {asset.ticker}");
+                }
+              }
+              else
+              {
+                _logger.Log.Error($"[Updater] :: Failed to fetch data for ticker: {asset.ticker}. HTTP Status: {response.StatusCode}");
+              }
+            }
+          }
+
+          transaction.Commit();
+          _logger.Log.Information("[Updater] :: UpdateAssets() completed successfully!");
+        }
+        catch (Exception ex)
+        {
+          _logger.Log.Error("[Updater] :: UpdateAssets() error: ", ex.ToString());
+          transaction.Rollback();
+        }
+      }
     }
+
+
     #endregion
 
     #region Create Bets
-    
+
     public void CreateBets()
     {
       _logger.Log.Information("[Updater] :: CreateBets() called!");
@@ -57,7 +152,7 @@ namespace BetsTrading_Service.Services
             
             double upperTargetValue = asset.current * 1.2;
             double lowerTargetValue = asset.current * 0.8;
-            double closeValue = asset.close;
+            List <double> closeValue =  asset.close ;
             
             double betMargin = (1.2 - 0.8) * 100; 
             
@@ -67,7 +162,7 @@ namespace BetsTrading_Service.Services
                 betMargin,                  // bet_margin
                 DateTime.Now.AddDays(1),    // start_date
                 DateTime.Now.AddDays(6),    // end_date
-                (asset.current >= asset.close ? 1.2 : 2.5)  // target_odds 
+                (asset.current >= asset.close[1] ? 1.2 : 2.5)  // target_odds 
             );
             
             BetZone lowerBetZone = new BetZone(
@@ -76,7 +171,7 @@ namespace BetsTrading_Service.Services
                 betMargin,                  // bet_margin
                 DateTime.Now.AddDays(1),    // start_date
                 DateTime.Now.AddDays(6),    // end_date
-                (asset.current < asset.close ? 1.2 : 2.5)   // target_odds
+                (asset.current < asset.close[1] ? 1.2 : 2.5)   // target_odds
             );
 
             
@@ -444,22 +539,30 @@ namespace BetsTrading_Service.Services
                                (double)item["extracted_price"]! + (double)item["price_movement"]!["value"]! :
                                (double)item["extracted_price"]! - (double)item["price_movement"]!["value"]!);
 
+                
                 string ticker = (string)item!["stock"]!;
                 var currentAsset = _dbContext.FinancialAssets.Where(fa => fa.ticker == ticker.Replace(":", ".")).FirstOrDefault();
-                
+                List<double> newCloses = currentAsset!.close;
+                if (newCloses.Count >= 30)
+                {
+                  newCloses.RemoveAt(newCloses.Count - 1);
+                }
+                newCloses.Insert(0,close);
+
                 // Create new asset
                 if (currentAsset == null)
                 {
-                  
+
                   FinancialAsset tmpAsset = new FinancialAsset(
                       name: (string)item["name"]!,
                       group: "Shares",
                       icon: "null",
                       country: GetCountryByTicker(ticker.Replace(":", ".")),
-                      ticker: ticker.Replace(":","."),
+                      ticker: ticker.Replace(":", "."),
                       current: (double)item["extracted_price"]!,
-                      close: close
+                      close: newCloses
                   );
+
                   _dbContext.FinancialAssets.Add(tmpAsset);
                   _dbContext.SaveChanges(); 
                 }
@@ -468,7 +571,7 @@ namespace BetsTrading_Service.Services
                 else if (currentAsset != null) 
                 {
                   currentAsset.current = (double)item["extracted_price"]!;
-                  currentAsset.close = close;
+                  currentAsset.close = new List<double> { close };
                                     
                   _dbContext.FinancialAssets.Update(currentAsset);
                   _dbContext.SaveChanges();
@@ -517,6 +620,7 @@ namespace BetsTrading_Service.Services
         }
       }
     }
+    
     #endregion
 
     #region Private methods
@@ -638,7 +742,7 @@ namespace BetsTrading_Service.Services
       _customLogger.Log.Information("[UpdaterHostedService] :: Starting the Updater hosted service.");
 
       
-#if DEBUG
+#if RELEASE
         _assetsTimer = new Timer(ExecuteUpdateAssets!, null, TimeSpan.Zero, TimeSpan.FromHours(1));
         _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.Zero, TimeSpan.FromHours(6));
         _betsTimer = new Timer(ExecuteUpdateBets!, null, TimeSpan.Zero, TimeSpan.FromHours(1));
