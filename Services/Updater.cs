@@ -38,7 +38,7 @@ namespace BetsTrading_Service.Services
     };
 
 
-    private Hashtable ht = new Hashtable() {{ "engine", "google_finance" }, { "trend", "most-active" }, { "window", "1M" } };
+    private Hashtable ht = new Hashtable() { { "engine", "google_finance_markets" }, { "trend", "most-active" } };
     private static readonly HttpClient client = new HttpClient();
 
     private readonly FirebaseNotificationService _firebaseNotificationService;
@@ -572,64 +572,24 @@ namespace BetsTrading_Service.Services
 
                 
                 string ticker = (string)item!["stock"]!;
-                var currentAsset = _dbContext.FinancialAssets.Where(fa => fa.ticker == ticker.Replace(":", ".")).FirstOrDefault();
-                List<double> newCloses = currentAsset!.close;
-                if (newCloses.Count >= 30)
-                {
-                  newCloses.RemoveAt(newCloses.Count - 1);
-                }
-                newCloses.Insert(0,close);
-
-                // Create new asset
-                if (currentAsset == null)
-                {
-
-                  FinancialAsset tmpAsset = new FinancialAsset(
-                      name: (string)item["name"]!,
-                      group: "Shares",
-                      icon: "null",
-                      country: GetCountryByTicker(ticker.Replace(":", ".")),
-                      ticker: ticker.Replace(":", "."),
-                      current: (double)item["extracted_price"]!,
-                      close: newCloses
-                  );
-
-                  _dbContext.FinancialAssets.Add(tmpAsset);
-                  _dbContext.SaveChanges(); 
-                }
-
-                // Update existent asset
-                else if (currentAsset != null) 
-                {
-                  currentAsset.current = (double)item["extracted_price"]!;
-                  currentAsset.close = new List<double> { close };
-                                    
-                  _dbContext.FinancialAssets.Update(currentAsset);
-                  _dbContext.SaveChanges();
-
-                }
-
+                                
                 trends.Add(new Trend(id: i++, daily_gain: dailyGain, ticker: ticker.Replace(":", ".")));
               }
             }
           }
-
-          // Remover y actualizar los trends existentes
+          
           var existingTrends = _dbContext.Trends.ToList();
           _dbContext.Trends.RemoveRange(existingTrends);
           _dbContext.SaveChanges();
 
           _dbContext.Trends.AddRange(trends);
           _dbContext.SaveChanges();
-
-
           
           foreach (User user in _dbContext.Users.ToList())
           {
             
             _ = _firebaseNotificationService.SendNotificationToUser(user.fcm, "Betrader", LocalizedTexts.GetTranslationByCountry(user.country,"updatedTrends"));
           }
-          
 
           transaction.Commit();
           _logger.Log.Debug("[Updater] :: UpdateTrends() ended succesfrully!");
@@ -753,7 +713,7 @@ namespace BetsTrading_Service.Services
 
   public class UpdaterHostedService : IHostedService, IDisposable
   {
-       private readonly IServiceProvider _serviceProvider;
+    private readonly IServiceProvider _serviceProvider;
     private readonly ICustomLogger _customLogger;
     private Timer? _trendsTimer;
     private Timer? _assetsTimer;
@@ -773,12 +733,12 @@ namespace BetsTrading_Service.Services
       _customLogger.Log.Information("[UpdaterHostedService] :: Starting the Updater hosted service.");
 
       
-#if RELEASE
-        _assetsTimer = new Timer(ExecuteUpdateAssets!, null, TimeSpan.Zero, TimeSpan.FromHours(1));
+    #if RELEASE
+        _assetsTimer = new Timer(ExecuteUpdateAssets!, null, TimeSpan.Zero, TimeSpan.FromHours(24));
         _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.Zero, TimeSpan.FromHours(6));
         _betsTimer = new Timer(ExecuteUpdateBets!, null, TimeSpan.Zero, TimeSpan.FromHours(1));
-        _createNewBetsTimer = new Timer(ExecuteCleanAndCreateBets!, null, TimeSpan.Zero, TimeSpan.FromDays(6));
-#endif
+        _createNewBetsTimer = new Timer(ExecuteCleanAndCreateBets!, null, TimeSpan.Zero, TimeSpan.FromDays(2));
+    #endif
 
       return Task.CompletedTask;
     }
