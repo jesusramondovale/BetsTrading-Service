@@ -79,7 +79,8 @@ namespace BetsTrading_Service.Controllers
           {
             var tmpAsset = _dbContext.FinancialAssets.Where(fa => fa.ticker == fav.ticker).FirstOrDefault();
             
-            favsDTO.Add(new FavoriteDTO(id: fav.id, name: tmpAsset!.name, icon: tmpAsset.icon!, daily_gain: ((tmpAsset.current-tmpAsset.close)/tmpAsset.close)*100, close: tmpAsset.close, current: tmpAsset.current, user_id: userId.id!, ticker: fav.ticker));
+            favsDTO.Add(new FavoriteDTO(id: fav.id, name: tmpAsset!.name, icon: tmpAsset.icon!, 
+              daily_gain: ((tmpAsset.current - tmpAsset.close[1]) / tmpAsset.close[1])*100, close: tmpAsset.close[1], current: tmpAsset.current, user_id: userId.id!, ticker: fav.ticker));
           }
 
           _logger.Log.Information("[INFO] :: Favorites :: success to ID: {msg}", userId.id);
@@ -158,8 +159,9 @@ namespace BetsTrading_Service.Controllers
             var tmpAsset = _dbContext.FinancialAssets.FirstOrDefault(a => a.ticker == trend.ticker);
             if (tmpAsset != null)
             {
-              double dailyGain = ((tmpAsset.current - tmpAsset.close) / tmpAsset.close) * 100;
-              trendDTOs.Add(new TrendDTO(id: trend.id, name: tmpAsset.name, icon: tmpAsset.icon! , daily_gain: dailyGain, close: tmpAsset.close, current: tmpAsset.current, ticker: trend.ticker));
+              double dailyGain = ((tmpAsset.current - tmpAsset.close[1]) / tmpAsset.close[1]) * 100;
+              trendDTOs.Add(new TrendDTO(id: trend.id, name: tmpAsset.name, icon: tmpAsset.icon! , daily_gain: dailyGain, 
+                close: tmpAsset.close[1], current: tmpAsset.current, ticker: trend.ticker));
             }
             else
             {
