@@ -18,6 +18,26 @@ namespace BetsTrading_Service.Services
     const int MAX_TRENDS_ELEMENTS = 5;
     private const string API_KEY= "d9661ef0baa78e225f4ee66ebfb7474202d1cafa808501d174785b04e30a9964";
     private const string API_KEY2 = "d6dc56018991c867fd854be0cc0f2ecf3507d2c45c147516273ed7e91063b248";
+
+    private const string ALPHA_KEY1 = "O5NQS4V0GAZ4A643";
+    private const string ALPHA_KEY2 = "VRD5VVW67S44FW47";
+    private const string ALPHA_KEY3 = "3R6SY725SPIGNPHD";
+    private const string ALPHA_KEY4 = "12K5J6WV68K2XQ06";
+    private const string ALPHA_KEY5 = "8F9UJZ23JB4MQ6G9";
+    private const string ALPHA_KEY6 = "JHG6XNRKWBLRCWX4";
+    private const string ALPHA_KEY7 = "3G5ARW1VUDF629BM";
+
+    private static readonly string[] ALPHA_KEYS = {
+      ALPHA_KEY1,
+      ALPHA_KEY2,
+      ALPHA_KEY3,
+      ALPHA_KEY4,
+      ALPHA_KEY5,
+      ALPHA_KEY6,
+      ALPHA_KEY7
+    };
+
+
     private Hashtable ht = new Hashtable() {{ "engine", "google_finance" }, { "trend", "most-active" }, { "window", "1M" } };
     private static readonly HttpClient client = new HttpClient();
 
@@ -37,6 +57,8 @@ namespace BetsTrading_Service.Services
 
     public void UpdateAssets()
     {
+      string ALPHA_KEY = ALPHA_KEYS[new Random().Next(ALPHA_KEYS.Length)];
+
       using (var transaction = _dbContext.Database.BeginTransaction())
       {
         try
@@ -44,9 +66,11 @@ namespace BetsTrading_Service.Services
           _logger.Log.Information("[Updater] :: UpdateAssets() called!");
 
 
-          var selectedAssets = _dbContext.FinancialAssets.Where(fa => fa.open!.Count.Equals(1)).ToList();
-          selectedAssets.Reverse();
-
+          var selectedAssets = _dbContext.FinancialAssets.Where(fa => fa.group.Equals("Cryptos") 
+                                                             || fa.group.Equals("Shares")
+                                                             || fa.group.Equals("Commodities"))
+                                                              .ToList();
+          
           if (selectedAssets.Count == 0)
           {
             _logger.Log.Warning("[Updater] :: UpdateAssets() :: No assets found for the specified IDs.");
@@ -57,8 +81,15 @@ namespace BetsTrading_Service.Services
           {
             foreach (var asset in selectedAssets)
             {
-              string symbol = asset.ticker!.Split('.')[0]; 
-              string apiUrl = $"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&apikey=JHG6XNRKWBLRCWX4";
+              string symbol = string.Empty;
+              if (asset.group.Equals("Cryptos")){
+                symbol = $"{asset.ticker!.Split('.')[0]}{asset.ticker!.Split('.')[1]}";
+              }
+              else
+              {
+                symbol = asset.ticker!.Split('.')[0];
+              }
+              string apiUrl = $"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&apikey={ALPHA_KEY}";
               HttpResponseMessage response = httpClient.GetAsync(apiUrl).Result;
 
               if (response.IsSuccessStatusCode)
