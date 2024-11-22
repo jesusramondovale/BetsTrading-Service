@@ -1,8 +1,10 @@
 ﻿using BetsTrading_Service.Database;
 using BetsTrading_Service.Interfaces;
 using BetsTrading_Service.Models;
+using BetsTrading_Service.Requests;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Diagnostics.Metrics;
 
 
 namespace BetsTrading_Service.Controllers
@@ -62,7 +64,15 @@ namespace BetsTrading_Service.Controllers
       _logger.Log.Information("[FINANCIAL] :: ByCountry :: Success. Assets country : {msg}", country);
       return financialAssets;
 
-    }  
-    
+    }
+
+    // GET: api/FinancialAssets/FetchCandles
+    [HttpPost("FetchCandles")]
+    public async Task<ActionResult<FinancialAsset>> FetchCandlesAsync([FromBody] idRequest symbol)
+    {
+      var financialAsset = await _context.FinancialAssets.FirstOrDefaultAsync(fa => fa.ticker == symbol.id);
+      return (financialAsset == null) ? NotFound() : financialAsset;
+      
+    }
   }
 }
