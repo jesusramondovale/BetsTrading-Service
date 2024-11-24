@@ -608,6 +608,28 @@ namespace BetsTrading_Service.Services
                 string ticker = (string)item!["stock"]!;
                                 
                 trends.Add(new Trend(id: i++, daily_gain: dailyGain, ticker: ticker.Replace(":", ".")));
+
+                var currentAsset = _dbContext.FinancialAssets.Where(fa => fa.ticker == ticker.Replace(":", ".")).FirstOrDefault();
+
+                
+                if (currentAsset == null)
+                {
+                  
+                  FinancialAsset tmpAsset = new FinancialAsset(
+                      name: (string)item["name"]!,
+                      group: "Shares",
+                      icon: "null",
+                      country: GetCountryByTicker(ticker.Replace(":", ".")),
+                      ticker: ticker.Replace(":", "."),
+                      current: (double)item["extracted_price"]!,
+                      close: new List<double> { (double)item["extracted_price"]! }
+                  );
+
+                  _dbContext.FinancialAssets.Add(tmpAsset);
+                  _dbContext.SaveChanges();
+                }
+
+
               }
             }
           }
