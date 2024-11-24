@@ -165,7 +165,7 @@ namespace BetsTrading_Service.Controllers
             }
             else
             {
-              trendDTOs.Add(new TrendDTO(id: trend.id, name: "xdxd", icon: "null", daily_gain: trend.daily_gain, close: 0.0, current: 0.0, ticker: trend.ticker));
+              trendDTOs.Add(new TrendDTO(id: trend.id, name: "?", icon: "null", daily_gain: trend.daily_gain, close: 0.0, current: 0.0, ticker: trend.ticker));
             }
             
           }
