@@ -27,6 +27,18 @@
       this.close = close;
     }
 
+    public FinancialAsset(int id, string name, string group, string? icon, string? country, string? ticker, double current, List<double> close)
+    {
+      this.id = id;
+      this.name = name;
+      this.group = group;
+      this.icon = icon;
+      this.country = country;
+      this.ticker = ticker;
+      this.current = current;
+      this.close = close;
+    }
+
     public int id { get; set; }
     public string name { get; set; }
     public string group { get; set; }
