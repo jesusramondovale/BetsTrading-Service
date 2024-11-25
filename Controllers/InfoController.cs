@@ -159,10 +159,20 @@ namespace BetsTrading_Service.Controllers
             var tmpAsset = _dbContext.FinancialAssets.FirstOrDefault(a => a.ticker == trend.ticker);
             if (tmpAsset != null)
             {
-              double dailyGain = ((tmpAsset.current - tmpAsset.close[1]) / tmpAsset.close[1]) * 100;
-              trendDTOs.Add(new TrendDTO(id: trend.id, name: tmpAsset.name, icon: tmpAsset.icon! , daily_gain: dailyGain, 
-                close: tmpAsset.close[1], current: tmpAsset.current, ticker: trend.ticker));
+              if (tmpAsset.close.Count == 1)
+              {
+                double dailyGain = ((tmpAsset.current - tmpAsset.close[0]) / tmpAsset.close[0]) * 100;
+                trendDTOs.Add(new TrendDTO(id: trend.id, name: tmpAsset.name, icon: tmpAsset.icon!, daily_gain: dailyGain,
+                  close: tmpAsset.close[0], current: tmpAsset.current, ticker: trend.ticker));
+              }
+              else
+              {
+                double dailyGain = ((tmpAsset.current - tmpAsset.close[1]) / tmpAsset.close[1]) * 100;
+                trendDTOs.Add(new TrendDTO(id: trend.id, name: tmpAsset.name, icon: tmpAsset.icon!, daily_gain: dailyGain,
+                  close: tmpAsset.close[1], current: tmpAsset.current, ticker: trend.ticker));
+              }
             }
+            
             else
             {
               trendDTOs.Add(new TrendDTO(id: trend.id, name: "?", icon: "null", daily_gain: trend.daily_gain, close: 0.0, current: 0.0, ticker: trend.ticker));
