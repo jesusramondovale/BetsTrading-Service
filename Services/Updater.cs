@@ -360,11 +360,6 @@ namespace BetsTrading_Service.Services
           _logger.Log.Error("[Updater] :: SetFinishedBets() concurrency error :", ex.ToString());
           transaction.Rollback();
         }
-        catch (SerpApiSearchException ex)
-        {
-          _logger.Log.Error("[Updater] :: SetFinishedBets() SerpApi error :", ex.ToString());
-          transaction.Rollback();
-        }
         catch (Exception ex)
         {
           _logger.Log.Error("[Updater] :: SetFinishedBets() unexpected error :", ex.ToString());
@@ -392,17 +387,12 @@ namespace BetsTrading_Service.Services
           _dbContext.SaveChanges();
           transaction.Commit();
           _logger.Log.Debug("[Updater] :: SetInactiveBets() ended succesfrully!");
-
+          
         }
         
         catch (DbUpdateConcurrencyException ex)
         {
           _logger.Log.Error("[Updater] :: SetInactiveBets() concurrency error :", ex.ToString());
-          transaction.Rollback();
-        }
-        catch (SerpApiSearchException ex)
-        {
-          _logger.Log.Error("[Updater] :: SetInactiveBets() SerpApi error :", ex.ToString());
           transaction.Rollback();
         }
         catch (Exception ex)
@@ -499,11 +489,6 @@ namespace BetsTrading_Service.Services
         catch (DbUpdateConcurrencyException ex)
         {
           _logger.Log.Error("[Updater] :: CheckBets() concurrency error :", ex.ToString());
-          transaction.Rollback();
-        }
-        catch (SerpApiSearchException ex)
-        {
-          _logger.Log.Error("[Updater] :: CheckBets() SerpApi error :", ex.ToString());
           transaction.Rollback();
         }
         catch (Exception ex)
@@ -659,7 +644,7 @@ namespace BetsTrading_Service.Services
         }
         catch (SerpApiSearchException ex)
         {
-          _logger.Log.Error("[Updater] :: UpdateTrends() SerpApi error :", ex.ToString());
+          _logger.Log.Error("[Updater] :: UpdateTrends() GoogleSearch SerpApi error :", ex.ToString());
           transaction.Rollback();
         }
         catch (Exception ex)
