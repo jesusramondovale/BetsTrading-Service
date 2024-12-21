@@ -49,7 +49,7 @@ namespace BetsTrading_Service.Controllers
 
             betDTOs.Add(new BetDTO(id: bet.id, user_id: userInfoRequest.id!, ticker: bet.ticker, name: tmpAsset!.name!,
               bet_amount: bet.bet_amount, daily_gain: tmpAssetDailyGain, origin_value: bet.origin_value, current_value: tmpAsset.current,
-              target_value: tmpBetZone.target_value, target_margin: tmpBetZone.bet_margin, target_date: tmpBetZone.start_date,
+              target_value: tmpBetZone.target_value, target_margin: tmpBetZone.bet_margin, target_date: tmpBetZone.start_date, end_date: tmpBetZone.end_date,
               target_odds: tmpBetZone.target_odds, target_won: bet.target_won, icon_path: tmpAsset.icon!,
               type: tmpBetZone.type, date_margin: timeMargin.Days, bet_zone: bet.bet_zone));
 

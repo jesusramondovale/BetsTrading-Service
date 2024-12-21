@@ -568,7 +568,7 @@ namespace BetsTrading_Service.Services
         try
         {
           _logger.Log.Information("[Updater] :: UpdateTrends() called!");
-          GoogleSearch search = new GoogleSearch(ht, API_KEY);
+          GoogleSearch search = new GoogleSearch(ht, API_KEY2);
           JObject data = search.GetJson();
           var market_trends = data["market_trends"];
 
