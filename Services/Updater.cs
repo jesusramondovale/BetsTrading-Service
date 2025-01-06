@@ -528,7 +528,7 @@ namespace BetsTrading_Service.Services
               string youWonMessageTemplate = LocalizedTexts.GetTranslationByCountry(winnerUser.country, "youWon");
               string msg = string.Format(youWonMessageTemplate, (currentBet.bet_amount * currentBetZone.target_odds).ToString("N2"), currentBet.ticker);
 
-              _ = _firebaseNotificationService.SendNotificationToUser(winnerUser.fcm, "Betrader", msg);
+              _ = _firebaseNotificationService.SendNotificationToUser(winnerUser.fcm, "Betrader", msg, new() { { "type", "betting" } });
               _logger.Log.Debug("[Updater] :: PayBets() paid to user {0}", winnerUser.id);
             }
 
@@ -631,7 +631,9 @@ namespace BetsTrading_Service.Services
           foreach (User user in _dbContext.Users.ToList())
           {
             
-            _ = _firebaseNotificationService.SendNotificationToUser(user.fcm, "Betrader", LocalizedTexts.GetTranslationByCountry(user.country,"updatedTrends"));
+            _ = _firebaseNotificationService.SendNotificationToUser(user.fcm, "Betrader", 
+                     LocalizedTexts.GetTranslationByCountry(user.country,"updatedTrends"),
+                      new() { { "type", "trends" } });
           }
 
           transaction.Commit();
