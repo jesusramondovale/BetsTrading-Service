@@ -11,34 +11,15 @@ using System.Collections.Generic;
 using BetsTrading_Service.Locale;
 using System.Net.Http;
 
-namespace BetsTrading_Service.Services
+namespace BetsTrading_Service.Services 
 {
   public class Updater
   {
     const int MAX_TRENDS_ELEMENTS = 5;
-    private const string API_KEY= "d9661ef0baa78e225f4ee66ebfb7474202d1cafa808501d174785b04e30a9964";
-    private const string API_KEY2 = "d6dc56018991c867fd854be0cc0f2ecf3507d2c45c147516273ed7e91063b248";
-
-    private const string ALPHA_KEY1 = "O5NQS4V0GAZ4A643";
-    private const string ALPHA_KEY2 = "VRD5VVW67S44FW47";
-    private const string ALPHA_KEY3 = "3R6SY725SPIGNPHD";
-    private const string ALPHA_KEY4 = "12K5J6WV68K2XQ06";
-    private const string ALPHA_KEY5 = "8F9UJZ23JB4MQ6G9";
-    private const string ALPHA_KEY6 = "JHG6XNRKWBLRCWX4";
-    private const string ALPHA_KEY7 = "3G5ARW1VUDF629BM";
-
-    private static readonly string[] ALPHA_KEYS = {
-      ALPHA_KEY1,
-      ALPHA_KEY2,
-      ALPHA_KEY3,
-      ALPHA_KEY4,
-      ALPHA_KEY5,
-      ALPHA_KEY6,
-      ALPHA_KEY7
-    };
+    private const string MARKETSTACK_KEY = "9ee5550d7de6c7af6399ef01fbd224ba";
 
 
-    private Hashtable ht = new Hashtable() { { "engine", "google_finance_markets" }, { "trend", "most-active" } };
+    
     private static readonly HttpClient client = new HttpClient();
 
     private readonly FirebaseNotificationService _firebaseNotificationService;
@@ -57,8 +38,7 @@ namespace BetsTrading_Service.Services
 
     public void UpdateAssets()
     {
-      string ALPHA_KEY = ALPHA_KEYS[new Random().Next(ALPHA_KEYS.Length)];
-
+      
       using (var transaction = _dbContext.Database.BeginTransaction())
       {
         try
@@ -89,7 +69,7 @@ namespace BetsTrading_Service.Services
               {
                 symbol = asset.ticker!.Split('.')[0];
               }
-              string apiUrl = $"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&apikey={ALPHA_KEY}";
+              string apiUrl = $"http://api.marketstack.com/v2/eod?access_key={MARKETSTACK_KEY}&symbols={symbol}";
               HttpResponseMessage response = httpClient.GetAsync(apiUrl).Result;
 
               if (response.IsSuccessStatusCode)
@@ -568,14 +548,14 @@ namespace BetsTrading_Service.Services
         try
         {
           _logger.Log.Information("[Updater] :: UpdateTrends() called!");
-          GoogleSearch search = new GoogleSearch(ht, API_KEY2);
-          JObject data = search.GetJson();
-          var market_trends = data["market_trends"];
+          //GoogleSearch search = new GoogleSearch(ht, API_KEY2);
+          //JObject data = search.GetJson();
+          //var market_trends = data["market_trends"];
 
           var trends = new List<Trend>();
-          var mostActive = data["market_trends"]!.FirstOrDefault(x => (string)x["title"]! == "Most active")?["results"];
+          //var mostActive = data["market_trends"]!.FirstOrDefault(x => (string)x["title"]! == "Most active")?["results"];
 
-          if (null != mostActive && mostActive.Count() != 0)
+          /*if (null != mostActive && mostActive.Count() != 0)
           {
             int i = 1;
             foreach (var item in mostActive)
@@ -619,7 +599,7 @@ namespace BetsTrading_Service.Services
 
               }
             }
-          }
+          }*/
           
           var existingTrends = _dbContext.Trends.ToList();
           _dbContext.Trends.RemoveRange(existingTrends);
@@ -739,7 +719,7 @@ namespace BetsTrading_Service.Services
 
     public static async Task<string> GetStockIconUrl(string ticker)
     {
-      string url = $"https://cloud.iexapis.com/stable/stock/{ticker}/logo?token={API_KEY}";
+      string url = $"https://cloud.iexapis.com/stable/stock/{ticker}/logo?token={MARKETSTACK_KEY}";
 
       HttpResponseMessage response = await client.GetAsync(url);
       if (response.IsSuccessStatusCode)
@@ -779,9 +759,9 @@ namespace BetsTrading_Service.Services
 
     #if RELEASE
         _assetsTimer = new Timer(ExecuteUpdateAssets!, null, TimeSpan.FromSeconds(0), TimeSpan.FromDays(1));
-        _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromSeconds(30), TimeSpan.FromHours(6));
-        _betsTimer = new Timer(ExecuteCheckBets!, null, TimeSpan.FromSeconds(60), TimeSpan.FromDays(1));
-        _createNewBetsTimer = new Timer(ExecuteCleanAndCreateBets!, null, TimeSpan.FromSeconds(90), TimeSpan.FromDays(3));
+        //_trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromSeconds(30), TimeSpan.FromHours(6));
+        //_betsTimer = new Timer(ExecuteCheckBets!, null, TimeSpan.FromSeconds(60), TimeSpan.FromDays(1));
+        //_createNewBetsTimer = new Timer(ExecuteCleanAndCreateBets!, null, TimeSpan.FromSeconds(90), TimeSpan.FromDays(3));
     #endif
 
       return Task.CompletedTask;
