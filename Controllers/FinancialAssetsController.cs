@@ -36,7 +36,7 @@ namespace BetsTrading_Service.Controllers
     {
       
       var financialAssets = await _context.FinancialAssets
-        .Where(fa => fa.group == group)
+        .Where(fa => fa.group == group).OrderByDescending(fa => fa.current)
         .ToListAsync();
 
       if (financialAssets == null)
