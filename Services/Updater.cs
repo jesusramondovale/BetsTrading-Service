@@ -11,153 +11,143 @@ using System.Collections.Generic;
 using BetsTrading_Service.Locale;
 using System.Net.Http;
 
-namespace BetsTrading_Service.Services
+namespace BetsTrading_Service.Services 
 {
   public class Updater
   {
     const int MAX_TRENDS_ELEMENTS = 5;
-    private const string API_KEY= "d9661ef0baa78e225f4ee66ebfb7474202d1cafa808501d174785b04e30a9964";
-    private const string API_KEY2 = "d6dc56018991c867fd854be0cc0f2ecf3507d2c45c147516273ed7e91063b248";
-
-    private const string ALPHA_KEY1 = "O5NQS4V0GAZ4A643";
-    private const string ALPHA_KEY2 = "VRD5VVW67S44FW47";
-    private const string ALPHA_KEY3 = "3R6SY725SPIGNPHD";
-    private const string ALPHA_KEY4 = "12K5J6WV68K2XQ06";
-    private const string ALPHA_KEY5 = "8F9UJZ23JB4MQ6G9";
-    private const string ALPHA_KEY6 = "JHG6XNRKWBLRCWX4";
-    private const string ALPHA_KEY7 = "3G5ARW1VUDF629BM";
-
-    private static readonly string[] ALPHA_KEYS = {
-      ALPHA_KEY1,
-      ALPHA_KEY2,
-      ALPHA_KEY3,
-      ALPHA_KEY4,
-      ALPHA_KEY5,
-      ALPHA_KEY6,
-      ALPHA_KEY7
-    };
-
-
-    private Hashtable ht = new Hashtable() { { "engine", "google_finance_markets" }, { "trend", "most-active" } };
-    private static readonly HttpClient client = new HttpClient();
+    private string MARKETSTACK_KEY = Environment.GetEnvironmentVariable("MARKETSTACK_API_KEY", EnvironmentVariableTarget.User) ?? "";
+    private string SERP_API_KEY = Environment.GetEnvironmentVariable("SERP_API_KEY", EnvironmentVariableTarget.User) ?? "";
 
     private readonly FirebaseNotificationService _firebaseNotificationService;
     private readonly AppDbContext _dbContext;
     private readonly ICustomLogger _logger;
+    
+    private static readonly HttpClient client = new HttpClient();
 
+    #region Constructor
     public Updater(AppDbContext dbContext, ICustomLogger customLogger, FirebaseNotificationService firebaseNotificationService)
     {
       _firebaseNotificationService = firebaseNotificationService;
       _dbContext = dbContext;
       _logger = customLogger;
-
     }
+    #endregion
 
     #region Update Assets
 
     public void UpdateAssets()
     {
-      string ALPHA_KEY = ALPHA_KEYS[new Random().Next(ALPHA_KEYS.Length)];
-
       using (var transaction = _dbContext.Database.BeginTransaction())
       {
         try
         {
           _logger.Log.Information("[Updater] :: UpdateAssets() called!");
 
-
-          var selectedAssets = _dbContext.FinancialAssets.Where(fa => fa.group.Equals("Cryptos") 
-                                                             || fa.group.Equals("Shares")
-                                                             || fa.group.Equals("Commodities"))
-                                                              .ToList();
           
+          var selectedAssets = _dbContext.FinancialAssets
+              .Where(fa => fa.group.Equals("Shares"))
+              .ToList();
+          
+
           if (selectedAssets.Count == 0)
           {
-            _logger.Log.Warning("[Updater] :: UpdateAssets() :: No assets found for the specified IDs.");
+            _logger.Log.Warning("[Updater] :: UpdateAssets() :: No assets found for the specified groups.");
             return;
           }
-          
+
           using (HttpClient httpClient = new HttpClient())
           {
+           
             foreach (var asset in selectedAssets)
             {
-              string symbol = string.Empty;
-              if (asset.group.Equals("Cryptos")){
-                symbol = $"{asset.ticker!.Split('.')[0]}{asset.ticker!.Split('.')[1]}";
-              }
-              else
-              {
-                symbol = asset.ticker!.Split('.')[0];
-              }
-              string apiUrl = $"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&apikey={ALPHA_KEY}";
+
+              string symbol = asset.ticker?.Split('.')[0] ?? string.Empty;
+              DateTime today = DateTime.UtcNow;
+              DateTime dateFrom = today.AddDays(-90);
+              string dateFromStr = dateFrom.ToString("yyyy-MM-dd");
+              string dateToStr = today.ToString("yyyy-MM-dd");
+              string apiUrl = $"http://api.marketstack.com/v1/eod?access_key={MARKETSTACK_KEY}&symbols={symbol}&date_from={dateFromStr}&date_to={dateToStr}&limit=1000";
+
               HttpResponseMessage response = httpClient.GetAsync(apiUrl).Result;
 
-              if (response.IsSuccessStatusCode)
+              if (!response.IsSuccessStatusCode)
               {
-                string responseData = response.Content.ReadAsStringAsync().Result;
-                JObject jsonData = JObject.Parse(responseData);
+                _logger.Log.Error($"[Updater] :: Failed to fetch data. HTTP Status: {response.StatusCode}");
+                continue;
+              }
 
-                var timeSeries = jsonData["Time Series (Daily)"];
-                if (timeSeries != null)
+              string responseData = response.Content.ReadAsStringAsync().Result;
+              JObject jsonData = JObject.Parse(responseData);
+              var stockData = jsonData["data"];
+
+              if (stockData == null || !stockData.HasValues)
+              {
+                _logger.Log.Warning("[Updater] :: No valid market data returned.");
+                continue;
+              }
+
+             
+              if (string.IsNullOrEmpty(symbol))
+              {
+                _logger.Log.Warning($"[Updater] :: No market data found for ticker: {asset.ticker}");
+                continue;
+              }
+
+
+              var closePrices = new List<double>();
+              var openPrices = new List<double>();
+              var maxPrices = new List<double>();
+              var minPrices = new List<double>();
+
+              foreach (var dayData in stockData)
+              {
+                try
                 {
-                  var closePrices = new List<double>();
-                  var openPrices = new List<double>();
-                  var maxPrices = new List<double>();
-                  var minPrices = new List<double>();
+                  double open = dayData["open"]?.ToObject<double>() ?? 0.0;
+                  double high = dayData["high"]?.ToObject<double>() ?? 0.0;
+                  double low = dayData["low"]?.ToObject<double>() ?? 0.0;
+                  double close = dayData["close"]?.ToObject<double>() ?? 0.0;
 
-
-                  if (timeSeries is JObject timeSeriesObject)
+                  if (open == 0.0 || high == 0.0 || low == 0.0 || close == 0.0)
                   {
-                    foreach (var dayEntry in timeSeriesObject)
-                    {
-                      string date = dayEntry.Key; 
-                      var dayData = dayEntry.Value;
-
-                      double open = (double)dayData!["1. open"]!;
-                      double high = (double)dayData["2. high"]!;
-                      double low = (double)dayData["3. low"]!;
-                      double close = (double)dayData["4. close"]!;
-
-                      openPrices.Add(open);
-                      maxPrices.Add(high);
-                      minPrices.Add(low);
-                      closePrices.Add(close);
-                    }
-                  }
-                  else
-                  {
-                    _logger.Log.Warning("[Updater] :: Time Series data is not in the expected format.");
+                    _logger.Log.Warning($"[Updater] :: Missing price data for {symbol}");
+                    continue;
                   }
 
-                  
-                  asset.current = closePrices.First(); 
-                  asset.close = closePrices;          
-                  asset.open = openPrices;           
-                  asset.daily_max = maxPrices;       
-                  asset.daily_min = minPrices;      
-
-                  
-                  _dbContext.FinancialAssets.Update(asset);
-                  _dbContext.SaveChanges();
+                  openPrices.Add(open);
+                  maxPrices.Add(high);
+                  minPrices.Add(low);
+                  closePrices.Add(close);
                 }
-                else
+                catch (Exception ex)
                 {
-                  _logger.Log.Warning($"[Updater] :: No time series data found for ticker: {asset.ticker}");
+                  _logger.Log.Error($"[Updater] :: Error parsing data for {symbol}: {ex.Message}");
                 }
               }
-              else
+
+              if (closePrices.Count > 0)
               {
-                _logger.Log.Error($"[Updater] :: Failed to fetch data for ticker: {asset.ticker}. HTTP Status: {response.StatusCode}");
+                asset.current = closePrices.First();
+                asset.close = closePrices;
+                asset.open = openPrices;
+                asset.daily_max = maxPrices;
+                asset.daily_min = minPrices;
+
+                _dbContext.FinancialAssets.Update(asset);
               }
             }
-          }
+
+            _dbContext.SaveChanges();
+            }
+          
 
           transaction.Commit();
           _logger.Log.Information("[Updater] :: UpdateAssets() completed successfully!");
         }
         catch (Exception ex)
         {
-          _logger.Log.Error("[Updater] :: UpdateAssets() error: ", ex.ToString());
+          _logger.Log.Error($"[Updater] :: UpdateAssets() error: {ex}");
           transaction.Rollback();
         }
       }
@@ -167,7 +157,7 @@ namespace BetsTrading_Service.Services
 
     #region Create Bets
 
-   
+
     public void CreateBets()
     {
       _logger.Log.Information("[Updater] :: CreateBets() called!");
@@ -350,7 +340,7 @@ namespace BetsTrading_Service.Services
 
             _dbContext.SaveChanges();
             transaction.Commit();
-            _logger.Log.Debug("[Updater] :: SetFinishedBets() ended succesfrully!");
+            _logger.Log.Debug("[Updater] :: SetFinishedBets() ended succesfully!");
 
           }
 
@@ -567,102 +557,96 @@ namespace BetsTrading_Service.Services
       {
         try
         {
+          Hashtable ht = new Hashtable() { { "engine", "google_finance_markets" }, { "trend", "most-active" } };
           _logger.Log.Information("[Updater] :: UpdateTrends() called!");
-          GoogleSearch search = new GoogleSearch(ht, API_KEY2);
-          JObject data = search.GetJson();
-          var market_trends = data["market_trends"];
 
-          var trends = new List<Trend>();
+          GoogleSearch search = new GoogleSearch(ht, SERP_API_KEY);
+          JObject data = search.GetJson();
           var mostActive = data["market_trends"]!.FirstOrDefault(x => (string)x["title"]! == "Most active")?["results"];
 
-          if (null != mostActive && mostActive.Count() != 0)
+          if (mostActive == null || mostActive.Count() == 0)
           {
-            int i = 1;
-            foreach (var item in mostActive)
-            {
-              if (i <= MAX_TRENDS_ELEMENTS)
-              {
-                double dailyGain = ((string)item["price_movement"]!["movement"]! == "Down" ?
-                                        -(double)item["price_movement"]!["value"]! :
-                                         (double)item["price_movement"]!["value"]!);
-                double close = ((string)item["price_movement"]!["movement"]! == "Down" ?
-                               (double)item["extracted_price"]! + (double)item["price_movement"]!["value"]! :
-                               (double)item["extracted_price"]! - (double)item["price_movement"]!["value"]!);
-
-                
-                string ticker = (string)item!["stock"]!;
-                                
-                trends.Add(new Trend(id: i++, daily_gain: dailyGain, ticker: ticker.Replace(":", ".")));
-
-                var currentAsset = _dbContext.FinancialAssets.AsNoTracking().Where(fa => fa.ticker == ticker.Replace(":", ".")).FirstOrDefault();
-
-                int maxId = _dbContext.FinancialAssets.Max(fa => fa.id);
-                
-                if (currentAsset == null)
-                {
-                  
-                  FinancialAsset tmpAsset = new FinancialAsset(
-                      id: ++maxId,
-                      name: (string)item["name"]!,
-                      group: "Shares",
-                      icon: "null",
-                      country: GetCountryByTicker(ticker.Replace(":", ".")),
-                      ticker: ticker.Replace(":", "."),
-                      current: (double)item["extracted_price"]!,
-                      close: new List<double> { (double)item["extracted_price"]! }
-                  );
-
-                  _dbContext.FinancialAssets.Add(tmpAsset);
-                  _dbContext.SaveChanges();
-                }
-
-
-              }
-            }
+            _logger.Log.Warning("[Updater] :: No active trends found.");
+            return;
           }
           
           var existingTrends = _dbContext.Trends.ToList();
           _dbContext.Trends.RemoveRange(existingTrends);
           _dbContext.SaveChanges();
+          
+          var top5Trending = mostActive
+              .OrderByDescending(x => (double)x["price_movement"]!["percentage"]!)
+              .Take(5)
+              .ToList();
 
-          _dbContext.Trends.AddRange(trends);
+          var newTrends = new List<Trend>();
+          int maxId = _dbContext.FinancialAssets.Max(fa => fa.id);
+
+          for (int i = 0; i < top5Trending.Count; i++)
+          {
+            var item = top5Trending[i];
+            string ticker = ((string)item["stock"]!).Replace(":", ".");
+
+            double dailyGain = ((string)item["price_movement"]!["movement"]! == "Down" ?
+                               -(double)item["price_movement"]!["value"]! :
+                                (double)item["price_movement"]!["value"]!);
+
+            newTrends.Add(new Trend(id: i + 1, daily_gain: dailyGain, ticker: ticker));
+            var currentAsset = _dbContext.FinancialAssets.AsNoTracking().Where(fa => fa.ticker == ticker.Replace(":", ".")).FirstOrDefault();
+
+            if (currentAsset == null)
+            {
+
+              FinancialAsset tmpAsset = new FinancialAsset(
+                  id: ++maxId,
+                  name: (string)item["name"]!,
+                  group: "Shares",
+                  icon: "null",
+                  country: GetCountryByTicker(ticker.Replace(":", ".")),
+                  ticker: ticker.Replace(":", "."),
+                  current: (double)item["extracted_price"]!,
+                  close: new List<double> { (double)item["extracted_price"]! }
+              );
+
+              _dbContext.FinancialAssets.Add(tmpAsset);
+              _dbContext.SaveChanges();
+            }
+
+
+          }
+
+          _dbContext.Trends.AddRange(newTrends);
           _dbContext.SaveChanges();
+
           
           foreach (User user in _dbContext.Users.ToList())
           {
-            
-            _ = _firebaseNotificationService.SendNotificationToUser(user.fcm, "Betrader", 
-                     LocalizedTexts.GetTranslationByCountry(user.country,"updatedTrends"),
-                      new() { { "type", "trends" } });
+            _ = _firebaseNotificationService.SendNotificationToUser(
+                user.fcm, "Betrader",
+                LocalizedTexts.GetTranslationByCountry(user.country, "updatedTrends"),
+                new() { { "type", "trends" } }
+            );
           }
 
           transaction.Commit();
-          _logger.Log.Debug("[Updater] :: UpdateTrends() ended succesfrully!");
-        }
-        catch (DbUpdateConcurrencyException ex)
-        {
-          _logger.Log.Error("[Updater] :: UpdateTrends() concurrency error :", ex.ToString());
-          transaction.Rollback();
-        }
-        catch (SerpApiSearchException ex)
-        {
-          _logger.Log.Error("[Updater] :: UpdateTrends() GoogleSearch SerpApi error :", ex.ToString());
-          transaction.Rollback();
+          _logger.Log.Debug("[Updater] :: UpdateTrends() ended successfully!");
         }
         catch (Exception ex)
         {
-          _logger.Log.Error("[Updater] :: UpdateTrends() unexpected error :", ex.ToString());
+          _logger.Log.Error($"[Updater] :: UpdateTrends() error: {ex.Message}\n{ex.StackTrace}");
           transaction.Rollback();
         }
       }
     }
-    
+
+
+
+
     #endregion
 
     #region Private methods
     public static string GetCountryByTicker(string ticker)
     {
-      // Separar el ticker en dos partes: nombre del activo y mercado
       string[] parts = ticker.Split('.');
 
       if (parts.Length != 2)
@@ -673,10 +657,9 @@ namespace BetsTrading_Service.Services
       string name = parts[0].ToUpper(); 
       string market = parts[1].ToUpper(); 
 
-      // Comprobar si el mercado es de EE.UU.
       if (market == "NASDAQ" || market == "NYSE" || market == "NYSEARCA" || market == "USD")
       {
-        return "US"; // Código internacional de USA
+        return "US";
       }
 
       else if (market == "INDEX")
@@ -737,9 +720,9 @@ namespace BetsTrading_Service.Services
 
     }
 
-    public static async Task<string> GetStockIconUrl(string ticker)
+    public async Task<string> GetStockIconUrl(string ticker)
     {
-      string url = $"https://cloud.iexapis.com/stable/stock/{ticker}/logo?token={API_KEY}";
+      string url = $"https://cloud.iexapis.com/stable/stock/{ticker}/logo?token={MARKETSTACK_KEY}";
 
       HttpResponseMessage response = await client.GetAsync(url);
       if (response.IsSuccessStatusCode)
@@ -756,6 +739,7 @@ namespace BetsTrading_Service.Services
     #endregion
   }
 
+  #region UpdaterService
   public class UpdaterHostedService : IHostedService, IDisposable
   {
     private readonly IServiceProvider _serviceProvider;
@@ -777,16 +761,15 @@ namespace BetsTrading_Service.Services
     {
       _customLogger.Log.Information("[UpdaterHostedService] :: Starting the Updater hosted service.");
 
-    #if RELEASE
-        _assetsTimer = new Timer(ExecuteUpdateAssets!, null, TimeSpan.FromSeconds(0), TimeSpan.FromDays(1));
-        _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromSeconds(30), TimeSpan.FromHours(6));
-        _betsTimer = new Timer(ExecuteCheckBets!, null, TimeSpan.FromSeconds(60), TimeSpan.FromDays(1));
-        _createNewBetsTimer = new Timer(ExecuteCleanAndCreateBets!, null, TimeSpan.FromSeconds(90), TimeSpan.FromDays(3));
-    #endif
+      #if RELEASE
+        _assetsTimer = new Timer(ExecuteUpdateAssets!, null, TimeSpan.FromSeconds(0), TimeSpan.FromHours(6));
+        _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromSeconds(15), TimeSpan.FromHours(6));
+        _betsTimer = new Timer(ExecuteCheckBets!, null, TimeSpan.FromSeconds(20), TimeSpan.FromDays(1));
+        _createNewBetsTimer = new Timer(ExecuteCleanAndCreateBets!, null, TimeSpan.FromSeconds(30), TimeSpan.FromDays(3));
+      #endif
 
       return Task.CompletedTask;
     }
-
 
     private void ExecuteCleanAndCreateBets(object state)
     {
@@ -855,3 +838,4 @@ namespace BetsTrading_Service.Services
   }
 
 }
+#endregion
