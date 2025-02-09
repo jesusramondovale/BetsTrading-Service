@@ -18,6 +18,7 @@ namespace BetsTrading_Service.Services
     const int MAX_TRENDS_ELEMENTS = 5;
     private string MARKETSTACK_KEY = Environment.GetEnvironmentVariable("MARKETSTACK_API_KEY", EnvironmentVariableTarget.User) ?? "";
     private string SERP_API_KEY = Environment.GetEnvironmentVariable("SERP_API_KEY", EnvironmentVariableTarget.User) ?? "";
+    private string COINGECKO_API_KEY= Environment.GetEnvironmentVariable("COINGECKO_API_KEY", EnvironmentVariableTarget.User) ?? "";
 
     private readonly FirebaseNotificationService _firebaseNotificationService;
     private readonly AppDbContext _dbContext;
@@ -152,6 +153,215 @@ namespace BetsTrading_Service.Services
         }
       }
     }
+
+    public void UpdateTop15Cryptos()
+    {
+      using (var transaction = _dbContext.Database.BeginTransaction())
+      {
+        try
+        {
+          _logger.Log.Information("[Updater] :: UpdateCryptos() called!");
+
+          var selectedCryptos = _dbContext.FinancialAssets
+              .Where(fa => fa.group.Equals("Cryptos"))
+              .ToList();
+
+          using (HttpClient httpClient = new HttpClient())
+          {
+            
+            string apiUrl = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc";
+            
+            httpClient.DefaultRequestHeaders.Add("accept", "application/json");
+            httpClient.DefaultRequestHeaders.Add("User-Agent", "dotnet");
+            httpClient.DefaultRequestHeaders.Add("x-cg-pro-api-key", COINGECKO_API_KEY);
+
+            HttpResponseMessage response = httpClient.GetAsync(apiUrl).Result;
+
+            if (!response.IsSuccessStatusCode)
+            {
+              _logger.Log.Error($"[Updater] :: Failed to fetch crypto data. HTTP Status: {response.StatusCode}");
+              return;
+            }
+
+            string responseData = response.Content.ReadAsStringAsync().Result;
+            JArray cryptoData = JArray.Parse(responseData);
+
+            if (cryptoData == null || !cryptoData.HasValues)
+            {
+              _logger.Log.Warning("[Updater] :: No valid crypto data returned.");
+              return;
+            }
+
+            foreach (var crypto in cryptoData)
+            {
+              try
+              {
+                string symbol = crypto["symbol"]?.ToString()?.ToUpper() ?? string.Empty;
+                string name = crypto["name"]?.ToString() ?? string.Empty;
+                string imageUrl = crypto["image"]?.ToString() ?? string.Empty;
+                double currentPrice = crypto["current_price"]?.ToObject<double>() ?? 0.0;
+                double high24h = crypto["high_24h"]?.ToObject<double>() ?? 0.0;
+                double low24h = crypto["low_24h"]?.ToObject<double>() ?? 0.0;
+                string lastUpdated = crypto["last_updated"]?.ToString() ?? string.Empty;
+                DateTime lastUpdatedDate = DateTime.TryParse(lastUpdated, out DateTime parsedDate) ? parsedDate : DateTime.UtcNow;
+                string imageBase64 = ConvertImageToBase64(imageUrl, httpClient);
+                var existingCrypto = selectedCryptos.FirstOrDefault(c => c.ticker == symbol);
+
+                if (existingCrypto != null)
+                {
+                  continue;
+                }
+                else
+                {
+                  int maxId = _dbContext.FinancialAssets.Max(fa => fa.id);
+                  _logger.Log.Warning($"[Updater] :: Crypto {name} ({symbol}) is now in the top 15 but is not present in the database. Adding it.");
+                  FinancialAsset newCryptoAsset = new FinancialAsset
+                  (
+                    id: ++maxId,
+                    name: name,
+                    group: "Cryptos",
+                    icon: imageUrl,
+                    country: "World",
+                    ticker: symbol,
+                    current: currentPrice,
+                    close: new List<double>{ currentPrice }
+                  );
+                }
+              }
+              catch (Exception ex)
+              {
+                _logger.Log.Error($"[Updater] :: Error processing crypto data: {ex.Message}");
+              }
+            }
+          }
+
+          _dbContext.SaveChanges();
+          transaction.Commit();
+          _logger.Log.Information("[Updater] :: UpdateCryptos() completed successfully!");
+        }
+        catch (Exception ex)
+        {
+          _logger.Log.Error($"[Updater] :: UpdateCryptos() error: {ex}");
+          transaction.Rollback();
+        }
+      }
+    }
+
+    public void UpdateCryptos()
+    {
+      using (var transaction = _dbContext.Database.BeginTransaction())
+      {
+        try
+        {
+          _logger.Log.Information("[Updater] :: UpdateAssets() called!");
+
+          var cryptoAssets = _dbContext.FinancialAssets
+              .Where(fa => fa.group.Equals("Cryptos"))
+              .ToList();
+
+          if (cryptoAssets.Count == 0)
+          {
+            _logger.Log.Warning("[Updater] :: UpdateAssets() :: No cryptos found!.");
+            return;
+          }
+
+          using (HttpClient httpClient = new HttpClient())
+          {
+            foreach (var asset in cryptoAssets)
+            {
+              string name = asset.name?.ToLower() ?? string.Empty;
+              name = name != "xrp" ? name : "ripple";
+              name = name != "bitcash" ? name : "bitcoincash";
+              name = name != "avalanche" ? name : "avalanche-2";
+
+              if (string.IsNullOrEmpty(name))
+              {
+                _logger.Log.Warning($"[Updater] :: No valid name for asset: {asset.ticker}");
+                continue;
+              }
+
+              httpClient.DefaultRequestHeaders.Add("accept", "application/json");
+              httpClient.DefaultRequestHeaders.Add("User-Agent", "dotnet");
+              httpClient.DefaultRequestHeaders.Add("x-cg-pro-api-key", COINGECKO_API_KEY);
+              string apiUrl = $"https://api.coingecko.com/api/v3/coins/{name}/ohlc?vs_currency=usd&days=30";
+
+              HttpResponseMessage response = httpClient.GetAsync(apiUrl).Result;
+
+              if (!response.IsSuccessStatusCode)
+              {
+                _logger.Log.Error($"[Updater] :: Failed to fetch data for {name}. HTTP Status: {response.StatusCode}");
+                continue;
+              }
+
+              string responseData = response.Content.ReadAsStringAsync().Result;
+              var stockData = JArray.Parse(responseData);
+
+              if (stockData == null || stockData.Count == 0)
+              {
+                _logger.Log.Warning($"[Updater] :: No valid market data returned for {name}.");
+                continue;
+              }
+
+              var openPrices = new List<double>();
+              var maxPrices = new List<double>();
+              var minPrices = new List<double>();
+              var closePrices = new List<double>();
+
+              foreach (var entry in stockData)
+              {
+                try
+                {
+                  if (entry is JArray priceData && priceData.Count >= 5)
+                  {
+                    double open = priceData[1]?.ToObject<double>() ?? 0.0;
+                    double high = priceData[2]?.ToObject<double>() ?? 0.0;
+                    double low = priceData[3]?.ToObject<double>() ?? 0.0;
+                    double close = priceData[4]?.ToObject<double>() ?? 0.0;
+
+                    if (open == 0.0 || high == 0.0 || low == 0.0 || close == 0.0)
+                    {
+                      _logger.Log.Warning($"[Updater] :: Incomplete price data for {name}");
+                      continue;
+                    }
+
+                    openPrices.Add(open);
+                    maxPrices.Add(high);
+                    minPrices.Add(low);
+                    closePrices.Add(close);
+                  }
+                }
+                catch (Exception ex)
+                {
+                  _logger.Log.Error($"[Updater] :: Error parsing data for {name}: {ex.Message}");
+                }
+              }
+
+              if (closePrices.Count > 0)
+              {
+                asset.current = closePrices.Last();
+                asset.close = closePrices;
+                asset.open = openPrices;
+                asset.daily_max = maxPrices;
+                asset.daily_min = minPrices;
+
+                _dbContext.FinancialAssets.Update(asset);
+              }
+            }
+
+            _dbContext.SaveChanges();
+          }
+
+          transaction.Commit();
+          _logger.Log.Information("[Updater] :: UpdateAssets() completed successfully!");
+        }
+        catch (Exception ex)
+        {
+          _logger.Log.Error($"[Updater] :: UpdateAssets() error: {ex}");
+          transaction.Rollback();
+        }
+      }
+    }
+
 
     #endregion
 
@@ -736,6 +946,29 @@ namespace BetsTrading_Service.Services
         throw new Exception("Error fetching icon from Google API.");
       }
     }
+
+    private string ConvertImageToBase64(string imageUrl, HttpClient httpClient)
+    {
+      try
+      {
+        HttpResponseMessage response = httpClient.GetAsync(imageUrl).Result;
+        if (response.IsSuccessStatusCode)
+        {
+          byte[] imageBytes = response.Content.ReadAsByteArrayAsync().Result;
+          return Convert.ToBase64String(imageBytes);
+        }
+        else
+        {
+          _logger.Log.Warning($"[Updater] :: Failed to download image from {imageUrl}");
+          return string.Empty;
+        }
+      }
+      catch (Exception ex)
+      {
+        _logger.Log.Error($"[Updater] :: Error converting image to Base64: {ex.Message}");
+        return string.Empty;
+      }
+    }
     #endregion
   }
 
@@ -808,6 +1041,8 @@ namespace BetsTrading_Service.Services
         var updaterService = scopedServices.GetRequiredService<Updater>();
         _customLogger.Log.Information("[UpdaterHostedService] :: Executing UpdateAssets service.");
         updaterService.UpdateAssets();
+        updaterService.UpdateTop15Cryptos();
+        updaterService.UpdateCryptos();
       }
     }
 
