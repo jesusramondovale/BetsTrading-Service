@@ -572,7 +572,7 @@ namespace BetsTrading_Service.Services
           
           var existingTrends = _dbContext.Trends.ToList();
           _dbContext.Trends.RemoveRange(existingTrends);
-          _dbContext.SaveChanges(); // 🔥 Guarda los cambios antes de insertar nuevos datos
+          _dbContext.SaveChanges();
           
           var top5Trending = mostActive
               .OrderByDescending(x => (double)x["price_movement"]!["percentage"]!)
@@ -616,7 +616,7 @@ namespace BetsTrading_Service.Services
           }
 
           _dbContext.Trends.AddRange(newTrends);
-          _dbContext.SaveChanges(); // 🔥 Guarda los nuevos datos
+          _dbContext.SaveChanges();
 
           
           foreach (User user in _dbContext.Users.ToList())
@@ -647,7 +647,6 @@ namespace BetsTrading_Service.Services
     #region Private methods
     public static string GetCountryByTicker(string ticker)
     {
-      // Separar el ticker en dos partes: nombre del activo y mercado
       string[] parts = ticker.Split('.');
 
       if (parts.Length != 2)
@@ -658,10 +657,9 @@ namespace BetsTrading_Service.Services
       string name = parts[0].ToUpper(); 
       string market = parts[1].ToUpper(); 
 
-      // Comprobar si el mercado es de EE.UU.
       if (market == "NASDAQ" || market == "NYSE" || market == "NYSEARCA" || market == "USD")
       {
-        return "US"; // Código internacional de USA
+        return "US";
       }
 
       else if (market == "INDEX")
