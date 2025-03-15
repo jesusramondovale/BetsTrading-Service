@@ -37,6 +37,7 @@ namespace BetsTrading_Service.Services
 
     #region Update Assets
 
+    //Marketstack : Shares
     public void UpdateAssets()
     {
       using (var transaction = _dbContext.Database.BeginTransaction())
@@ -154,6 +155,7 @@ namespace BetsTrading_Service.Services
       }
     }
 
+    //Coingecko : crypto
     public void UpdateTop15Cryptos()
     {
       using (var transaction = _dbContext.Database.BeginTransaction())
@@ -191,6 +193,7 @@ namespace BetsTrading_Service.Services
               _logger.Log.Warning("[Updater] :: No valid crypto data returned.");
               return;
             }
+            int maxId = _dbContext.FinancialAssets.Max(fa => fa.id);
 
             foreach (var crypto in cryptoData)
             {
@@ -209,11 +212,12 @@ namespace BetsTrading_Service.Services
 
                 if (existingCrypto != null)
                 {
+                  _logger.Log.Debug($"[Updater] :: UpdateTop15Cryptos :: Crypto {name} ({symbol}) already on DB");
                   continue;
                 }
                 else
                 {
-                  int maxId = _dbContext.FinancialAssets.Max(fa => fa.id);
+                  
                   _logger.Log.Warning($"[Updater] :: Crypto {name} ({symbol}) is now in the top 15 but is not present in the database. Adding it.");
                   FinancialAsset newCryptoAsset = new FinancialAsset
                   (
@@ -226,6 +230,8 @@ namespace BetsTrading_Service.Services
                     current: currentPrice,
                     close: new List<double>{ currentPrice }
                   );
+                  
+                  _dbContext.FinancialAssets.Add(newCryptoAsset);
                 }
               }
               catch (Exception ex)
@@ -247,21 +253,23 @@ namespace BetsTrading_Service.Services
       }
     }
 
+    //Coingecko : crypto
     public void UpdateCryptos()
     {
       using (var transaction = _dbContext.Database.BeginTransaction())
       {
         try
         {
-          _logger.Log.Information("[Updater] :: UpdateAssets() called!");
+          _logger.Log.Information("[Updater] :: UpdateCryptos() called!");
 
           var cryptoAssets = _dbContext.FinancialAssets
               .Where(fa => fa.group.Equals("Cryptos"))
               .ToList();
 
+
           if (cryptoAssets.Count == 0)
           {
-            _logger.Log.Warning("[Updater] :: UpdateAssets() :: No cryptos found!.");
+            _logger.Log.Warning("[Updater] :: UpdateCryptos() :: No cryptos found!.");
             return;
           }
 
@@ -269,6 +277,8 @@ namespace BetsTrading_Service.Services
           {
             foreach (var asset in cryptoAssets)
             {
+              //TO-DO: Coingecko App Rate/Limit
+              Thread.Sleep(1500);
               string name = asset.name?.ToLower() ?? string.Empty;
               name = name != "xrp" ? name : "ripple";
               name = name != "bitcash" ? name : "bitcoincash";
@@ -282,14 +292,16 @@ namespace BetsTrading_Service.Services
 
               httpClient.DefaultRequestHeaders.Add("accept", "application/json");
               httpClient.DefaultRequestHeaders.Add("User-Agent", "dotnet");
-              httpClient.DefaultRequestHeaders.Add("x-cg-pro-api-key", COINGECKO_API_KEY);
+
+              //TO-DO Coingecko App Rate/Limit
+              //httpClient.DefaultRequestHeaders.Add("x-cg-pro-api-key", COINGECKO_API_KEY);
               string apiUrl = $"https://api.coingecko.com/api/v3/coins/{name}/ohlc?vs_currency=usd&days=30";
 
               HttpResponseMessage response = httpClient.GetAsync(apiUrl).Result;
 
               if (!response.IsSuccessStatusCode)
               {
-                _logger.Log.Error($"[Updater] :: Failed to fetch data for {name}. HTTP Status: {response.StatusCode}");
+                _logger.Log.Error($"[Updater] ::UpdateCryptos :: Failed to fetch data for {name}. HTTP Status: {response.StatusCode}");
                 continue;
               }
 
@@ -298,7 +310,7 @@ namespace BetsTrading_Service.Services
 
               if (stockData == null || stockData.Count == 0)
               {
-                _logger.Log.Warning($"[Updater] :: No valid market data returned for {name}.");
+                _logger.Log.Warning($"[Updater] :: UpdateCryptos :: No valid market data returned for {name}.");
                 continue;
               }
 
@@ -307,6 +319,7 @@ namespace BetsTrading_Service.Services
               var minPrices = new List<double>();
               var closePrices = new List<double>();
 
+              
               foreach (var entry in stockData)
               {
                 try
@@ -320,7 +333,7 @@ namespace BetsTrading_Service.Services
 
                     if (open == 0.0 || high == 0.0 || low == 0.0 || close == 0.0)
                     {
-                      _logger.Log.Warning($"[Updater] :: Incomplete price data for {name}");
+                      _logger.Log.Warning($"[Updater] :: UpdateCryptos :: Incomplete price data for {name}");
                       continue;
                     }
 
@@ -332,7 +345,7 @@ namespace BetsTrading_Service.Services
                 }
                 catch (Exception ex)
                 {
-                  _logger.Log.Error($"[Updater] :: Error parsing data for {name}: {ex.Message}");
+                  _logger.Log.Error($"[Updater] :: UpdateCryptos :: Error parsing data for {name}: {ex.Message}");
                 }
               }
 
@@ -343,7 +356,10 @@ namespace BetsTrading_Service.Services
                 asset.open = openPrices;
                 asset.daily_max = maxPrices;
                 asset.daily_min = minPrices;
-
+                asset.open.Reverse();
+                asset.close.Reverse();
+                asset.daily_max.Reverse();
+                asset.daily_min.Reverse();
                 _dbContext.FinancialAssets.Update(asset);
               }
             }
@@ -352,11 +368,11 @@ namespace BetsTrading_Service.Services
           }
 
           transaction.Commit();
-          _logger.Log.Information("[Updater] :: UpdateAssets() completed successfully!");
+          _logger.Log.Information("[Updater] :: UpdateCryptos() completed successfully!");
         }
         catch (Exception ex)
         {
-          _logger.Log.Error($"[Updater] :: UpdateAssets() error: {ex}");
+          _logger.Log.Error($"[Updater] :: UpdateCryptos() error: {ex}");
           transaction.Rollback();
         }
       }
@@ -496,7 +512,7 @@ namespace BetsTrading_Service.Services
             
             if (totalBetCurrentZone == 0 || totalBetOppositeZone == 0)
             {
-              _logger.Log.Warning("[Updater] :: Zero bets for BetZone with ID {0}", betZone.id);
+              //_logger.Log.Debug("[Updater] :: Zero bets for BetZone with ID {0}", betZone.id);
               continue;
             }
             
