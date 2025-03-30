@@ -26,6 +26,7 @@
     public DbSet<Trend> Trends { get; set; }
     public DbSet<Favorite> Favorites { get; set; }
     public DbSet<BetZone> BetZones { get; set; }
+    public DbSet<PriceBet> PriceBets { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

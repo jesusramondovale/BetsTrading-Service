@@ -19,7 +19,7 @@ namespace BetsTrading_Service.Services
     private string MARKETSTACK_KEY = Environment.GetEnvironmentVariable("MARKETSTACK_API_KEY", EnvironmentVariableTarget.User) ?? "";
     private string SERP_API_KEY = Environment.GetEnvironmentVariable("SERP_API_KEY", EnvironmentVariableTarget.User) ?? "";
     private string COINGECKO_API_KEY= Environment.GetEnvironmentVariable("COINGECKO_API_KEY", EnvironmentVariableTarget.User) ?? "";
-
+    private const int PRICE_BET_WIN_PRICE = 50000;
     private readonly FirebaseNotificationService _firebaseNotificationService;
     private readonly AppDbContext _dbContext;
     private readonly ICustomLogger _logger;
@@ -870,6 +870,71 @@ namespace BetsTrading_Service.Services
 
     #endregion
 
+    #region Check Price-Bets
+    public void CheckAndPayPriceBets()
+    {
+      _logger.Log.Information("[Updater] :: CheckAndPayPriceBets() called!");
+
+      using (var transaction = _dbContext.Database.BeginTransaction())
+      {
+        try
+        {
+          var priceBetsToPay = _dbContext.PriceBets.Where(pb => !pb.paid && pb.end_date < DateTime.UtcNow).ToList();
+
+          foreach (var priceBet in priceBetsToPay)
+          {
+            var asset = _dbContext.FinancialAssets.FirstOrDefault(fa => fa.ticker == priceBet.ticker);
+
+            var user = _dbContext.Users.FirstOrDefault(u => u.id == priceBet.user_id);
+
+            if (asset != null && user != null)
+            {
+              
+              //TODO
+              //WON BET
+              if (asset.close!.Last() == priceBet.price_bet)
+              {
+                user.points += PRICE_BET_WIN_PRICE;
+                priceBet.paid = true;
+                _dbContext.PriceBets.Update(priceBet);
+                _dbContext.Users.Update(user);
+
+                string youWonMessageTemplate = LocalizedTexts.GetTranslationByCountry(user.country, "youWon");
+                string msg = string.Format(youWonMessageTemplate, (PRICE_BET_WIN_PRICE).ToString("N2"), priceBet.ticker);
+
+                _ = _firebaseNotificationService.SendNotificationToUser(user.fcm, "Betrader", msg, new() { { "type", "price_bet" } });
+                _logger.Log.Debug("[Updater] :: CheckAndPayPriceBets :: Paid exact price bet to user {0}", user.id);
+              }
+              //LOST BET
+              else
+              {
+                priceBet.paid = true;
+                _dbContext.PriceBets.Update(priceBet);
+                _logger.Log.Debug("[Updater] :: CheckAndPayPriceBets :: User {0} lost exact price bet on {1}", user.id, priceBet.ticker);
+              }
+            }
+            // UNEXISTENT USER
+            else
+            {
+              _logger.Log.Error("[Updater] :: CheckAndPayPriceBets ::  Unexistent user or asset!");
+            }
+          }
+
+          _dbContext.SaveChanges();
+          transaction.Commit();
+          _logger.Log.Information("[Updater] :: CheckAndPayPriceBets ended successfully!");
+        }
+        catch (Exception ex)
+        {
+          _logger.Log.Error("[Updater] :: CheckAndPayPriceBets error: {0}. Rolling back transaction", ex.ToString());
+          transaction.Rollback();
+        }
+      }
+    }
+
+    #endregion
+
+
     #region Private methods
     public static string GetCountryByTicker(string ticker)
     {
@@ -1005,7 +1070,6 @@ namespace BetsTrading_Service.Services
       _serviceProvider = serviceProvider;
       _customLogger = customLogger;
     }
-
     public Task StartAsync(CancellationToken cancellationToken)
     {
       _customLogger.Log.Information("[UpdaterHostedService] :: Starting the Updater hosted service.");
@@ -1019,7 +1083,6 @@ namespace BetsTrading_Service.Services
 
       return Task.CompletedTask;
     }
-
     private void ExecuteCleanAndCreateBets(object state)
     {
       using (var scope = _serviceProvider.CreateScope())
@@ -1033,7 +1096,6 @@ namespace BetsTrading_Service.Services
         updaterService.CreateBets();
       }
     }
-
     private void ExecuteCheckBets(object state)
     {
       using (var scope = _serviceProvider.CreateScope())
@@ -1046,9 +1108,9 @@ namespace BetsTrading_Service.Services
         updaterService.SetInactiveBets();
         updaterService.SetFinishedBets();
         updaterService.PayBets();
+        updaterService.CheckAndPayPriceBets();
       }
     }
-
     private void ExecuteUpdateAssets(object state)
     {
       using (var scope = _serviceProvider.CreateScope())
@@ -1061,7 +1123,6 @@ namespace BetsTrading_Service.Services
         updaterService.UpdateCryptos();
       }
     }
-
     private void ExecuteUpdateTrends(object state)
     {
       using (var scope = _serviceProvider.CreateScope())
@@ -1072,14 +1133,12 @@ namespace BetsTrading_Service.Services
         updaterService.UpdateTrends();
       }
     }
-
     public Task StopAsync(CancellationToken cancellationToken)
     {
       _customLogger.Log.Information("[UpdaterHostedService] :: Stopping the TrendUpdater hosted service.");
       _trendsTimer?.Change(Timeout.Infinite, 0);
       return Task.CompletedTask;
     }
-
     public void Dispose()
     {
       _trendsTimer!.Dispose();

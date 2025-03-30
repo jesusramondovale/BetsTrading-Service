@@ -13,7 +13,8 @@ namespace BetsTrading_Service.Controllers
   {
     private readonly AppDbContext _dbContext;
     private readonly ICustomLogger _logger;
-
+    private int PRICE_BET_COST = 250;
+    private int PRICE_BET_DAYS_MARGIN = 3;
     public BetController(AppDbContext dbContext, ICustomLogger customLogger)
     {
       _dbContext = dbContext;
@@ -109,6 +110,88 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
+    [HttpPost("CurrentPriceBets")]
+    public async Task<IActionResult> PriceBets([FromBody] idRequest userInfoRequest)
+    {
+
+      try
+      {
+        var priceBets = await _dbContext.PriceBets.Where(pb => pb.user_id == userInfoRequest.id && pb.paid == false).ToListAsync();
+
+        if (!priceBets.Any())
+        {
+          _logger.Log.Warning("[INFO] :: CurrentPriceBets :: Empty list of price bets on userID: {msg}", userInfoRequest.id);
+          return NotFound(new { Message = "User has no current price bets!" });
+        }
+        _logger.Log.Information("[INFO] :: CurrentPriceBets :: success with ID: {msg}", userInfoRequest.id);
+        return Ok(new { Message = "CurrentPriceBets SUCCESS", PriceBets = priceBets });
+      }
+      catch (Exception ex)
+      {
+        _logger.Log.Error("[INFO] :: CurrentPriceBets :: Internal server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+    }
+
+    [HttpPost("HistoricPriceBets")]
+    public async Task<IActionResult> HistoricPriceBets([FromBody] idRequest userInfoRequest)
+    {
+      try
+      {
+        var priceBets = await _dbContext.PriceBets.Where(pb => pb.user_id == userInfoRequest.id && pb.paid == true).ToListAsync();
+
+        if (!priceBets.Any())
+        {
+          _logger.Log.Warning("[INFO] :: HistoricPriceBets :: Empty list of price bets on userID: {msg}", userInfoRequest.id);
+          return NotFound(new { Message = "User has no historic price bets!" });
+        }
+        _logger.Log.Information("[INFO] :: HistoricPriceBets :: success with ID: {msg}", userInfoRequest.id);
+        return Ok(new { Message = "HistoricPriceBets SUCCESS", PriceBets = priceBets });
+      }
+      catch (Exception ex)
+      {
+        _logger.Log.Error("[INFO] :: HistoricPriceBets :: Internal server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+    }
+
+    [HttpPost("NewPriceBet")]
+    public async Task<IActionResult> NewPriceBet([FromBody] newPriceBetRequest priceBetRequest)
+    {
+      using (var transaction = await _dbContext.Database.BeginTransactionAsync())
+      {
+        try
+        {
+          var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.id == priceBetRequest.user_id);
+          
+          if (user == null) throw new Exception("Unexistent user!");
+          if (user.points < PRICE_BET_COST) throw new Exception("Not enough points!");
+          if (priceBetRequest.end_date < DateTime.UtcNow.AddDays(PRICE_BET_DAYS_MARGIN)) throw new Exception("Not enough time!");
+
+          var newPriceBet = new PriceBet(user_id: priceBetRequest.user_id!, ticker: priceBetRequest.ticker!, 
+                                  price_bet: priceBetRequest.price_bet, end_date: priceBetRequest.end_date);
+
+          if (newPriceBet != null)
+          {
+            _dbContext.PriceBets.Add(newPriceBet);
+            user.points -= PRICE_BET_COST;
+            await _dbContext.SaveChangesAsync();
+            await transaction.CommitAsync();
+            _logger.Log.Information("[INFO] :: NewPriceBet :: Price-bet created successfully for user: {0}", priceBetRequest.user_id);
+            return Ok(new { });
+          }
+
+          throw new Exception("Unknown error");
+        }
+        catch (Exception ex)
+        {
+          await transaction.RollbackAsync();
+          _logger.Log.Error("[INFO] :: NewPriceBet :: Internal server error: {msg}", ex.Message);
+          return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+        }
+      }
+    }
+
     [HttpPost("GetBetZones")]
     public async Task<IActionResult> GetBetZones([FromBody] idRequest ticker)
     {
@@ -162,7 +245,6 @@ namespace BetsTrading_Service.Controllers
       }
 
     }
-
 
     [HttpPost("DeleteRecentBet")]
     public async Task<IActionResult> DeleteRecentBet([FromBody] idRequest betIdRequest)
