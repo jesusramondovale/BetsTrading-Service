@@ -33,6 +33,9 @@ namespace BetsTrading_Service.Requests
     public double price_bet { get; set; }
 
     [Required]
+    public double margin { get; set; }
+
+    [Required]
     public DateTime end_date { get; set; }
 
 

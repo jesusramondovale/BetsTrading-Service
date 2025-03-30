@@ -2,7 +2,7 @@
 {
   public class PriceBet
   {
-    public PriceBet(string user_id, string ticker, double price_bet, DateTime end_date)
+    public PriceBet(string user_id, string ticker, double price_bet, double margin, DateTime end_date)
     {
       this.user_id = user_id;
       this.ticker = ticker;
@@ -16,6 +16,7 @@
     public string user_id { get; set; }
     public string ticker { get; set; }
     public double price_bet { get; set; }
+    public double margin { get; set; }
     public bool paid { get; set; }
     public DateTime bet_date {  get; set; }
     public DateTime end_date { get; set; }

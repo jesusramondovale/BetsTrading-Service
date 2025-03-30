@@ -169,7 +169,7 @@ namespace BetsTrading_Service.Controllers
           if (priceBetRequest.end_date < DateTime.UtcNow.AddDays(PRICE_BET_DAYS_MARGIN)) throw new Exception("Not enough time!");
 
           var newPriceBet = new PriceBet(user_id: priceBetRequest.user_id!, ticker: priceBetRequest.ticker!, 
-                                  price_bet: priceBetRequest.price_bet, end_date: priceBetRequest.end_date);
+                                  price_bet: priceBetRequest.price_bet, margin: priceBetRequest.margin, end_date: priceBetRequest.end_date);
 
           if (newPriceBet != null)
           {
