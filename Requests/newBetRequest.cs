@@ -5,6 +5,7 @@ namespace BetsTrading_Service.Requests
   public class newBetRequest
   {
     [Required]
+    [StringLength(100, MinimumLength = 20)]
     public string? user_id { get; set; }
 
     [Required]
@@ -24,6 +25,7 @@ namespace BetsTrading_Service.Requests
   public class newPriceBetRequest
   {
     [Required]
+    [StringLength(100, MinimumLength = 20)]
     public string? user_id { get; set; }
 
     [Required]

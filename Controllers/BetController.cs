@@ -14,7 +14,7 @@ namespace BetsTrading_Service.Controllers
     private readonly AppDbContext _dbContext;
     private readonly ICustomLogger _logger;
     private int PRICE_BET_COST = 250;
-    private int PRICE_BET_DAYS_MARGIN = 3;
+    private int PRICE_BET_DAYS_MARGIN = 2;
     public BetController(AppDbContext dbContext, ICustomLogger customLogger)
     {
       _dbContext = dbContext;
@@ -166,10 +166,10 @@ namespace BetsTrading_Service.Controllers
           
           if (user == null) throw new Exception("Unexistent user!");
           if (user.points < PRICE_BET_COST) throw new Exception("Not enough points!");
-          if (priceBetRequest.end_date < DateTime.UtcNow.AddDays(PRICE_BET_DAYS_MARGIN)) throw new Exception("Not enough time!");
+          if (priceBetRequest.end_date < DateTime.UtcNow.AddDays(PRICE_BET_DAYS_MARGIN)) throw new NotEnoughTimeException("Not enough time!");
 
           var newPriceBet = new PriceBet(user_id: priceBetRequest.user_id!, ticker: priceBetRequest.ticker!, 
-                                  price_bet: priceBetRequest.price_bet, margin: priceBetRequest.margin, end_date: priceBetRequest.end_date);
+                                  price_bet: priceBetRequest.price_bet, margin: priceBetRequest.margin, end_date: priceBetRequest.end_date);  
 
           if (newPriceBet != null)
           {
@@ -182,6 +182,12 @@ namespace BetsTrading_Service.Controllers
           }
 
           throw new Exception("Unknown error");
+        }
+        catch (NotEnoughTimeException ex)
+        {
+          await transaction.RollbackAsync();
+          _logger.Log.Warning("[WARN] :: NewPriceBet :: Not enough time for price bet: {0}", ex.Message);
+          return StatusCode(410, new { Message = "Not enough time", Error = ex.Message });
         }
         catch (Exception ex)
         {
@@ -314,4 +320,10 @@ namespace BetsTrading_Service.Controllers
       }
     }
   }
+
+  public class NotEnoughTimeException : Exception
+  {
+    public NotEnoughTimeException(string message) : base(message) { }
+  }
+
 }
