@@ -163,10 +163,13 @@ namespace BetsTrading_Service.Controllers
         try
         {
           var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.id == priceBetRequest.user_id);
-          
+          var existingBet = await _dbContext.PriceBets.FirstOrDefaultAsync(pb => pb.ticker == priceBetRequest.ticker && pb.end_date == priceBetRequest.end_date);
+
+
           if (user == null) throw new Exception("Unexistent user!");
-          if (user.points < PRICE_BET_COST) throw new Exception("Not enough points!");
-          if (priceBetRequest.end_date < DateTime.UtcNow.AddDays(PRICE_BET_DAYS_MARGIN)) throw new NotEnoughTimeException("Not enough time!");
+          if (user.points < PRICE_BET_COST) throw new BetException( "NO POINTS");
+          if (existingBet != null) throw new BetException("EXISTING BET");
+          if (priceBetRequest.end_date < DateTime.UtcNow.AddDays(PRICE_BET_DAYS_MARGIN)) throw new BetException("NO TIME");
 
           var newPriceBet = new PriceBet(user_id: priceBetRequest.user_id!, ticker: priceBetRequest.ticker!, 
                                   price_bet: priceBetRequest.price_bet, margin: priceBetRequest.margin, end_date: priceBetRequest.end_date);  
@@ -183,11 +186,39 @@ namespace BetsTrading_Service.Controllers
 
           throw new Exception("Unknown error");
         }
-        catch (NotEnoughTimeException ex)
+        catch (BetException ex)
         {
-          await transaction.RollbackAsync();
-          _logger.Log.Warning("[WARN] :: NewPriceBet :: Not enough time for price bet: {0}", ex.Message);
-          return StatusCode(410, new { Message = "Not enough time", Error = ex.Message });
+          if (ex.Message == "NO TIME")
+          {
+            await transaction.RollbackAsync();
+            _logger.Log.Warning("[WARN] :: NewPriceBet :: Not enough time for price bet: {0}", ex.Message);
+            return StatusCode(410, new { Message = "Not enough time", Error = ex.Message });
+
+          }
+
+          if (ex.Message == "NO POINTS")
+          {
+            await transaction.RollbackAsync();
+            _logger.Log.Warning("[WARN] :: NewPriceBet :: Not enough points for price bet: {0}", ex.Message);
+            return StatusCode(420, new { Message = "Not enough points", Error = ex.Message });
+
+          }
+
+          if (ex.Message == "EXISTING BET")
+          {
+            await transaction.RollbackAsync();
+            _logger.Log.Warning("[WARN] :: NewPriceBet :: Already-existing exact same price bet: {0}", ex.Message);
+            return StatusCode(430, new { Message = "Already existing bet", Error = ex.Message });
+
+          }
+          else
+          {
+            await transaction.RollbackAsync();
+            _logger.Log.Error("[ERR] :: NewPriceBet :: Unknown exception: ", ex.Message);
+            return StatusCode(400, new { Message = "Unknown exception", Error = ex.Message });
+
+          }
+
         }
         catch (Exception ex)
         {
@@ -321,9 +352,9 @@ namespace BetsTrading_Service.Controllers
     }
   }
 
-  public class NotEnoughTimeException : Exception
+  public class BetException : Exception
   {
-    public NotEnoughTimeException(string message) : base(message) { }
+    public BetException(string msg) : base(msg) { }
   }
 
 }
