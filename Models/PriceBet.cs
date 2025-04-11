@@ -7,6 +7,7 @@
       this.user_id = user_id;
       this.ticker = ticker;
       this.price_bet = price_bet;
+      this.margin = margin;
       this.paid = false;
       this.bet_date = DateTime.Now.ToUniversalTime();
       this.end_date = end_date;

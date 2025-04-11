@@ -13,8 +13,13 @@ namespace BetsTrading_Service.Controllers
   {
     private readonly AppDbContext _dbContext;
     private readonly ICustomLogger _logger;
-    private int PRICE_BET_COST = 250;
+    private int PRICE_BET_COST_0_MARGIN = 200;
+    private int PRICE_BET_COST_1_MARGIN = 350;
+    private int PRICE_BET_COST_5_MARGIN = 500;
+    private int PRICE_BET_COST_7_MARGIN = 800;
+    private int PRICE_BET_COST_10_MARGIN = 1500;
     private int PRICE_BET_DAYS_MARGIN = 2;
+
     public BetController(AppDbContext dbContext, ICustomLogger customLogger)
     {
       _dbContext = dbContext;
@@ -164,10 +169,10 @@ namespace BetsTrading_Service.Controllers
         {
           var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.id == priceBetRequest.user_id);
           var existingBet = await _dbContext.PriceBets.FirstOrDefaultAsync(pb => pb.ticker == priceBetRequest.ticker && pb.end_date == priceBetRequest.end_date);
-
+          int betCost = GetBetCostFromMargin(priceBetRequest.margin);
 
           if (user == null) throw new Exception("Unexistent user!");
-          if (user.points < PRICE_BET_COST) throw new BetException( "NO POINTS");
+          if (user.points < betCost) throw new BetException( "NO POINTS");
           if (existingBet != null) throw new BetException("EXISTING BET");
           if (priceBetRequest.end_date < DateTime.UtcNow.AddDays(PRICE_BET_DAYS_MARGIN)) throw new BetException("NO TIME");
 
@@ -177,10 +182,10 @@ namespace BetsTrading_Service.Controllers
           if (newPriceBet != null)
           {
             _dbContext.PriceBets.Add(newPriceBet);
-            user.points -= PRICE_BET_COST;
+            user.points -= betCost;
             await _dbContext.SaveChangesAsync();
             await transaction.CommitAsync();
-            _logger.Log.Information("[INFO] :: NewPriceBet :: Price-bet created successfully for user: {0}", priceBetRequest.user_id);
+            _logger.Log.Information("[INFO] :: NewPriceBet :: Exact-price bet created successfully for user {0} on ticker {1}", priceBetRequest.user_id, priceBetRequest.ticker);
             return Ok(new { });
           }
 
@@ -350,6 +355,31 @@ namespace BetsTrading_Service.Controllers
         }
       }
     }
+
+    #region Private Methods
+    private int GetBetCostFromMargin(double margin)
+    {
+      switch(margin)
+      {
+        case 0.0:
+          return PRICE_BET_COST_0_MARGIN;
+        case 0.01:
+          return PRICE_BET_COST_1_MARGIN;
+        case 0.05:
+          return PRICE_BET_COST_5_MARGIN;
+        case 0.075:
+          return PRICE_BET_COST_7_MARGIN;
+        case 0.1:
+          return PRICE_BET_COST_10_MARGIN;
+        default: 
+          return PRICE_BET_COST_0_MARGIN;
+      }
+    }
+
+    #endregion
+
+
+
   }
 
   public class BetException : Exception
