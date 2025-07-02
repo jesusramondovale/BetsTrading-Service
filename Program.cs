@@ -17,7 +17,7 @@ public class Program
     RollingInterval loggingInterval = RollingInterval.Day;
 
     ICustomLogger customLogger = new CustomLogger(new LoggerConfiguration()
-        .MinimumLevel.Debug()
+        .MinimumLevel.Information()
         .WriteTo.File(logPath, rollingInterval: loggingInterval)
         .CreateLogger());
 
@@ -44,7 +44,8 @@ public class Program
       builder.Services.AddTransient<AuthController>();
       builder.Services.AddTransient<InfoController>();
       builder.Services.AddTransient<FinancialAssetsController>();
-      builder.Services.AddScoped<Updater>(); 
+      builder.Services.AddScoped<Updater>();
+      builder.Services.AddHostedService<OddsAdjusterService>();
       builder.Services.AddHostedService<UpdaterHostedService>();
       builder.Services.AddSingleton<FirebaseNotificationService>();
 

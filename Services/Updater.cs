@@ -190,75 +190,88 @@ namespace BetsTrading_Service.Services
 
           foreach (var asset in financialAssets)
           {
-            if (asset.close.Count < 10) continue;
+            if (asset.close == null || asset.close.Count < 30)
+              continue;
 
-            double lastClose = asset.close[0];
-            var recentCloses = asset.close.Take(10).ToList();
-            double avg = recentCloses.Average();
-            double stdDev = Math.Sqrt(recentCloses.Average(v => Math.Pow(v - avg, 2)));
-            bool isUptrend = lastClose > avg;
+            var closes = asset.close.Take(30).ToList();
+            var highs = asset.daily_max.Take(30).ToList();
+            var lows = asset.daily_min.Take(30).ToList();
 
-            
-            double marginPct = Math.Max(5, stdDev / lastClose * 100); // Porcentaje, ej: 6.2%
-            double marginAbs = lastClose * (marginPct / 100); // Valor real
-            
-            var betsWithZones = (from b in _dbContext.Bet
-                                 join bz in _dbContext.BetZones on b.bet_zone equals bz.id
-                                 where b.ticker == asset.ticker
-                                 select new { b.bet_amount, bz.target_value }).ToList();
+            double lastClose = closes[0];
+            double avgClose = closes.Average();
+            double stdDev = Math.Sqrt(closes.Average(c => Math.Pow(c - avgClose, 2)));
+            double maxHigh = highs.Max();
+            double minLow = lows.Min();
+            double priceRange = maxHigh - minLow;
 
-            double volumeAbove = betsWithZones.Where(b => b.target_value > lastClose).Sum(b => b.bet_amount);
-            double volumeBelow = betsWithZones.Where(b => b.target_value < lastClose).Sum(b => b.bet_amount);
-            double volumeMiddle = betsWithZones.Where(b => Math.Abs(b.target_value - lastClose) <= marginAbs).Sum(b => b.bet_amount);
-                       
-            double oddsAbove = Math.Max((volumeBelow + 1) / (volumeAbove + 1), 1.2);
-            double oddsBelow = Math.Max((volumeAbove + 1) / (volumeBelow + 1), 1.2);
-            double oddsMiddle = Math.Max((volumeAbove + volumeBelow + 2) / (volumeMiddle + 1), 1.5);
+            // Tendencia por regresión lineal
+            double slope = CalculateLinearRegressionSlope(closes);
+            string trend = slope > stdDev * 0.02 ? "uptrend" :
+                           slope < -stdDev * 0.02 ? "downtrend" : "sideways";
 
-            if (isUptrend) oddsAbove *= 0.95;
-            else oddsBelow *= 0.95;
+            // Definir límites exactos de zonas
+            double zoneHeight = priceRange / 3.0;
 
-            
-            double upperTarget = lastClose + marginAbs;
-            double lowerTarget = lastClose - marginAbs;
+            double lowLow = minLow;
+            double lowHigh = lowLow + zoneHeight;
 
-            double middleMarginPct = (marginAbs / lastClose) * 100; // margen real de la zona intermedia
-            double outerMarginPct = ((upperTarget - lastClose) * 2 / upperTarget) * 100; // para que acabe donde empieza la media
+            double midLow = lowHigh;
+            double midHigh = midLow + zoneHeight;
 
-            
+            double highLow = midHigh;
+            double highHigh = maxHigh;
+
+            // Calcular targets (centros) y márgenes
+            double targetLow = (lowLow + lowHigh) / 2.0;
+            double targetMid = (midLow + midHigh) / 2.0;
+            double targetHigh = (highLow + highHigh) / 2.0;
+
+            double marginLow = (lowHigh - lowLow) / targetLow * 100.0;
+            double marginMid = (midHigh - midLow) / targetMid * 100.0;
+            double marginHigh = (highHigh - highLow) / targetHigh * 100.0;
+
+            // Calcular cuotas estimadas
+            double oddsLow = EstimateOdds(targetLow, lastClose, stdDev, trend, "low");
+            double oddsMid = EstimateOdds(targetMid, lastClose, stdDev, trend, "mid");
+            double oddsHigh = EstimateOdds(targetHigh, lastClose, stdDev, trend, "high");
+
+            DateTime start = DateTime.Now.AddDays(1);
+            DateTime end = DateTime.Now.AddDays(5);
+
+            // Zona inferior
             _dbContext.BetZones.Add(new BetZone(
               asset.ticker!,
-              lowerTarget,
-              outerMarginPct,
-              DateTime.Now.AddDays(1),
-              DateTime.Now.AddDays(4),
-              Math.Round(oddsBelow, 2)
+              targetLow,
+              Math.Round(marginLow, 2),
+              start,
+              end,
+              Math.Round(oddsLow, 2)
             ));
 
-            
+            // Zona intermedia
             _dbContext.BetZones.Add(new BetZone(
               asset.ticker!,
-              lastClose,
-              middleMarginPct,
-              DateTime.Now.AddDays(1),
-              DateTime.Now.AddDays(4),
-              Math.Round(oddsMiddle, 2)
+              targetMid,
+              Math.Round(marginMid, 2),
+              start,
+              end,
+              Math.Round(oddsMid, 2)
             ));
 
-            
+            // Zona superior
             _dbContext.BetZones.Add(new BetZone(
               asset.ticker!,
-              upperTarget,
-              outerMarginPct,
-              DateTime.Now.AddDays(1),
-              DateTime.Now.AddDays(4),
-              Math.Round(oddsAbove, 2)
+              targetHigh,
+              Math.Round(marginHigh, 2),
+              start,
+              end,
+              Math.Round(oddsHigh, 2)
             ));
           }
 
           _dbContext.SaveChanges();
           transaction.Commit();
-          _logger.Log.Information("[Updater] :: CreateBets() completed successfully!");
+          _logger.Log.Information("[Updater] :: CreateBets() completed successfully with exact margins.");
         }
         catch (Exception ex)
         {
@@ -267,6 +280,49 @@ namespace BetsTrading_Service.Services
         }
       }
     }
+
+
+
+    private double CalculateLinearRegressionSlope(List<double> data)
+    {
+      int n = data.Count;
+      double sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+
+      for (int i = 0; i < n; i++)
+      {
+        sumX += i;
+        sumY += data[i];
+        sumXY += i * data[i];
+        sumX2 += i * i;
+      }
+
+      double numerator = n * sumXY - sumX * sumY;
+      double denominator = n * sumX2 - sumX * sumX;
+
+      return denominator == 0 ? 0 : numerator / denominator;
+    }
+
+    private double EstimateOdds(double target, double current, double stdDev, string trend, string zone)
+    {
+      double distance = Math.Abs(current - target);
+      double relativeRisk = distance / stdDev;
+
+      double baseOdds = zone switch
+      {
+        "mid" => 1.8,
+        "low" => 2.0,
+        "high" => 2.0,
+        _ => 2.0
+      };
+
+      if (zone == "low" && trend == "uptrend") baseOdds += 0.4;
+      if (zone == "high" && trend == "downtrend") baseOdds += 0.4;
+      if (zone == "low" && trend == "downtrend") baseOdds -= 0.2;
+      if (zone == "high" && trend == "uptrend") baseOdds -= 0.2;
+
+      return Math.Max(1.01, baseOdds + relativeRisk * 0.3);
+    }
+
 
     public void RemoveOldBets()
     {
@@ -544,9 +600,10 @@ namespace BetsTrading_Service.Services
     #endregion
 
     #region Refresh odds
+    //Called from OddsAdjusterService.cs:41
     public void RefreshTargetOdds()
     {
-      _logger.Log.Information("[Updater] :: RefreshTargetOdds() called!");
+      _logger.Log.Debug("[Updater] :: RefreshTargetOdds() called!");
 
       using (var transaction = _dbContext.Database.BeginTransaction())
       {
@@ -583,7 +640,7 @@ namespace BetsTrading_Service.Services
                 ? 2.5
                 : (oppositeVolume / z.Volume) * 0.99;
 
-              z.Zone.target_odds = Math.Round(odds, 2);
+              z.Zone.target_odds = Math.Max(Math.Round(odds, 2),1.1);
               _dbContext.BetZones.Update(z.Zone);
 
               _logger.Log.Debug("[Updater] :: RefreshTargetOdds() :: ZONE {0} updated: volume={1}, odd={2}",
@@ -906,9 +963,8 @@ namespace BetsTrading_Service.Services
         _assetsTimer = new Timer(ExecuteUpdateAssets!, null, TimeSpan.FromSeconds(0), TimeSpan.FromDays(1));
         _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromSeconds(3615), TimeSpan.FromDays(1));
         _betsTimer = new Timer(ExecuteCheckBets!, null, TimeSpan.FromSeconds(3620), TimeSpan.FromDays(1));
-        _createNewBetsTimer = new Timer(ExecuteCleanAndCreateBets!, null, TimeSpan.FromSeconds(3630), TimeSpan.FromDays(3));
-        _refreshOddsTimer= new Timer(ExecuteRefreshOdds!, null, TimeSpan.FromSeconds(0), TimeSpan.FromSeconds(10));
-#endif
+        _createNewBetsTimer = new Timer(ExecuteCleanAndCreateBets!, null, TimeSpan.FromSeconds(3630), TimeSpan.FromDays(4));
+      #endif
 
       return Task.CompletedTask;
     }
@@ -957,16 +1013,6 @@ namespace BetsTrading_Service.Services
         var updaterService = scopedServices.GetRequiredService<Updater>();
         _customLogger.Log.Information("[UpdaterHostedService] :: Executing TrendUpdater service.");
         updaterService.UpdateTrends();
-      }
-    }
-    private void ExecuteRefreshOdds(object state)
-    {
-      using (var scope = _serviceProvider.CreateScope())
-      {
-        var scopedServices = scope.ServiceProvider;
-        var updaterService = scopedServices.GetRequiredService<Updater>();
-        _customLogger.Log.Information("[UpdaterHostedService] :: Executing RefreshOdds service.");
-        updaterService.RefreshTargetOdds();
       }
     }
     public Task StopAsync(CancellationToken cancellationToken)
