@@ -51,12 +51,15 @@ namespace BetsTrading_Service.Controllers
           {
             double tmpAssetDailyGain = (tmpAsset.current - tmpAsset.close[1])/ tmpAsset.close[1];
             var tmpBetZone = await _dbContext.BetZones.FirstOrDefaultAsync(bz => bz.id == bet.bet_zone);
+            
             TimeSpan timeMargin = (TimeSpan)(tmpBetZone!.end_date - tmpBetZone!.start_date)!;
 
             betDTOs.Add(new BetDTO(id: bet.id, user_id: userInfoRequest.id!, ticker: bet.ticker, name: tmpAsset!.name!,
-              bet_amount: bet.bet_amount, daily_gain: tmpAssetDailyGain, origin_value: bet.origin_value, current_value: tmpAsset.current,
+              bet_amount: bet.bet_amount, daily_gain: tmpAssetDailyGain, origin_value: bet.origin_value, tmpAsset.current,
               target_value: tmpBetZone.target_value, target_margin: tmpBetZone.bet_margin, target_date: tmpBetZone.start_date, end_date: tmpBetZone.end_date,
-              target_odds: tmpBetZone.target_odds, target_won: bet.target_won, icon_path: tmpAsset.icon!,
+              // Get odds from original bet confirmation, not current ones
+              target_odds: bet.origin_odds, 
+              target_won: bet.target_won, icon_path: tmpAsset.icon!,
               type: tmpBetZone.type, date_margin: timeMargin.Days, bet_zone: bet.bet_zone));
 
           }
@@ -91,7 +94,7 @@ namespace BetsTrading_Service.Controllers
             throw new Exception("Not enough points");
 
           var newBet = new Bet(user_id: betRequest.user_id!, ticker: betRequest.ticker!, bet_amount: betRequest.bet_amount, 
-                               origin_value: betRequest.origin_value, target_value: betZone!.target_value, 
+                               origin_value: betRequest.origin_value, origin_odds: betZone.target_odds, target_value: betZone!.target_value, 
                                target_margin: betZone.bet_margin, target_won: false, finished: false, paid: false, bet_zone: betRequest.bet_zone);
 
           if (newBet != null)
@@ -262,22 +265,37 @@ namespace BetsTrading_Service.Controllers
     }
 
     [HttpPost("GetBetZone")]
-    public async Task<IActionResult> GetBetZone([FromBody] integerIdRequest betZoneId)
+    public async Task<IActionResult> GetBetZone([FromBody] integerIdRequest betID)
     {
-
+      
       try
       {
-        var betZone = await _dbContext.BetZones.FirstOrDefaultAsync(bz => bz.id == betZoneId.id);
-
-        if (null != betZone)
+        double origin_odds = 1.1;
+        var bet = await _dbContext.Bet.FirstOrDefaultAsync(b => b.id == betID.id);
+        if (bet != null)
         {
-          _logger.Log.Information("[INFO] :: GetBetZone :: Success on ticker: {msg}", betZoneId.id);
-          return Ok(new { bets = new List<BetZone> { betZone } });
+          var betZone = await _dbContext.BetZones.FirstOrDefaultAsync(bz => bz.id == bet.bet_zone);
+          var origin_bet = await _dbContext.Bet.FirstOrDefaultAsync(b => b.bet_zone == betID.id);
+          if (origin_bet == null)
+          {
+            origin_odds = bet.origin_odds;
+          }
+          if (null != betZone)
+          {
+            _logger.Log.Information("[INFO] :: GetBetZone :: Success on bet ID: {msg}", betID.id);
+            return Ok(new { bets = new List<BetZone> { new BetZone(betZone.ticker, betZone.target_value, betZone.bet_margin,
+                                                            betZone.start_date, betZone.end_date, origin_odds) } });
+          }
+          else
+          {
+            _logger.Log.Warning("[INFO] :: GetBetZone :: Bet Zone doesn't exist!");
+            return NotFound(new { Message = "Bet Zone doesn't exist" });
+          }
         }
         else
         {
-          _logger.Log.Warning("[INFO] :: GetBetZone :: Bet not found for ID: {msg}", betZoneId.id);
-          return NotFound(new { Message = "No bets found for this ticker" });
+          _logger.Log.Warning("[INFO] :: GetBetZone :: Bet not found for ID: {msg}", betID.id);
+          return NotFound(new { Message = "Bet not found for ID" });
         }
       }
       catch (Exception ex)
