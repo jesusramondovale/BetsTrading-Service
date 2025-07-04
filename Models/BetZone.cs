@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore.Metadata.Conventions;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 
 namespace BetsTrading_Service.Models
 {
@@ -15,7 +16,10 @@ namespace BetsTrading_Service.Models
     public int type{ get; set; }
     public bool active { get; set; }
 
+    public BetZone() { }
 
+
+    [JsonConstructor]
     public BetZone(int id, string ticker, double target_value, double bet_margin, DateTime start_date, DateTime end_date, double target_odds, int type)
     {
       this.id = id;
