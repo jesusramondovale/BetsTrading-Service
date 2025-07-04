@@ -14,7 +14,7 @@ namespace BetsTrading_Service.Models
 
     // Full constructor
     public Bet(string user_id , string ticker,
-                      double bet_amount, double origin_value,
+                      double bet_amount, double origin_value, double origin_odds,
                       double target_value, double target_margin,
                       bool target_won, bool finished, bool paid, int bet_zone) 
     
@@ -23,6 +23,7 @@ namespace BetsTrading_Service.Models
       this.ticker = ticker;
       this.bet_amount = bet_amount;
       this.origin_value = origin_value;
+      this.origin_odds = origin_odds;
       this.target_won = target_won;
       this.finished = finished;
       this.paid = paid;
@@ -35,6 +36,7 @@ namespace BetsTrading_Service.Models
     public string ticker { get;  set; }
     public double bet_amount{ get;  set; }
     public double origin_value { get;  set; }
+    public double origin_odds { get; set; }
     public bool target_won { get; set; }
     public bool finished { get; set; }
     public bool paid { get; set; }
