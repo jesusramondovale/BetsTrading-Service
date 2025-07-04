@@ -72,17 +72,17 @@ public class Program
       var app = builder.Build();
       AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
-#if DEBUG
+      #if DEBUG
         customLogger.Log.Warning("[PROGRAM] :: Debug mode! Using SwaggerUI and Hsts");
-
-      
         app.UseSwagger();
         app.UseSwaggerUI();
                 
-#endif
+      #endif
 
-      // Common middleware
-      app.UseIpRateLimiting();
+     // Common middleware
+      #if RELEASE
+        app.UseIpRateLimiting();
+      #endif
       app.UseResponseCompression();
       app.UseHttpsRedirection();
       app.UseAuthorization();
