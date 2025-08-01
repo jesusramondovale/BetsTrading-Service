@@ -30,30 +30,30 @@ namespace BetsTrading_Service.Controllers
       return await _context.FinancialAssets.ToListAsync();
     }
 
-    // GET: api/FinancialAssets/ByGroup/{group}
-    [HttpGet("ByGroup/{group}")]
-    public async Task<ActionResult<IEnumerable<FinancialAsset>>> GetFinancialAssetsByGroup(string group)
+    // POST: api/FinancialAssets/ByGroup/
+    [HttpPost("ByGroup")]
+    public async Task<ActionResult<IEnumerable<FinancialAsset>>> GetFinancialAssetsByGroup([FromBody] idRequest group)
     {
       
       var financialAssets = await _context.FinancialAssets
-        .Where(fa => fa.group == group).OrderByDescending(fa => fa.current)
+        .Where(fa => fa.group == group.id).OrderByDescending(fa => fa.current)
         .ToListAsync();
 
       if (financialAssets == null)
       {
-        _logger.Log.Information("[FINANCIAL] :: ByGroup :: Not found . Group: {grp}", group);
+        _logger.Log.Information("[FINANCIAL] :: ByGroup :: Not found . Group: {grp}", group.id);
         return NotFound();
       }
-      _logger.Log.Information("[FINANCIAL] :: ByGroup :: Success. Assets group : {msg}", group);
+      _logger.Log.Information("[FINANCIAL] :: ByGroup :: Success. Assets group : {msg}", group.id);
       return financialAssets;                 
     }
 
-    // GET: api/FinancialAssets/ByCountry/{country}
-    [HttpGet("ByCountry/{country}")]
-    public async Task<ActionResult<IEnumerable<FinancialAsset>>> GetFinancialAssetsByCountry(string country)
+    // POST: api/FinancialAssets/ByCountry/
+    [HttpPost("ByCountry")]
+    public async Task<ActionResult<IEnumerable<FinancialAsset>>> GetFinancialAssetsByCountry([FromBody] idRequest country)
     {    
       var financialAssets = await _context.FinancialAssets
-        .Where(fa => fa.country == country)
+        .Where(fa => fa.country == country.id)
         .ToListAsync();
 
       if (financialAssets == null)
@@ -61,12 +61,12 @@ namespace BetsTrading_Service.Controllers
         _logger.Log.Information("[FINANCIAL] :: ByCountry :: Not found . Group: {grp}", country);
         return NotFound();
       }
-      _logger.Log.Information("[FINANCIAL] :: ByCountry :: Success. Assets country : {msg}", country);
+      _logger.Log.Information("[FINANCIAL] :: ByCountry :: Success. Assets country : {msg}", country.id);
       return financialAssets;
 
     }
 
-    // GET: api/FinancialAssets/FetchCandles
+    // POST: api/FinancialAssets/FetchCandles
     [HttpPost("FetchCandles")]
     public async Task<ActionResult<FinancialAsset>> FetchCandlesAsync([FromBody] idRequest symbol)
     {
