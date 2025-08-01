@@ -20,6 +20,12 @@ namespace BetsTrading_Service.Controllers
 
     }
 
+
+    /** TODO: Delete AddCoins endpoint when using real ADMOB_TOKEN with SSV : 
+     * All its business logic goes into -> PaymentsController:59 (HTTP GET VerifyAd) which
+     * will be called by GoogleAdmob system automatically when user finishes watching real ads
+     */
+
     [HttpPost("AddCoins")]
     public async Task<IActionResult> AddCoins([FromBody] addCoinsRequest coinsRequest)
     {
