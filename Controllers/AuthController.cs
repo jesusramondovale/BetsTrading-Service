@@ -330,7 +330,7 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
-    [HttpPost("Verify")]
+    [HttpPost("VerifyID")]
     public async Task<IActionResult> Verify([FromBody] idCardRequest idCardRequest)
     {
       using (var transaction = await _dbContext.Database.BeginTransactionAsync())
@@ -361,6 +361,7 @@ namespace BetsTrading_Service.Controllers
         }
       }
     }
+
 
 
   }
