@@ -41,7 +41,11 @@
         {
           Amount = req.Amount,
           Currency = req.Currency,
-          PaymentMethodTypes = new List<string> { "card" },
+          AutomaticPaymentMethods = new PaymentIntentAutomaticPaymentMethodsOptions
+          {
+            Enabled = true
+          },
+          
           Metadata = new Dictionary<string, string>
                 {
                     { "userId", req.UserId },
