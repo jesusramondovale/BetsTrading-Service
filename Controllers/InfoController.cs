@@ -3,6 +3,7 @@ using BetsTrading_Service.Interfaces;
 using BetsTrading_Service.Models;
 using BetsTrading_Service.Requests;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace BetsTrading_Service.Controllers
 {
@@ -66,45 +67,73 @@ namespace BetsTrading_Service.Controllers
     [HttpPost("Favorites")]
     public IActionResult Favorites([FromBody] idRequest userId)
     {
-
       try
       {
+        var favorites = _dbContext.Favorites
+            .AsNoTracking()
+            .Where(u => u.user_id == userId.id)
+            .ToList();
 
-        var favorites = _dbContext.Favorites.Where(u => u.user_id == userId.id).ToList();
-
-        if (favorites != null && favorites.Count != 0) // There are favorites
-        {
-          List<FavoriteDTO> favsDTO = new List<FavoriteDTO>();
-          foreach (var fav in favorites)
-          {
-            var tmpAsset = _dbContext.FinancialAssets.Where(fa => fa.ticker == fav.ticker).FirstOrDefault();
-            
-            favsDTO.Add(new FavoriteDTO(id: fav.id, name: tmpAsset!.name, icon: tmpAsset.icon!, 
-              daily_gain: ((tmpAsset.current - tmpAsset.close[1]) / tmpAsset.close[1])*100, close: tmpAsset.close[1], current: tmpAsset.current, user_id: userId.id!, ticker: fav.ticker));
-          }
-
-          _logger.Log.Information("[INFO] :: Favorites :: success to ID: {msg}", userId.id);
-          return Ok( new
-          {
-            Message = "Favorites SUCCESS",
-            Favorites = favsDTO
-
-          }); ;
-
-        }
-        else // No Favorites
+        if (favorites == null || favorites.Count == 0)
         {
           _logger.Log.Warning("[INFO] :: Favorites :: Empty list of Favorites to userID: {msg}", userId.id);
           return NotFound(new { Message = "ERROR :: No Favorites!" });
         }
+
+        var favsDTO = new List<FavoriteDTO>();
+
+        foreach (var fav in favorites)
+        {
+          var tmpAsset = _dbContext.FinancialAssets
+              .AsNoTracking()
+              .FirstOrDefault(fa => fa.ticker == fav.ticker);
+
+          // Comprobar si hay datos y que close tenga al menos 2 elementos
+          if (tmpAsset == null || tmpAsset.close == null)
+            continue;
+
+          var dailyGain = 0.0;
+          var prevClose = 0.0;
+          
+          if (tmpAsset.close.Count >= 2)
+          {
+            prevClose = tmpAsset.close[1];
+            dailyGain = ((tmpAsset.current - prevClose) / prevClose) * 100;
+          }
+          else
+          {
+            //Fake increment 5% on assets with no data
+            prevClose = tmpAsset.current * 0.95;
+            dailyGain = ((tmpAsset.current - prevClose) / prevClose) * 100;
+          }
+
+          favsDTO.Add(new FavoriteDTO(
+              id: fav.id,
+              name: tmpAsset.name,
+              icon: tmpAsset.icon,
+              daily_gain: dailyGain,
+              close: prevClose,
+              current: tmpAsset.current,
+              user_id: userId.id!,
+              ticker: fav.ticker
+          ));
+        }
+
+        _logger.Log.Information("[INFO] :: Favorites :: success to ID: {msg}", userId.id);
+
+        return Ok(new
+        {
+          Message = "Favorites SUCCESS",
+          Favorites = favsDTO
+        });
       }
       catch (Exception ex)
       {
         _logger.Log.Error("[INFO] :: Favorites :: Internal server error: {msg}", ex.Message);
         return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
-
     }
+
 
     [HttpPost("NewFavorite")]
     public async Task<IActionResult> NewFavorite([FromBody] newFavoriteRequest newFavRequest)
