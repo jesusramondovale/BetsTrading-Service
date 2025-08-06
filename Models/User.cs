@@ -79,6 +79,7 @@
     public DateTime? last_password_change { get; private set; }
     public string? profile_pic { get; set; }
     public double points{ get; set; }
+    public double pending_balance { get; set; }
 
   }
 

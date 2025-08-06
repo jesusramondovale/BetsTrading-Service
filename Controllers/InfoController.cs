@@ -4,6 +4,7 @@ using BetsTrading_Service.Models;
 using BetsTrading_Service.Requests;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace BetsTrading_Service.Controllers
 {
@@ -331,6 +332,84 @@ namespace BetsTrading_Service.Controllers
         }
       }
     }
+
+
+    [HttpPost("PendingBalance")]
+    public IActionResult PendingBalance([FromBody] idRequest request)
+    {
+      try
+      {
+        var user = _dbContext.Users.FirstOrDefault(u => u.id == request.id);
+
+        if (user == null)
+          return NotFound(new { Message = "User not found" });
+
+        return Ok(new { Balance = user.pending_balance });
+      }
+      catch (Exception ex)
+      {
+        _logger.Log.Error("[INFO] :: PendingBalance :: Error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+    }
+
+
+    [HttpPost("ExchangeOptions")]
+    public IActionResult ExchangeOptions([FromBody] idRequest request)
+    {
+      try
+      {
+        var path = Path.Combine(Directory.GetCurrentDirectory(), $"exchange_options_{request.id}.json");
+
+        if (!System.IO.File.Exists(path))
+          return NotFound(new { Message = "Exchange options file not found" });
+
+        var json = System.IO.File.ReadAllText(path);
+        var parsed = JsonSerializer.Deserialize<List<Dictionary<string, object>>>(json);
+
+        var exchangeOnly = parsed?
+          .Where(item => item.ContainsKey("type") && item["type"]?.ToString() == "exchange")
+          .ToList() ?? new();
+
+        return Ok(exchangeOnly);
+      }
+      catch (Exception ex)
+      {
+        _logger.Log.Error("[INFO] :: ExchangeOptions :: Error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+    }
+
+
+    [HttpPost("BuyOptions")]
+    public IActionResult BuyOptions([FromBody] idRequest request)
+    {
+      try
+      {
+        var path = Path.Combine(Directory.GetCurrentDirectory(), $"exchange_options_{request.id}.json");
+
+        if (!System.IO.File.Exists(path))
+          return NotFound(new { Message = "Exchange options file not found" });
+
+        var json = System.IO.File.ReadAllText(path);
+        var parsed = JsonSerializer.Deserialize<List<Dictionary<string, object>>>(json);
+
+        var buyOnly = parsed?
+          .Where(item => item.ContainsKey("type") && item["type"]?.ToString() == "buy")
+          .ToList() ?? new();
+
+        return Ok(buyOnly);
+      }
+      catch (Exception ex)
+      {
+        _logger.Log.Error("[INFO] :: BuyOptions :: Error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+    }
+
+
+
+
 
   }
 }

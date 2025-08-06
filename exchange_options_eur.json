@@ -1,0 +1,14 @@
+[
+  { "coins": 5000, "euros": 50, "type": "exchange" },
+  { "coins": 10000, "euros": 100, "type": "exchange" },
+  { "coins": 45000, "euros": 450, "type": "exchange" },
+  { "coins": 150000, "euros": 1500, "type": "exchange" },
+  
+  
+  
+  
+  { "euros": 1.99, "coins": 120, "type": "buy" },
+  { "euros": 5.99, "coins": 400, "type": "buy" },
+  { "euros": 10.99, "coins": 1000, "type": "buy" },
+  { "euros": 59.99, "coins": 5000, "type": "buy" }
+]

@@ -2,9 +2,11 @@
 using BetsTrading_Service.Interfaces;
 using BetsTrading_Service.Models;
 using BetsTrading_Service.Requests;
+using Microsoft.AspNetCore.Identity.Data;
 using Microsoft.AspNetCore.Mvc;
-
-
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Microsoft.EntityFrameworkCore;
 
 namespace BetsTrading_Service.Controllers
 {
@@ -24,22 +26,28 @@ namespace BetsTrading_Service.Controllers
     }
 
     [HttpPost("SignIn")]
-    public async Task<IActionResult> SignIn([FromBody] SignUpRequest signUpRequest)
+    public Task<IActionResult> SignIn([FromBody] SignUpRequest req)
     {
-      using (var transaction = await _dbContext.Database.BeginTransactionAsync())
+      return RegisterInternal(req);
+    }
+
+
+    private async Task<IActionResult> RegisterInternal(SignUpRequest signUpRequest)
+    {
+      var transaction = await _dbContext.Database.BeginTransactionAsync();
       {
         try
         {
-          var existingUser = _dbContext.Users
-              .FirstOrDefault(u => u.username == signUpRequest.Username || u.email == signUpRequest.Email);
+          var existingUser = await _dbContext.Users
+              .FirstOrDefaultAsync(u => u.username == signUpRequest.Username || u.email == signUpRequest.Email);
 
           if (existingUser != null)
           {
             return Conflict(new { Message = "Username, email or ID already exists" });
           }
-          
-          string hashedPassword = BCrypt.Net.BCrypt.HashPassword(signUpRequest.Password);
-          
+
+          string hashedPassword = (signUpRequest.Password != null ? BCrypt.Net.BCrypt.HashPassword(signUpRequest.Password) : "nullPassword");
+
           var newUser = new User(
               signUpRequest.Token ?? Guid.NewGuid().ToString(),
               signUpRequest.IdCard ?? "-",
@@ -63,7 +71,6 @@ namespace BetsTrading_Service.Controllers
           _dbContext.Users.Add(newUser);
           await _dbContext.SaveChangesAsync();
           await transaction.CommitAsync();
-
           _logger.Log.Information("[AUTH] :: SignIn :: Success with user ID : {userID}", newUser.id);
           return Ok(new { Message = "Registration successful!", UserId = newUser.id });
         }
@@ -77,7 +84,7 @@ namespace BetsTrading_Service.Controllers
     }
 
     [HttpPost("GoogleQuickRegister")]
-    public IActionResult GoogleQuickRegister(googleSignRequest isGoogledRequest)
+    public async Task<IActionResult> GoogleQuickRegister(googleSignRequest isGoogledRequest)
     {
 
       Console.WriteLine("GoogleQuickRegister() called");
@@ -98,7 +105,7 @@ namespace BetsTrading_Service.Controllers
       signUpRequest.ProfilePic = isGoogledRequest.photoUrl;
       signUpRequest.Birthday = isGoogledRequest.birthday;
       signUpRequest.Country = isGoogledRequest.country;
-      var signInResult = SignIn(signUpRequest);
+      var signInResult = await RegisterInternal(signUpRequest);
 
 
       if (signInResult is OkObjectResult)
@@ -123,6 +130,9 @@ namespace BetsTrading_Service.Controllers
       {
         try
         {
+          string? ip = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault() ?? HttpContext.Connection.RemoteIpAddress?.ToString();
+          var geo = await GetGeoLocationFromIp(ip!);
+
           var user = _dbContext.Users
               .FirstOrDefault(u => u.username == loginRequest.Username || u.email == loginRequest.Username);
 
@@ -136,12 +146,22 @@ namespace BetsTrading_Service.Controllers
               user.is_active = true;
               await _dbContext.SaveChangesAsync();
               await transaction.CommitAsync();
-
-              _logger.Log.Information("[AUTH] :: LogIn :: Success. User ID: {userId}", user.id);
+              _logger.Log.Information("[AUTH] :: LogIn :: Success. User ID: {userId} FROM {city} , {region} , {country} , ISP: {isp}", user.id, geo!.City, geo.RegionName, geo.Country, geo.ISP);
               return Ok(new { Message = "LogIn SUCCESS", UserId = user.id });
             }
             else
             {
+                            
+              if (geo == null)
+              {
+                _logger.Log.Error("[AUTH] :: INCORRECT LOGIN ATTEMPT FOR USER {user} FROM IP {ip}", loginRequest.Username, ip ?? "UNKNOWN");
+              }
+              else
+              {
+                _logger.Log.Error("[AUTH] :: INCORRECT LOGIN ATTEMPT FOR USER {user} FROM IP {ip} -> {city} ,{region} ,{country} , ISP: {isp}",
+                loginRequest.Username, ip ?? "UNKNOWN", geo.City, geo.RegionName, geo.Country, geo.ISP);
+              }
+              
               return BadRequest(new { Message = "incorrectPassword" });
             }
           }
@@ -159,21 +179,61 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
-    [HttpPost("ChangePassword")]
-    public async Task<IActionResult> ChangePassword([FromBody] Requests.LoginRequest changepasswordRequest)
+    [HttpPost("NewPassword")]
+    public async Task<IActionResult> NewPassword([FromBody] Requests.LoginRequest newPasswordRequest)
     {
+
       using (var transaction = await _dbContext.Database.BeginTransactionAsync())
       {
         try
         {
-          var user = _dbContext.Users
-              .FirstOrDefault(u => u.id == changepasswordRequest.Username);
+          string? ip = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault() ?? HttpContext.Connection.RemoteIpAddress?.ToString();
+          var geo = await GetGeoLocationFromIp(ip!);
 
-          if (user != null)
+          var user = _dbContext.Users.FirstOrDefault(u => u.id == newPasswordRequest.Username);
+          if (user == null) return NotFound(new { Message = "User not found" });
+     
+
+          string hashedPassword = BCrypt.Net.BCrypt.HashPassword(newPasswordRequest.Password);
+          user.password = hashedPassword;
+          _dbContext.Users.Update(user);
+          await _dbContext.SaveChangesAsync();
+          await transaction.CommitAsync();
+          _logger.Log.Information("[AUTH] :: NewPassword :: Success. User ID: {userId} FROM -> {city} , {region} , {country} , ISP: {isp}", user.id, geo!.City, geo.RegionName, geo.Country, geo.ISP);
+          return Ok(new { Message = "Password created successfully" });
+
+          
+          
+        }
+        catch (Exception ex)
+        {
+          await transaction.RollbackAsync();
+          _logger.Log.Error("[AUTH] :: ChangePassword :: Internal server error: {msg}", ex.Message);
+          return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+        }
+      }
+    }
+
+    [HttpPost("ChangePassword")]
+    public async Task<IActionResult> ChangePassword([FromBody] Requests.ChangePasswordRequest changepasswordRequest)
+    {
+      if (changepasswordRequest.Current == changepasswordRequest.Password) return BadRequest(new { Message = "New password matches current password" });
+
+      using (var transaction = await _dbContext.Database.BeginTransactionAsync())
+      {
+        try
+        {
+          string? ip = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault() ?? HttpContext.Connection.RemoteIpAddress?.ToString();
+          var geo = await GetGeoLocationFromIp(ip!);
+
+          var user = _dbContext.Users.FirstOrDefault(u => u.id == changepasswordRequest.Username);
+          if (user == null) return NotFound(new { Message = "User not found" });
+
+          if (BCrypt.Net.BCrypt.Verify(changepasswordRequest.Current, user.password))
           {            
-            if (string.IsNullOrWhiteSpace(changepasswordRequest.Password))
+            if (string.IsNullOrWhiteSpace(changepasswordRequest.Password) || changepasswordRequest.Password.Length < 12)
             {
-              return BadRequest(new { Message = "Password cannot be empty" });
+              return BadRequest(new { Message = "Bad new password" });
             }
            
             string hashedPassword = BCrypt.Net.BCrypt.HashPassword(changepasswordRequest.Password);
@@ -181,12 +241,24 @@ namespace BetsTrading_Service.Controllers
             _dbContext.Users.Update(user);
             await _dbContext.SaveChangesAsync();
             await transaction.CommitAsync();
+            _logger.Log.Information("[AUTH] :: ChanePassword :: Success. User ID: {userId} FROM -> {city} , {region} , {country} , ISP: {isp}", user.id, geo!.City, geo.RegionName, geo.Country, geo.ISP);
             return Ok(new { Message = "Password updated successfully" });
 
           }
           else
           {
-            return NotFound(new { Message = "User not found" });
+
+            if (geo == null)
+            {
+              _logger.Log.Error("[AUTH] :: INCORRECT CHANGE PASSWORD ATTEMPT FOR USER {user} FROM IP {ip}", changepasswordRequest.Username, ip ?? "UNKNOWN");
+            }
+            else
+            {
+              _logger.Log.Error("[AUTH] :: INCORRECT CHANGE PASSWORD ATTEMPT FOR USER {user} FROM IP {ip} -> {city} ,{region} ,{country} , ISP: {isp}",
+               changepasswordRequest.Username, ip ?? "UNKNOWN", geo.City, geo.RegionName, geo.Country, geo.ISP);
+            }
+
+            return BadRequest(new { Message = "incorrectPassword" });
           }
         }
         catch (Exception ex)
@@ -198,12 +270,13 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
-
     [HttpPost("GoogleLogIn")]
-    public IActionResult GoogleLogIn([FromBody] Requests.LoginRequest loginRequest)
+    public async Task<IActionResult> GoogleLogIn([FromBody] Requests.LoginRequest loginRequest)
     {    
       try
       {
+        string? ip = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault() ?? HttpContext.Connection.RemoteIpAddress?.ToString();
+        var geo = await GetGeoLocationFromIp(ip!);
         var user = _dbContext.Users
             .FirstOrDefault(u => u.id == loginRequest.Username);
 
@@ -214,7 +287,7 @@ namespace BetsTrading_Service.Controllers
           user.token_expiration = DateTime.UtcNow.AddDays(SESSION_EXP_DAYS);
           user.is_active = true;
           _dbContext.SaveChanges();
-          _logger.Log.Information("[AUTH] :: Google LogIn :: Sucess. User ID: {userId}", user.id);
+          _logger.Log.Information("[AUTH] :: Google LogIn :: Sucess. User ID: {userId} from {city} , {region} , {country}. ISP: {isp}", user.id, geo!.City, geo.RegionName, geo.Country , geo.ISP);
           return Ok(new { Message = "Google LogIn SUCCESS", UserId = user.id });
 
         }
@@ -362,8 +435,39 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
+    public static async Task<IpGeoResponse?> GetGeoLocationFromIp(string ip)
+    {
+      using var http = new HttpClient();
+      var response = await http.GetAsync($"http://ip-api.com/json/{ip}");
 
+      if (!response.IsSuccessStatusCode) return null;
 
+      var json = await response.Content.ReadAsStringAsync();
+
+      try
+      {
+        return JsonSerializer.Deserialize<IpGeoResponse>(json);
+      }
+      catch
+      {
+        return null;
+      }
+    }
+
+    public class IpGeoResponse
+    {
+      [JsonPropertyName("country")]
+      public string? Country { get; set; }
+
+      [JsonPropertyName("regionName")]
+      public string? RegionName { get; set; }
+
+      [JsonPropertyName("city")]
+      public string? City { get; set; }
+
+      [JsonPropertyName("isp")]
+      public string? ISP { get; set; }
+    }
   }
 }
 

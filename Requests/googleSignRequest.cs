@@ -7,11 +7,9 @@ namespace BetsTrading_Service.Requests
   {
 
     [Required]
-    [StringLength(100, MinimumLength = 21)]
     public string? id { get; set; }
 
     [Required]
-    [StringLength(100, MinimumLength = 21)]
     public string? fcm { get; set; }
 
     public DateTime? birthday { get; set; }
@@ -20,15 +18,12 @@ namespace BetsTrading_Service.Requests
     public string? country { get; set; }
 
     [Required]
-    [StringLength(100, MinimumLength = 1)]
     public string? displayName { get; set; }
 
     [Required]
-    [StringLength(100, MinimumLength = 4)]
     public string? email { get; set; }
 
     [Required]
-    [StringLength(100, MinimumLength = 15)]
     public string? photoUrl { get; set; }
 
     public string? serverAuthCode { get; set; }
