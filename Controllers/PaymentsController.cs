@@ -52,8 +52,8 @@
           
           Metadata = new Dictionary<string, string>
                 {
-                    { "userId", req.UserId },
-                    { "coins", req.Coins.ToString() }
+                    { "userId", req.UserId! },
+                    { "coins", req!.Coins.ToString() }
                 }
         };
 
@@ -83,7 +83,7 @@
         if (stripeEvent.Type == "payment_intent.succeeded")
         {
           var intent = stripeEvent.Data.Object as PaymentIntent;
-          var userId = intent.Metadata["userId"];
+          var userId = intent!.Metadata["userId"];
           var coins = double.Parse(intent.Metadata["coins"], System.Globalization.CultureInfo.InvariantCulture);
 
           _logger.Log.Information($"[Stripe] Pago confirmado para {userId} con {coins} coins");
@@ -270,7 +270,7 @@
 
           if (user != null)
           {
-            user.points += double.Parse(reward_amount);
+            user.points += double.Parse(reward_amount!);
             await _dbContext.SaveChangesAsync();
             await transaction.CommitAsync();
 
@@ -343,10 +343,10 @@
 
   public class RetireBalanceRequest
   {
-    public string UserId { get; set; } 
-    public string Password { get; set; }
+    public string? UserId { get; set; } 
+    public string? Password { get; set; }
     public double CurrencyAmount { get; set; }
-    public string Currency { get; set; }
+    public string? Currency { get; set; }
     public double Coins { get; set; }
     
   }
@@ -354,8 +354,8 @@
   public class CreatePaymentIntentRequest
   {
     public int Amount { get; set; }      // céntimos
-    public string Currency { get; set; } // "eur"
-    public string UserId { get; set; }   // viene de Flutter
+    public string? Currency { get; set; } // "eur"
+    public string? UserId { get; set; }   // viene de Flutter
     public double Coins { get; set; }    // cantidad a dar tras pagar
   }
 

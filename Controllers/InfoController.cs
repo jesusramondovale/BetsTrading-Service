@@ -111,7 +111,7 @@ namespace BetsTrading_Service.Controllers
           favsDTO.Add(new FavoriteDTO(
               id: fav.id,
               name: tmpAsset.name,
-              icon: tmpAsset.icon,
+              icon: tmpAsset.icon ?? "noIcon",
               daily_gain: dailyGain,
               close: prevClose,
               current: tmpAsset.current,
