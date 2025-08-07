@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
+using BetsTrading_Service.Services;
 
 namespace BetsTrading_Service.Controllers
 {
@@ -17,12 +18,13 @@ namespace BetsTrading_Service.Controllers
     private const int SESSION_EXP_DAYS= 15;
     private readonly AppDbContext _dbContext;
     private readonly ICustomLogger _logger;
+    private readonly FirebaseNotificationService _firebaseNotificationService;
 
-    public AuthController(AppDbContext dbContext, ICustomLogger customLogger)
+    public AuthController(AppDbContext dbContext, ICustomLogger customLogger, FirebaseNotificationService firebaseNotificationService)
     {
       _dbContext = dbContext;
       _logger = customLogger;      
-     
+      _firebaseNotificationService = firebaseNotificationService;
     }
 
     [HttpPost("SignIn")]
@@ -378,10 +380,29 @@ namespace BetsTrading_Service.Controllers
       {
         try
         {
+
+          string? ip = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault() ?? HttpContext.Connection.RemoteIpAddress?.ToString();
+          var geo = await GetGeoLocationFromIp(ip!);
           var user = _dbContext.Users.FirstOrDefault(u => u.id == tokenRequest.user_id);
 
           if (user != null)
           {
+
+            var oldFcm = user.fcm;
+            
+            if (!string.IsNullOrEmpty(oldFcm) && oldFcm != tokenRequest.fcm_token)
+            {
+              if (geo != null)
+              {
+                _ = _firebaseNotificationService.SendNotificationToUser(oldFcm, "Betrader", "LOGOUT", new() { { "type", "LOGOUT" }, { "city", geo.City! }, { "country", geo.Country! } });
+              }
+              else
+              {
+                _ = _firebaseNotificationService.SendNotificationToUser(oldFcm, "Betrader", "LOGOUT", new() { { "type", "LOGOUT" } });
+              }
+              _logger.Log.Information("[AUTH] :: RefreshFCM :: LogOut for FCM {fcm} of user {user}", oldFcm, user.username);
+            }
+
             user.fcm = tokenRequest.fcm_token!;
             await _dbContext.SaveChangesAsync();
             await transaction.CommitAsync();

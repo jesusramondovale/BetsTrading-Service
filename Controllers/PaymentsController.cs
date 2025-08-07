@@ -117,7 +117,7 @@
       {
         try
         {
-          var user = _dbContext.Users.FirstOrDefault(u => u.id == req.UserId);
+          var user = _dbContext.Users.FirstOrDefault(u => u.fcm == req.fcm && u.id == req.UserId);
           if (user != null)
           {
             if (!BCrypt.Net.BCrypt.Verify(req.Password, user.password))
@@ -156,7 +156,7 @@
           }
           else
           {
-            return NotFound(new { Message = "User not found" });
+            return NotFound(new { Message = "User not found or session expired" });
           }
         }
         catch (Exception ex)
@@ -343,7 +343,8 @@
 
   public class RetireBalanceRequest
   {
-    public string? UserId { get; set; } 
+    public string? UserId { get; set; }
+    public string? fcm{ get; set; }
     public string? Password { get; set; }
     public double CurrencyAmount { get; set; }
     public string? Currency { get; set; }

@@ -84,7 +84,7 @@ namespace BetsTrading_Service.Controllers
         try
         {
           var betZone = await _dbContext.BetZones.FirstOrDefaultAsync(bz => bz.id == betRequest.bet_zone);
-          var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.id == betRequest.user_id);
+          var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.fcm == betRequest.fcm && u.id == betRequest.user_id);
 
           if (betZone == null) 
             throw new Exception("Unexistent bet zone");
@@ -170,11 +170,11 @@ namespace BetsTrading_Service.Controllers
       {
         try
         {
-          var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.id == priceBetRequest.user_id);
+          var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.fcm == priceBetRequest.fcm && u.id == priceBetRequest.user_id);
           var existingBet = await _dbContext.PriceBets.FirstOrDefaultAsync(pb => pb.ticker == priceBetRequest.ticker && pb.end_date == priceBetRequest.end_date);
           int betCost = GetBetCostFromMargin(priceBetRequest.margin);
 
-          if (user == null) throw new Exception("Unexistent user!");
+          if (user == null) throw new Exception("Unexistent user or session expired!");
           if (user.points < betCost) throw new BetException( "NO POINTS");
           if (existingBet != null) throw new BetException("EXISTING BET");
           if (priceBetRequest.end_date < DateTime.UtcNow.AddDays(PRICE_BET_DAYS_MARGIN)) throw new BetException("NO TIME");

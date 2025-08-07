@@ -45,6 +45,7 @@ public class Program
       builder.Services.AddTransient<InfoController>();
       builder.Services.AddTransient<FinancialAssetsController>();
       builder.Services.AddScoped<Updater>();
+      builder.Services.AddScoped<FirebaseNotificationService>();
       builder.Services.AddHostedService<OddsAdjusterService>();
       builder.Services.AddHostedService<UpdaterHostedService>();
       builder.Services.AddSingleton<FirebaseNotificationService>();
