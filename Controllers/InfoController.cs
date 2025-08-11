@@ -14,9 +14,12 @@ namespace BetsTrading_Service.Controllers
   {
     private readonly AppDbContext _dbContext;
     private readonly ICustomLogger _logger;
+    private readonly IWebHostEnvironment _env;
 
-    public InfoController(AppDbContext dbContext, ICustomLogger customLogger)
+
+    public InfoController(IWebHostEnvironment env, AppDbContext dbContext, ICustomLogger customLogger)
     {
+      _env = env;
       _dbContext = dbContext;
       _logger = customLogger;
 
@@ -359,7 +362,7 @@ namespace BetsTrading_Service.Controllers
     {
       try
       {
-        var path = Path.Combine(Directory.GetCurrentDirectory(), $"exchange_options_{request.id}.json");
+        var path = Path.Combine(_env.ContentRootPath, $"exchange_options_{request.id}.json");
 
         if (!System.IO.File.Exists(path))
           return NotFound(new { Message = "Exchange options file not found" });
