@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using BetsTrading_Service.Services;
+using BetsTrading_Service.Locale;
 
 namespace BetsTrading_Service.Controllers
 {
@@ -389,16 +390,18 @@ namespace BetsTrading_Service.Controllers
           {
 
             var oldFcm = user.fcm;
-            
+            string sessionStartedElsewhere = LocalizedTexts.GetTranslationByCountry(user.country, "sessionStartedElsewhere");
+
+
             if (!string.IsNullOrEmpty(oldFcm) && oldFcm != tokenRequest.fcm_token)
             {
               if (geo != null)
               {
-                _ = _firebaseNotificationService.SendNotificationToUser(oldFcm, "Betrader", "LOGOUT", new() { { "type", "LOGOUT" }, { "city", geo.City! }, { "country", geo.Country! } });
+                _ = _firebaseNotificationService.SendNotificationToUser(oldFcm, "Betrader", sessionStartedElsewhere, new() { { "type", "LOGOUT" }, { "city", geo.City! }, { "country", geo.Country! } });
               }
               else
               {
-                _ = _firebaseNotificationService.SendNotificationToUser(oldFcm, "Betrader", "LOGOUT", new() { { "type", "LOGOUT" } });
+                _ = _firebaseNotificationService.SendNotificationToUser(oldFcm, "Betrader", sessionStartedElsewhere, new() { { "type", "LOGOUT" } });
               }
               _logger.Log.Information("[AUTH] :: RefreshFCM :: LogOut for FCM {fcm} of user {user}", oldFcm, user.username);
             }
