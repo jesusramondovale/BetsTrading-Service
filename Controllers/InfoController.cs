@@ -347,6 +347,13 @@ namespace BetsTrading_Service.Controllers
         if (user == null)
           return NotFound(new { Message = "User not found" });
 
+
+        if (user.password == "nullPassword" || user.password.Length == 0)
+        {
+          _logger.Log.Information("[INFO] :: PendingBalance :: Session active but password not set on id {id}", user.id);
+          return StatusCode(StatusCodes.Status201Created, new { Message = "Password not set" });
+        }
+
         return Ok(new { Balance = user.pending_balance });
       }
       catch (Exception ex)

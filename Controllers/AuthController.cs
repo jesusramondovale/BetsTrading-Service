@@ -350,6 +350,13 @@ namespace BetsTrading_Service.Controllers
 
         if (user != null)
         {
+
+          if (user.password == "nullPassword" || user.password.Length == 0)
+          {
+            _logger.Log.Information("[AUTH] :: IsLoggedIn :: Session active but password not set on id {id}", isLoggedRequest.id);
+            return StatusCode(StatusCodes.Status201Created, new { Message = "Password not set" });
+          }
+
           if (user.is_active && user.token_expiration > DateTime.UtcNow)
           {
             _logger.Log.Information("[AUTH] :: IsLoggedIn :: Session active on id {id}", isLoggedRequest.id);
