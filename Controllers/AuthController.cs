@@ -382,7 +382,7 @@ namespace BetsTrading_Service.Controllers
     }
 
     [HttpPost("RefreshFCM")]
-    public async Task<IActionResult> RefreshFCM([FromBody] fcmTokenRequest tokenRequest)
+    public async Task<IActionResult> RefreshFCM([FromBody] tokenRequest tokenRequest)
     {
       using (var transaction = await _dbContext.Database.BeginTransactionAsync())
       {
@@ -400,7 +400,7 @@ namespace BetsTrading_Service.Controllers
             string sessionStartedElsewhere = LocalizedTexts.GetTranslationByCountry(user.country, "sessionStartedElsewhere");
 
 
-            if (!string.IsNullOrEmpty(oldFcm) && oldFcm != tokenRequest.fcm_token)
+            if (!string.IsNullOrEmpty(oldFcm) && oldFcm != tokenRequest.token)
             {
               if (geo != null)
               {
@@ -413,7 +413,7 @@ namespace BetsTrading_Service.Controllers
               _logger.Log.Information("[AUTH] :: RefreshFCM :: LogOut for FCM {fcm} of user {user}", oldFcm, user.username);
             }
 
-            user.fcm = tokenRequest.fcm_token!;
+            user.fcm = tokenRequest.token!;
             await _dbContext.SaveChangesAsync();
             await transaction.CommitAsync();
 

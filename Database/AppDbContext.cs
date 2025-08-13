@@ -27,6 +27,7 @@
     public DbSet<Favorite> Favorites { get; set; }
     public DbSet<BetZone> BetZones { get; set; }
     public DbSet<PriceBet> PriceBets { get; set; }
+    public DbSet<WithdrawalMethod> WithdrawalMethods{ get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

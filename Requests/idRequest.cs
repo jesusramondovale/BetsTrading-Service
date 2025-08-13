@@ -21,7 +21,7 @@ namespace BetsTrading_Service.Requests
 
 
 
-  public class fcmTokenRequest
+  public class tokenRequest
   {
 
     [Required]
@@ -30,7 +30,7 @@ namespace BetsTrading_Service.Requests
 
     [Required]
     [StringLength(200, MinimumLength = 1)]
-    public string? fcm_token { get; set; }
+    public string? token { get; set; }
 
   }
 

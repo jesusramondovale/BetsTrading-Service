@@ -2,8 +2,10 @@
 using BetsTrading_Service.Interfaces;
 using BetsTrading_Service.Models;
 using BetsTrading_Service.Requests;
+using FirebaseAdmin.Messaging;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Conventions;
 using System.Text.Json;
 
 namespace BetsTrading_Service.Controllers
@@ -418,8 +420,286 @@ namespace BetsTrading_Service.Controllers
     }
 
 
+    [HttpPost("RetireOptions")]
+    public async Task<IActionResult> RetireOptions([FromBody] idRequest request)
+    {
+      if (request == null || request.id == String.Empty)
+        return BadRequest(new { Message = "Invalid payload" });
+
+      try
+      {
+        var exists = await _dbContext.Users
+            .AsNoTracking()
+            .AnyAsync(u => u.id == request.id);
+        if (!exists)
+          return NotFound(new { Message = "User token not found" });
+
+        var rows = await _dbContext.WithdrawalMethods
+            .AsNoTracking()
+            .Where(w => w.UserId == request.id)
+            .OrderByDescending(w => w.CreatedAt)
+            .ToListAsync();
+        
+        var list = rows.Select(w => new WithdrawalMethodDto
+        {
+          Id = w.Id,
+          Type = w.Type,
+          Label = w.Label,
+          Verified = w.Verified,
+          Data = System.Text.Json.JsonSerializer.Deserialize<object>(
+                w.Data.RootElement.GetRawText()
+            )!,
+          CreatedAt = w.CreatedAt,
+          UpdatedAt = w.UpdatedAt
+        }).ToList();
+
+        return Ok(list);
+      }
+      catch (Exception ex)
+      {
+        _logger.Log.Error("[INFO] :: RetireOptions :: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+    }
+
+    [HttpPost("DeleteRetireOption")]
+    public async Task<IActionResult> DeleteRetireOption([FromBody] tokenRequest request)
+    {
+      if (request == null || request.user_id == String.Empty)
+        return BadRequest(new { Message = "Invalid payload" });
+
+      using var transaction = await _dbContext.Database.BeginTransactionAsync();
+
+      try
+      {
+        var userExists = await _dbContext.Users.AsNoTracking().AnyAsync(u => u.id == request.user_id);
+        if (!userExists) return NotFound(new { Message = "User token not found" });
+
+        var currentRetireOption = await _dbContext.WithdrawalMethods.AsNoTracking().FirstOrDefaultAsync(w => w.UserId == request.user_id && w.Label == request.token);
+        if (currentRetireOption == null) return NotFound(new { Message = $"Retire option with label {request.token} not found for user {request.user_id}" });
+
+        _dbContext.WithdrawalMethods.Remove(currentRetireOption);
+        await _dbContext.SaveChangesAsync();
+        await transaction.CommitAsync();
+        _logger.Log.Debug($"[INFO] :: DeleteRetireOption :: Retire option {request.token} removed successfully from user ID: {request.user_id}");
+        return Ok(new { });
+      }
+
+      catch (Exception ex)
+      {
+        await transaction.RollbackAsync();
+        _logger.Log.Error("[INFO] :: DeleteRetireOption :: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+    }
 
 
 
+    [HttpPost("AddBankRetireMethod")]
+    public async Task<IActionResult> AddBankRetireMethod([FromBody] addBankWithdrawalMethodRequest request)
+    {
+      if (request == null) return BadRequest(new { Message = "Invalid payload" });
+
+      using var transaction = await _dbContext.Database.BeginTransactionAsync();
+      
+      try {
+        var currentUser = await _dbContext.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.id == request.UserId);
+
+        if (currentUser == null)
+          return NotFound(new { Message = "User token not found" });
+        
+        var dataObj = new
+        {
+          iban = request.Iban?.Trim(),
+          holder = request.Holder?.Trim(),
+          bic = string.IsNullOrWhiteSpace(request.Bic) ? null : request.Bic.Trim()
+        };
+        var jsonDoc = JsonDocument.Parse(JsonSerializer.Serialize(dataObj));
+
+        var existing = await _dbContext.WithdrawalMethods
+            .FirstOrDefaultAsync(w =>
+                w.UserId == request.UserId &&
+                w.Type == "bank" &&
+                w.Label == request.Label);
+
+        if (existing is null)
+        {
+          var entity = new WithdrawalMethod
+          {
+            UserId = request.UserId,
+            Type = "bank",
+            Label = request.Label!,
+            Verified = !(currentUser.idcard.Length < 5), // marca verificado si tiene idcard
+            Data = jsonDoc,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+          };
+
+          _dbContext.WithdrawalMethods.Add(entity);
+          await _dbContext.SaveChangesAsync();
+          await transaction.CommitAsync();
+          _logger.Log.Debug("[INFO] :: AddBankRetireMethod :: Success on user : {id}", request.UserId);
+          return Ok(new { id = entity.Id, created = true, verified = entity.Verified });
+        }
+        else
+        {
+          existing.Data = jsonDoc;
+          existing.UpdatedAt = DateTime.UtcNow;
+          _dbContext.WithdrawalMethods.Update(existing);
+          await _dbContext.SaveChangesAsync();
+          await transaction.CommitAsync();
+          _logger.Log.Debug("[INFO] :: AddBankRetireMethod :: Success on user : {id}", request.UserId);
+          return Ok(new { id = existing.Id, created = false, verified = existing.Verified });
+        }
+      }
+      catch (Exception ex)
+      {
+        await transaction.RollbackAsync();
+        _logger.Log.Error("[INFO] :: AddBankRetireMethod :: Internal server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+    }
+
+
+    [HttpPost("AddPaypalRetireMethod")]
+    public async Task<IActionResult> AddPaypalRetireMethod([FromBody] addPaypalWithdrawalMethodRequest request)
+    {
+
+      if (request == null) return BadRequest(new { Message = "Invalid payload" });
+
+      using var transaction = await _dbContext.Database.BeginTransactionAsync();
+
+      try
+      {
+        var currentUser = await _dbContext.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.id == request.UserId);
+
+        if (currentUser == null)
+          return NotFound(new { Message = "User token not found" });
+
+        var dataObj = new
+        {
+          email = request.Email?.Trim(),
+        };
+        var jsonDoc = JsonDocument.Parse(JsonSerializer.Serialize(dataObj));
+
+        var existing = await _dbContext.WithdrawalMethods
+            .FirstOrDefaultAsync(w =>
+                w.UserId == request.UserId &&
+                w.Type == "paypal" &&
+                w.Label == request.Label);
+
+        if (existing is null)
+        {
+          var entity = new WithdrawalMethod
+          {
+            UserId = request.UserId,
+            Type = "paypal",
+            Label = request.Label!,
+            Verified = !(currentUser.idcard.Length < 5),
+            Data = jsonDoc,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+          };
+
+          _dbContext.WithdrawalMethods.Add(entity);
+          await _dbContext.SaveChangesAsync();
+          await transaction.CommitAsync();
+          _logger.Log.Debug("[INFO] :: AddPaypalRetireMethod :: Success on user : {id}", request.UserId);
+          return Ok(new { id = entity.Id, created = true, verified = entity.Verified });
+        }
+        else
+        {
+          existing.Data = jsonDoc;
+          existing.UpdatedAt = DateTime.UtcNow;
+          _dbContext.WithdrawalMethods.Update(existing);
+          await _dbContext.SaveChangesAsync();
+          await transaction.CommitAsync();
+          _logger.Log.Debug("[INFO] :: AddPaypalRetireMethod  :: Success on user : {id}", request.UserId);
+          return Ok(new { id = existing.Id, created = false, verified = existing.Verified });
+        }
+      }
+      catch (Exception ex)
+      {
+        await transaction.RollbackAsync();
+        _logger.Log.Error("[INFO] :: AddPaypalRetireMethod  :: Internal server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+
+    }
+
+
+    [HttpPost("AddCryptoRetireMethod")]
+    public async Task<IActionResult> AddCryptoRetireMethod([FromBody] addCryptoWithdrawalMethodRequest request)
+    {
+
+      if (request == null) return BadRequest(new { Message = "Invalid payload" });
+
+      using var transaction = await _dbContext.Database.BeginTransactionAsync();
+
+      try
+      {
+        var currentUser = await _dbContext.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.id == request.UserId);
+
+        if (currentUser == null)
+          return NotFound(new { Message = "User token not found" });
+
+        var dataObj = new
+        {
+          network = request.Network?.Trim(),
+          address = request.Address?.Trim(),
+          memo = request.Memo?.Trim(),
+
+        };
+        var jsonDoc = JsonDocument.Parse(JsonSerializer.Serialize(dataObj));
+
+        var existing = await _dbContext.WithdrawalMethods
+            .FirstOrDefaultAsync(w =>
+                w.UserId == request.UserId &&
+                w.Type == "crypto" &&
+                w.Label == request.Label);
+
+        if (existing is null)
+        {
+          var entity = new WithdrawalMethod
+          {
+            UserId = request.UserId,
+            Type = "crypto",
+            Label = request.Label!,
+            Verified = !(currentUser.idcard.Length < 5),
+            Data = jsonDoc,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+          };
+
+          _dbContext.WithdrawalMethods.Add(entity);
+          await _dbContext.SaveChangesAsync();
+          await transaction.CommitAsync();
+          _logger.Log.Debug("[INFO] :: AddCryptoRetireMethod :: Success on user : {id}", request.UserId);
+          return Ok(new { id = entity.Id, created = true, verified = entity.Verified });
+        }
+        else
+        {
+          existing.Data = jsonDoc;
+          existing.UpdatedAt = DateTime.UtcNow;
+          _dbContext.WithdrawalMethods.Update(existing);
+          await _dbContext.SaveChangesAsync();
+          await transaction.CommitAsync();
+          _logger.Log.Debug("[INFO] :: AddCryptoRetireMethod  :: Success on user : {id}", request.UserId);
+          return Ok(new { id = existing.Id, created = false, verified = existing.Verified });
+        }
+      }
+      catch (Exception ex)
+      {
+        await transaction.RollbackAsync();
+        _logger.Log.Error("[INFO] :: AddCryptoRetireMethod  :: Internal server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+    }
   }
 }
