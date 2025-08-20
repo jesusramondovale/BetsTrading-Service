@@ -2,6 +2,7 @@
 using BetsTrading_Service.Interfaces;
 using BetsTrading_Service.Models;
 using BetsTrading_Service.Requests;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -75,6 +76,62 @@ namespace BetsTrading_Service.Controllers
       }
       
     }
+
+    [HttpPost("UserPriceBets")]
+    public async Task<IActionResult> UserPriceBets([FromBody] idRequest userInfoRequest)
+    {
+
+      try
+      {
+        bool userExists = await _dbContext.Users.AnyAsync(u => u.id == userInfoRequest.id);
+        if (!userExists) {
+          _logger.Log.Warning("[INFO] :: UserPriceBets :: User doesn't exist. ID: {msg}", userInfoRequest.id);
+          return NotFound(new { Message = "Unexistent user" });
+        }
+        
+        var priceBets = await _dbContext.PriceBets.Where(bet => bet.user_id == userInfoRequest.id).ToListAsync();
+
+        if (!priceBets.Any())
+        {
+          _logger.Log.Debug("[INFO] :: UserPriceBets :: Empty list of price bets on userID: {msg}", userInfoRequest.id);
+          return NotFound(new { Message = "User has no bets!" });
+        }
+
+        _logger.Log.Information("[INFO] :: UserPriceBets :: success with ID: {msg}", userInfoRequest.id);
+        var priceBetDTOs = new List<PriceBetDTO>();
+
+        foreach (var priceBet in priceBets)
+        {
+          var tmpAsset = _dbContext.FinancialAssets.FirstOrDefault(asset => asset.ticker == priceBet.ticker);
+
+          if (tmpAsset != null)
+          {
+            priceBetDTOs.Add(new PriceBetDTO(
+                   id: priceBet.id,
+                   name: tmpAsset.name,
+                   ticker: priceBet.ticker,
+                   price_bet: priceBet.price_bet,
+                   paid: priceBet.paid,
+                   margin: priceBet.margin,
+                   user_id: priceBet.user_id,
+                   bet_date: priceBet.bet_date,
+                   end_date: priceBet.end_date,
+                   icon_path: tmpAsset.icon!
+            ));
+          }
+        }
+
+        return Ok(new { Message = "UserPriceBets SUCCESS", Bets = priceBetDTOs });
+      }
+      catch (Exception ex)
+      {
+
+        _logger.Log.Error("[INFO] :: UserPriceBets :: Internal server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+
+    }
+
 
     [HttpPost("NewBet")]
     public async Task<IActionResult> NewBet([FromBody] newBetRequest betRequest)

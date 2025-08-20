@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore.Storage.ValueConversion.Internal;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace BetsTrading_Service.Models
@@ -95,4 +96,37 @@ namespace BetsTrading_Service.Models
     public int bet_zone { get; set; }
 
   }
+
+  public class PriceBetDTO
+  {
+    public PriceBetDTO(int id, string name, string ticker, double price_bet, 
+                bool paid, double margin, string user_id, 
+                DateTime bet_date, DateTime end_date, string icon_path)
+    {
+      this.id = id;
+      this.name = name;
+      this.ticker = ticker;
+      this.price_bet = price_bet;
+      this.paid = paid;
+      this.margin = margin;
+      this.user_id = user_id;
+      this.bet_date = bet_date;
+      this.end_date = end_date;
+      this.icon_path = icon_path;
+
+    }
+
+    public int id { get; set; }
+    public string name { get; set; }
+    public string ticker { get; set; }
+    public double price_bet { get; set; }
+    public bool paid{ get; set; }
+    public double margin { get; set; }
+    public string user_id { get; set; }
+    public DateTime bet_date { get; set; }
+    public DateTime end_date { get; set; }
+    public String icon_path { get; set; }
+
+  }
+
 }
