@@ -366,55 +366,32 @@ namespace BetsTrading_Service.Controllers
     }
 
 
-    [HttpPost("ExchangeOptions")]
-    public IActionResult ExchangeOptions([FromBody] idRequest request)
+    [HttpPost("StoreOptions")]
+    public IActionResult StoreOptions([FromBody] storeOptionsrequest currencyandTypeRequest)
     {
       try
       {
-        var path = Path.Combine(_env.ContentRootPath, $"exchange_options_{request.id}.json");
+        
+        var path = Path.Combine(_env.ContentRootPath, $"exchange_options_{currencyandTypeRequest.currency}.json");
 
         if (!System.IO.File.Exists(path))
           return NotFound(new { Message = "Exchange options file not found" });
 
+        
         var json = System.IO.File.ReadAllText(path);
         var parsed = JsonSerializer.Deserialize<List<Dictionary<string, object>>>(json);
 
-        var exchangeOnly = parsed?
-          .Where(item => item.ContainsKey("type") && item["type"]?.ToString() == "exchange")
-          .ToList() ?? new();
 
-        return Ok(exchangeOnly);
+        var filtered = parsed?
+            .Where(item => item.ContainsKey("type") &&
+                           item["type"]?.ToString()?.Equals(currencyandTypeRequest.type, StringComparison.OrdinalIgnoreCase) == true)
+            .ToList() ?? new();
+
+        return Ok(filtered);
       }
       catch (Exception ex)
       {
-        _logger.Log.Error("[INFO] :: ExchangeOptions :: Error: {msg}", ex.Message);
-        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
-      }
-    }
-
-
-    [HttpPost("BuyOptions")]
-    public IActionResult BuyOptions([FromBody] idRequest request)
-    {
-      try
-      {
-        var path = Path.Combine(Directory.GetCurrentDirectory(), $"exchange_options_{request.id}.json");
-
-        if (!System.IO.File.Exists(path))
-          return NotFound(new { Message = "Exchange options file not found" });
-
-        var json = System.IO.File.ReadAllText(path);
-        var parsed = JsonSerializer.Deserialize<List<Dictionary<string, object>>>(json);
-
-        var buyOnly = parsed?
-          .Where(item => item.ContainsKey("type") && item["type"]?.ToString() == "buy")
-          .ToList() ?? new();
-
-        return Ok(buyOnly);
-      }
-      catch (Exception ex)
-      {
-        _logger.Log.Error("[INFO] :: BuyOptions :: Error: {msg}", ex.Message);
+        _logger.Log.Error("[INFO] :: Options :: Error: {msg}", ex.Message);
         return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
     }
@@ -492,7 +469,6 @@ namespace BetsTrading_Service.Controllers
         return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
     }
-
 
 
     [HttpPost("AddBankRetireMethod")]

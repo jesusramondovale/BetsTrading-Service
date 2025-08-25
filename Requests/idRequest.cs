@@ -34,6 +34,19 @@ namespace BetsTrading_Service.Requests
 
   }
 
+  public class storeOptionsrequest
+  {
+
+    [Required]
+    [StringLength(100, MinimumLength = 1)]
+    public string? currency { get; set; }
+
+    [Required]
+    [StringLength(200, MinimumLength = 1)]
+    public string? type { get; set; }
+
+  }
+
   public class addCoinsRequest
   {
 

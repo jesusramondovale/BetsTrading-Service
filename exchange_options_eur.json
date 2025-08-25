@@ -3,9 +3,12 @@
   { "coins": 10000, "euros": 100, "type": "exchange" },
   { "coins": 45000, "euros": 450, "type": "exchange" },
   { "coins": 150000, "euros": 1500, "type": "exchange" },
-  
-  
-  
+
+  {
+    "euros": 0,
+    "coins": 15,
+    "type": "ad_reward"
+  },
   
   { "euros": 1.99, "coins": 120, "type": "buy" },
   { "euros": 5.99, "coins": 400, "type": "buy" },
