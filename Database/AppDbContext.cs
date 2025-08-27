@@ -28,6 +28,8 @@
     public DbSet<BetZone> BetZones { get; set; }
     public DbSet<PriceBet> PriceBets { get; set; }
     public DbSet<WithdrawalMethod> WithdrawalMethods{ get; set; }
+    public DbSet<RewardNonce> RewardNonces{ get; set; }
+    public DbSet<RewardTransaction> RewardTransactions{ get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

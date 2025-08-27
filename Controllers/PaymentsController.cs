@@ -2,6 +2,7 @@
 {
   using BetsTrading_Service.Database;
   using BetsTrading_Service.Interfaces;
+  using BetsTrading_Service.Models;
   using BetsTrading_Service.Requests;
   using Google.Apis.Auth.OAuth2.Requests;
   using Microsoft.AspNetCore.Identity.Data;
@@ -12,8 +13,10 @@
   using System.IO;
   using System.Runtime.CompilerServices;
   using System.Security.Cryptography;
+  using System.Text;
   using System.Text.Json;
   using System.Text.Json.Serialization;
+
 
   [ApiController]
   [Route("api/[controller]")]
@@ -31,7 +34,7 @@
       _logger = customLogger;
       StripeConfiguration.ApiKey = Environment.GetEnvironmentVariable("STRIPE_SECRET_KEY", EnvironmentVariableTarget.User) ?? "";
 
-  }
+    }
 
     [HttpPost("CreatePaymentIntent")]
     public IActionResult CreatePaymentIntent([FromBody] CreatePaymentIntentRequest req)
@@ -40,7 +43,6 @@
 
       try
       {
-        // Añadimos userId en metadata
         var options = new PaymentIntentCreateOptions
         {
           Amount = req.Amount,
@@ -49,7 +51,7 @@
           {
             Enabled = true
           },
-          
+
           Metadata = new Dictionary<string, string>
                 {
                     { "userId", req.UserId! },
@@ -68,7 +70,6 @@
       }
     }
 
-
     [HttpPost("Webhook")]
     public async Task<IActionResult> StripeWebhook()
     {
@@ -86,7 +87,7 @@
           var userId = intent!.Metadata["userId"];
           var coins = double.Parse(intent.Metadata["coins"], System.Globalization.CultureInfo.InvariantCulture);
 
-          _logger.Log.Information($"[Stripe] Pago confirmado para {userId} con {coins} coins");
+          _logger.Log.Information($"[Stripe] Pay confirmed for user {userId} ({coins} coins)");
 
           var user = _dbContext.Users.FirstOrDefault(u => u.id == userId);
           if (user != null)
@@ -108,7 +109,6 @@
         return BadRequest();
       }
     }
-
 
     [HttpPost("RetireBalance")]
     public async Task<IActionResult> RetireBalance([FromBody] RetireBalanceRequest req)
@@ -180,165 +180,106 @@
       public string Type { get; set; } = string.Empty;
     }
 
-
-
-    [HttpGet("VerifyAd"), HttpPost("VerifyAd")]
-    public async Task<IActionResult> Verify(
-     [FromQuery] string? reward_amount,
-     [FromQuery] string? reward_type,
-     [FromQuery] string? transaction_id,
-     [FromQuery] string? custom_data,
-     [FromQuery] string? key_id,
-     [FromQuery] string? signature)
+    private static byte[] Base64UrlDecode(string s)
     {
-      _logger.Log.Information("[Payments] :: VerifyAd: {q}", Request.QueryString);
+      s = s.Replace('-', '+').Replace('_', '/');
+      switch (s.Length % 4) { case 2: s += "=="; break; case 3: s += "="; break; case 0: break; default: throw new FormatException("bad b64url"); }
+      return Convert.FromBase64String(s);
+    }
 
-      // Verificación inicial de URL (Google no manda firma ni key_id en ese caso)
-      if (string.IsNullOrEmpty(signature) || string.IsNullOrEmpty(key_id))
+    [HttpGet("VerifyAd")]
+    public async Task<IActionResult> Verify()
+    {
+      var raw = Request.QueryString.Value;
+      if (string.IsNullOrEmpty(raw)) return BadRequest("empty query");
+
+      var sigB64u = Request.Query["signature"].ToString();
+      var keyIdTxt = Request.Query["key_id"].ToString();
+      if (string.IsNullOrEmpty(sigB64u) || string.IsNullOrEmpty(keyIdTxt))
+        return BadRequest();
+
+      if (!ulong.TryParse(keyIdTxt, out var keyId))
+        return Unauthorized("invalid key_id");
+      
+      var query = raw.TrimStart('?');
+      var iSig = query.IndexOf("signature=", StringComparison.Ordinal);
+      if (iSig < 0) return Ok();
+      var toVerify = query.Substring(0, iSig - 1);
+      var data = Encoding.UTF8.GetBytes(toVerify);
+
+      // PEM by keyId
+      using var http = new HttpClient();
+      var json = await http.GetStringAsync("https://www.gstatic.com/admob/reward/verifier-keys.json");
+      using var doc = System.Text.Json.JsonDocument.Parse(json);
+      var keys = doc.RootElement.GetProperty("keys");
+
+      string? pem = null;
+      foreach (var k in keys.EnumerateArray())
+      {
+        if (k.TryGetProperty("keyId", out var kid) &&
+            (kid.TryGetUInt64(out var kidU) ? kidU == keyId
+             : kid.ValueKind == System.Text.Json.JsonValueKind.String && kid.GetString() == keyIdTxt))
+        {
+          pem = k.GetProperty("pem").GetString();
+          break;
+        }
+      }
+      if (string.IsNullOrEmpty(pem)) return Unauthorized("unknown key");
+
+      // DER on pubKey
+      using var ecdsa = ECDsa.Create();
+      try { ecdsa.ImportFromPem(pem); }
+      catch { return Unauthorized("bad public key"); }
+
+      byte[] sig;
+      try { sig = Base64UrlDecode(sigB64u); }
+      catch { return Unauthorized("bad signature b64"); }
+      
+      var ok = ecdsa.VerifyData(data, sig, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence);
+      if (!ok) return Unauthorized("bad signature");
+      
+      var qp = Request.Query;
+      var transactionId = qp["transaction_id"].ToString();
+      var userId = qp["user_id"].ToString();
+      var customData = qp["custom_data"].ToString();
+      var rewardAmountS = qp["reward_amount"].ToString();
+      var rewardItem = qp["reward_item"].ToString();
+      var adUnitIdStr = qp["ad_unit"].ToString();
+
+      var nonce = await _dbContext.RewardNonces.SingleOrDefaultAsync(n => n.Nonce == customData);
+      if (nonce is null || nonce.Used || nonce.ExpiresAt < DateTime.UtcNow || nonce.UserId != userId)
+        return BadRequest("invalid_nonce");
+
+      if (await _dbContext.RewardTransactions.AnyAsync(t => t.TransactionId == transactionId))
         return Ok();
 
-      try
+      if (!double.TryParse(rewardAmountS, System.Globalization.NumberStyles.Float,
+                           System.Globalization.CultureInfo.InvariantCulture, out var rewardAmount))
+        rewardAmount = 0;
+
+      using var tx = await _dbContext.Database.BeginTransactionAsync();
+      var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.id == userId);
+      if (user == null) { await tx.RollbackAsync(); return NotFound(new { Message = "User not found" }); }
+
+      user.points += (double)rewardAmount;
+      nonce.Used = true;
+      _dbContext.RewardTransactions.Add(new RewardTransaction
       {
-        // Construir mensaje
-        var message = $"reward_amount={reward_amount}&reward_type={reward_type}&transaction_id={transaction_id}&user_id={custom_data}";
+        TransactionId = transactionId,
+        UserId = userId,
+        Coins = (decimal)rewardAmount,
+        AdUnitId = adUnitIdStr,
+        RewardItem = rewardItem,
+        RewardAmountRaw = rewardAmount,
+        SsvKeyId = (int?)(keyId <= int.MaxValue ? (int)keyId : null),
+        CreatedAt = DateTime.UtcNow,
+        RawQuery = query
+      });
+      await _dbContext.SaveChangesAsync();
+      await tx.CommitAsync();
 
-
-        // Descargar claves públicas de Google
-        using var http = new HttpClient();
-        var json = await http.GetStringAsync("https://www.gstatic.com/admob/reward/verifier-keys.json");
-        var keys = System.Text.Json.JsonDocument.Parse(json).RootElement.GetProperty("keys");
-
-
-
-        JsonElement? keyData = null;
-
-        foreach (var k in keys.EnumerateArray())
-        {
-          if (k.ValueKind == JsonValueKind.Object &&
-              k.TryGetProperty("keyId", out var kid))
-          {
-            // Solo trabajamos si el valor es string
-            if (kid.ValueKind == JsonValueKind.String)
-            {
-              var val = kid.GetString();
-              if (!string.IsNullOrEmpty(val) && val == key_id)
-              {
-                keyData = k;
-                break;
-              }
-            }
-          }
-        }
-
-        if (keyData == null || keyData.Value.ValueKind == JsonValueKind.Undefined)
-        {
-          _logger.Log.Warning("[Payments] :: KeyId {key_id} no encontrada en claves públicas de Google", key_id);
-          // No reventamos: devolvemos 200 para no bloquear anuncios de prueba
-          return Ok();
-        }
-
-        // Extraer n y e
-        var nStr = keyData.Value.GetProperty("n").GetString();
-        var eStr = keyData.Value.GetProperty("e").GetString();
-
-        if (string.IsNullOrEmpty(nStr) || string.IsNullOrEmpty(eStr))
-        {
-          _logger.Log.Warning("[Payments] :: Clave pública incompleta para KeyId {key_id}", key_id);
-          return Ok();
-        }
-
-        var n = Convert.FromBase64String(nStr);
-        var e = Convert.FromBase64String(eStr);
-
-        // Verificar firma
-        using var rsa = RSA.Create();
-        rsa.ImportParameters(new RSAParameters { Modulus = n, Exponent = e });
-
-        var data = System.Text.Encoding.UTF8.GetBytes(message);
-        var sig = Convert.FromBase64String(signature);
-
-        bool valid = rsa.VerifyData(data, sig, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-
-        if (!valid)
-          return Unauthorized();
-
-        // Lógica de negocio
-        using (var transaction = await _dbContext.Database.BeginTransactionAsync())
-        {
-          var user = _dbContext.Users.FirstOrDefault(u => u.id == custom_data);
-
-
-          if (user != null)
-          {
-            user.points += double.Parse(reward_amount!);
-            await _dbContext.SaveChangesAsync();
-            await transaction.CommitAsync();
-
-            _logger.Log.Information("[INFO] :: AddCoins :: Success on user ID: {msg}", custom_data);
-            return Ok(new { });
-
-          }
-          else
-          {
-            _logger.Log.Warning("[WARN] :: AddCoins :: User not found for ID: {msg}", custom_data);
-            transaction.Rollback();
-            return NotFound(new { Message = "User not found" });
-          }
-
-        }
-
-      }
-      catch (Exception ex)
-      {
-        _logger.Log.Error(ex, "[ERROR] :: AddCoins :: Exception en VerifyAd");
-        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
-      }
-
+      return Ok();
     }
-
-
-
-    /** TODO: Delete AddCoins endpoint when using real ADMOB_TOKEN with SSV : 
-     * All its business logic goes into -> PaymentsController:59 (HTTP GET VerifyAd) which
-     * will be called by GoogleAdmob system automatically when user finishes watching real ads
-     */
-    [HttpPost("AddCoins")]
-    public async Task<IActionResult> AddCoins([FromBody] addCoinsRequest coinsRequest)
-    {
-      using (var transaction = await _dbContext.Database.BeginTransactionAsync())
-      {
-        try
-        {
-          var user = _dbContext.Users
-              .FirstOrDefault(u => u.id == coinsRequest.user_id);
-
-          if (user != null) // User exists
-          {
-            user.points += coinsRequest.reward ?? 0;
-            await _dbContext.SaveChangesAsync();
-            await transaction.CommitAsync();
-
-            _logger.Log.Information("[INFO] :: AddCoins :: Success on user ID: {msg}", coinsRequest.user_id);
-            return Ok(new { });
-
-          }
-          else // Unexistent user
-          {
-            _logger.Log.Warning("[WARN] :: AddCoins :: User not found for ID: {msg}", coinsRequest.user_id);
-            return NotFound(new { Message = "User not found" }); // User not found
-          }
-        }
-        catch (Exception ex)
-        {
-          _logger.Log.Error("[ERROR] :: AddCoins :: Internal server error: {msg}", ex.Message);
-          return StatusCode(500, new { Message = "Server error", Error = ex.Message });
-        }
-
-      }
-
-    }
-
-
   }
 
   public class RetireBalanceRequest
@@ -349,18 +290,13 @@
     public double CurrencyAmount { get; set; }
     public string? Currency { get; set; }
     public double Coins { get; set; }
-    
   }
 
   public class CreatePaymentIntentRequest
   {
-    public int Amount { get; set; }      // céntimos
-    public string? Currency { get; set; } // "eur"
-    public string? UserId { get; set; }   // viene de Flutter
-    public double Coins { get; set; }    // cantidad a dar tras pagar
+    public int Amount { get; set; }
+    public string? Currency { get; set; }
+    public string? UserId { get; set; }
+    public double Coins { get; set; }
   }
-
-
-
- 
 }
