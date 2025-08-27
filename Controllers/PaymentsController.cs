@@ -5,6 +5,7 @@
   using BetsTrading_Service.Models;
   using BetsTrading_Service.Requests;
   using Google.Apis.Auth.OAuth2.Requests;
+  using Microsoft.AspNetCore.Authorization;
   using Microsoft.AspNetCore.Identity.Data;
   using Microsoft.AspNetCore.Mvc;
   using Microsoft.EntityFrameworkCore;
@@ -36,10 +37,28 @@
 
     }
 
+    public class ExchangeOption
+    {
+      [JsonPropertyName("coins")]
+      public int Coins { get; set; }
+
+      [JsonPropertyName("euros")]
+      public double Euros { get; set; }
+
+      [JsonPropertyName("type")]
+      public string Type { get; set; } = string.Empty;
+    }
+
+    private static byte[] Base64UrlDecode(string s)
+    {
+      s = s.Replace('-', '+').Replace('_', '/');
+      switch (s.Length % 4) { case 2: s += "=="; break; case 3: s += "="; break; case 0: break; default: throw new FormatException("bad b64url"); }
+      return Convert.FromBase64String(s);
+    }
+
     [HttpPost("CreatePaymentIntent")]
     public IActionResult CreatePaymentIntent([FromBody] CreatePaymentIntentRequest req)
     {
-      string test = StripeConfiguration.ApiKey;
 
       try
       {
@@ -70,6 +89,7 @@
       }
     }
 
+    [AllowAnonymous]
     [HttpPost("Webhook")]
     public async Task<IActionResult> StripeWebhook()
     {
@@ -87,18 +107,114 @@
           var userId = intent!.Metadata["userId"];
           var coins = double.Parse(intent.Metadata["coins"], System.Globalization.CultureInfo.InvariantCulture);
 
-          _logger.Log.Information($"[Stripe] Pay confirmed for user {userId} ({coins} coins)");
+          // ==== Extraer método de pago ====
+          string paymentMethod = "unknown";
+          var chargeService = new ChargeService();
+          Charge? charge = null;
+
+          if (!string.IsNullOrEmpty(intent.LatestChargeId))
+          {
+            charge = await chargeService.GetAsync(intent.LatestChargeId);
+          }
+          else
+          {
+            var list = await chargeService.ListAsync(new ChargeListOptions
+            {
+              PaymentIntent = intent.Id,
+              Limit = 1
+            });
+            charge = list.Data.FirstOrDefault();
+          }
+
+          if (charge?.PaymentMethodDetails != null)
+          {
+            var pmd = charge.PaymentMethodDetails;
+            if (pmd.Type == "card" && pmd.Card != null)
+            {
+              paymentMethod = $"{pmd.Card.Brand} ****{pmd.Card.Last4}";
+            }
+            else
+            {
+              paymentMethod = pmd.Type ?? "unknown";
+            }
+          }
+
+          _logger.Log.Information($"[Stripe] Pay confirmed for user {userId} ({coins} coins) via {paymentMethod}");
 
           var user = _dbContext.Users.FirstOrDefault(u => u.id == userId);
           if (user != null)
           {
             user.points += coins;
+
+            var paymentHistory = new PaymentData(
+              Guid.NewGuid(),
+              userId,
+              intent.Id,
+              coins,
+              DateTime.UtcNow,
+              true,
+              paymentMethod
+            );
+
+            _dbContext.PaymentData.Add(paymentHistory);
             await _dbContext.SaveChangesAsync();
           }
         }
         else if (stripeEvent.Type == "payment_intent.payment_failed")
         {
           _logger.Log.Warning("[Stripe] Pago fallido.");
+
+          var intent = stripeEvent.Data.Object as PaymentIntent;
+          var userId = intent?.Metadata["userId"];
+
+          // ==== Extraer método de pago (igual que arriba) ====
+          string paymentMethod = "unknown";
+          var chargeService = new ChargeService();
+          Charge? charge = null;
+
+          if (!string.IsNullOrEmpty(intent?.LatestChargeId))
+          {
+            charge = await chargeService.GetAsync(intent.LatestChargeId);
+          }
+          else if (intent != null)
+          {
+            var list = await chargeService.ListAsync(new ChargeListOptions
+            {
+              PaymentIntent = intent.Id,
+              Limit = 1
+            });
+            charge = list.Data.FirstOrDefault();
+          }
+
+          if (charge?.PaymentMethodDetails != null)
+          {
+            var pmd = charge.PaymentMethodDetails;
+            if (pmd.Type == "card" && pmd.Card != null)
+            {
+              paymentMethod = $"{pmd.Card.Brand} ****{pmd.Card.Last4}";
+            }
+            else
+            {
+              paymentMethod = pmd.Type ?? "unknown";
+            }
+          }
+          // ===============================================
+
+          if (!string.IsNullOrEmpty(userId))
+          {
+            var paymentHistory = new PaymentData(
+              Guid.NewGuid(),
+              userId,
+              intent?.Id ?? Guid.NewGuid().ToString(),
+              0,
+              DateTime.UtcNow,
+              false,
+              paymentMethod
+            );
+
+            _dbContext.PaymentData.Add(paymentHistory);
+            await _dbContext.SaveChangesAsync();
+          }
         }
 
         return Ok();
@@ -109,6 +225,7 @@
         return BadRequest();
       }
     }
+
 
     [HttpPost("RetireBalance")]
     public async Task<IActionResult> RetireBalance([FromBody] RetireBalanceRequest req)
@@ -168,25 +285,7 @@
       }
     }
 
-    public class ExchangeOption
-    {
-      [JsonPropertyName("coins")]
-      public int Coins { get; set; }
-
-      [JsonPropertyName("euros")]
-      public double Euros { get; set; }
-
-      [JsonPropertyName("type")]
-      public string Type { get; set; } = string.Empty;
-    }
-
-    private static byte[] Base64UrlDecode(string s)
-    {
-      s = s.Replace('-', '+').Replace('_', '/');
-      switch (s.Length % 4) { case 2: s += "=="; break; case 3: s += "="; break; case 0: break; default: throw new FormatException("bad b64url"); }
-      return Convert.FromBase64String(s);
-    }
-
+    [AllowAnonymous]
     [HttpGet("VerifyAd")]
     public async Task<IActionResult> Verify()
     {

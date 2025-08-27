@@ -9,6 +9,11 @@ using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using BetsTrading_Service.Services;
 using BetsTrading_Service.Locale;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
 
 namespace BetsTrading_Service.Controllers
 {
@@ -20,20 +25,47 @@ namespace BetsTrading_Service.Controllers
     private readonly AppDbContext _dbContext;
     private readonly ICustomLogger _logger;
     private readonly FirebaseNotificationService _firebaseNotificationService;
+    private readonly IConfiguration _config;
 
-    public AuthController(AppDbContext dbContext, ICustomLogger customLogger, FirebaseNotificationService firebaseNotificationService)
+    public AuthController(AppDbContext dbContext, IConfiguration config, ICustomLogger customLogger, FirebaseNotificationService firebaseNotificationService)
     {
       _dbContext = dbContext;
-      _logger = customLogger;      
+      _logger = customLogger;
       _firebaseNotificationService = firebaseNotificationService;
+      _config = config;
+
     }
 
-    [HttpPost("SignIn")]
-    public Task<IActionResult> SignIn([FromBody] SignUpRequest req)
+    private string GenerateLocalJwt(string userId, string email, string? name)
     {
-      return RegisterInternal(req);
-    }
+      var issuer = _config["Jwt:Issuer"]!;
+      var audience = _config["Jwt:Audience"]!;
+      var key = Environment.GetEnvironmentVariable("JWT_LOCAL_KEY", EnvironmentVariableTarget.User)
+                     ?? _config["Jwt:Key"]!;
 
+      var claims = new[]
+      {
+        new Claim("sub", userId),
+        new Claim("email", email ?? ""),
+        new Claim("name", name ?? ""),
+        new Claim("auth_provider", "local")
+      };
+
+      var creds = new SigningCredentials(
+        new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key)),
+        SecurityAlgorithms.HmacSha256); // HS256, que es lo normal
+
+      var now = DateTime.UtcNow;
+      var token = new JwtSecurityToken(
+        issuer: issuer,
+        audience: audience,
+        claims: claims,
+        notBefore: now,
+        expires: now.AddHours(12),
+        signingCredentials: creds);
+
+      return new JwtSecurityTokenHandler().WriteToken(token);
+    }
 
     private async Task<IActionResult> RegisterInternal(SignUpRequest signUpRequest)
     {
@@ -50,9 +82,11 @@ namespace BetsTrading_Service.Controllers
           }
 
           string hashedPassword = (signUpRequest.Password != null ? BCrypt.Net.BCrypt.HashPassword(signUpRequest.Password) : "nullPassword");
+          var guid = signUpRequest.Token ?? Guid.NewGuid().ToString();
+
 
           var newUser = new User(
-              signUpRequest.Token ?? Guid.NewGuid().ToString(),
+              guid,
               signUpRequest.IdCard ?? "-",
               signUpRequest.Fcm ?? "-",
               signUpRequest.FullName ?? "-",
@@ -70,12 +104,13 @@ namespace BetsTrading_Service.Controllers
 
           newUser.is_active = true;
           newUser.token_expiration = DateTime.UtcNow.AddDays(SESSION_EXP_DAYS);
+          var jwt = GenerateLocalJwt(guid, signUpRequest.Email!, signUpRequest.FullName);
 
           _dbContext.Users.Add(newUser);
           await _dbContext.SaveChangesAsync();
           await transaction.CommitAsync();
           _logger.Log.Information("[AUTH] :: SignIn :: Success with user ID : {userID}", newUser.id);
-          return Ok(new { Message = "Registration successful!", UserId = newUser.id });
+          return Ok(new { Message = "Registration successful!", UserId = newUser.id, jwtToken = jwt });
         }
         catch (Exception ex)
         {
@@ -84,6 +119,12 @@ namespace BetsTrading_Service.Controllers
           return StatusCode(500, new { Message = "Internal server error!", Error = ex.Message });
         }
       }
+    }
+    [AllowAnonymous]
+    [HttpPost("SignIn")]
+    public Task<IActionResult> SignIn([FromBody] SignUpRequest req)
+    {
+      return RegisterInternal(req);
     }
 
     [HttpPost("GoogleQuickRegister")]
@@ -126,6 +167,7 @@ namespace BetsTrading_Service.Controllers
 
     }
 
+    [AllowAnonymous]
     [HttpPost("LogIn")]
     public async Task<IActionResult> LogIn([FromBody] Requests.LoginRequest loginRequest)
     {
@@ -147,10 +189,14 @@ namespace BetsTrading_Service.Controllers
               user.last_session = DateTime.UtcNow;
               user.token_expiration = DateTime.UtcNow.AddDays(SESSION_EXP_DAYS);
               user.is_active = true;
+
+              var jwt = GenerateLocalJwt(user.id, user.email, user.fullname);
               await _dbContext.SaveChangesAsync();
               await transaction.CommitAsync();
+              
+              
               _logger.Log.Information("[AUTH] :: LogIn :: Success. User ID: {userId} FROM {city} , {region} , {country} , ISP: {isp}", user.id, geo!.City, geo.RegionName, geo.Country, geo.ISP);
-              return Ok(new { Message = "LogIn SUCCESS", UserId = user.id });
+              return Ok(new { Message = "LogIn SUCCESS", UserId = user.id, jwtToken = jwt });
             }
             else
             {
@@ -306,7 +352,7 @@ namespace BetsTrading_Service.Controllers
         return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }     
     }
-
+    
     [HttpPost("LogOut")]
     public async Task<IActionResult> LogOut([FromBody] idRequest logOutRequest)
     {

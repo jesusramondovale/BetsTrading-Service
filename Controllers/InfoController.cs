@@ -3,6 +3,7 @@ using BetsTrading_Service.Interfaces;
 using BetsTrading_Service.Models;
 using BetsTrading_Service.Requests;
 using FirebaseAdmin.Messaging;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions;
@@ -26,6 +27,7 @@ namespace BetsTrading_Service.Controllers
       _logger = customLogger;
 
     }
+        
 
     [HttpPost("UserInfo")]
     public IActionResult UserInfo([FromBody] idRequest userInfoRequest)
@@ -365,6 +367,34 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
+    [HttpPost("PaymentHistory")]
+    public async Task<IActionResult> PaymentHistory([FromBody] idRequest request)
+    {
+      if (request == null || request.id == String.Empty)
+        return BadRequest(new { Message = "Invalid payload" });
+
+      try
+      {
+        var exists = await _dbContext.Users
+            .AsNoTracking()
+            .AnyAsync(u => u.id == request.id);
+        if (!exists)
+          return NotFound(new { Message = "User token not found" });
+
+        var rows = await _dbContext.PaymentData
+            .AsNoTracking()
+            .Where(w => w.user_id == request.id)
+            .OrderByDescending(w => w.executed_at)
+            .ToListAsync();
+
+        return Ok(rows.ToList());
+      }
+      catch (Exception ex)
+      {
+        _logger.Log.Error("[INFO] :: PaymentHistory :: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+    }
 
     [HttpPost("StoreOptions")]
     public IActionResult StoreOptions([FromBody] storeOptionsrequest currencyandTypeRequest)
