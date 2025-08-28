@@ -19,9 +19,13 @@ namespace BetsTrading_Service.Services
   public class Updater
   {
 
+    // Assets & Crypto
     private string TWELVE_DATA_KEY = Environment.GetEnvironmentVariable("TWELVE_DATA_KEY", EnvironmentVariableTarget.User) ?? "";
+    // Logos only
     private string MARKETSTACK_KEY = Environment.GetEnvironmentVariable("MARKETSTACK_API_KEY", EnvironmentVariableTarget.User) ?? "";
+    // Trends only
     private string SERP_API_KEY = Environment.GetEnvironmentVariable("SERP_API_KEY", EnvironmentVariableTarget.User) ?? "";
+
     private const int PRICE_BET_WIN_PRICE = 50000;
     private readonly FirebaseNotificationService _firebaseNotificationService;
     private readonly AppDbContext _dbContext;
