@@ -109,6 +109,8 @@
 
           // ==== Extraer método de pago ====
           string paymentMethod = "unknown";
+          var currency = "unknown";
+          double amount = 0;
           var chargeService = new ChargeService();
           Charge? charge = null;
 
@@ -129,6 +131,9 @@
           if (charge?.PaymentMethodDetails != null)
           {
             var pmd = charge.PaymentMethodDetails;
+            currency = charge.Currency;
+            amount = charge.Amount/100.0;
+
             if (pmd.Type == "card" && pmd.Card != null)
             {
               paymentMethod = $"{pmd.Card.Brand} ****{pmd.Card.Last4}";
@@ -137,6 +142,8 @@
             {
               paymentMethod = pmd.Type ?? "unknown";
             }
+
+
           }
 
           _logger.Log.Information($"[Stripe] Pay confirmed for user {userId} ({coins} coins) via {paymentMethod}");
@@ -151,6 +158,8 @@
               userId,
               intent.Id,
               coins,
+              currency,
+              amount,
               DateTime.UtcNow,
               true,
               paymentMethod
@@ -206,6 +215,8 @@
               Guid.NewGuid(),
               userId,
               intent?.Id ?? Guid.NewGuid().ToString(),
+              0,
+              "EUR",
               0,
               DateTime.UtcNow,
               false,

@@ -426,7 +426,6 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
-
     [HttpPost("RetireOptions")]
     public async Task<IActionResult> RetireOptions([FromBody] idRequest request)
     {
