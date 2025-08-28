@@ -31,6 +31,7 @@
     public DbSet<RewardNonce> RewardNonces{ get; set; }
     public DbSet<RewardTransaction> RewardTransactions{ get; set; }
     public DbSet<PaymentData> PaymentData { get; set; }
+    public DbSet<WithdrawalData> WithdrawalData { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

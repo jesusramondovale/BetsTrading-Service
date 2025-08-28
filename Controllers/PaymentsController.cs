@@ -11,6 +11,8 @@
   using Microsoft.EntityFrameworkCore;
   using Stripe;
   using Stripe.Forwarding;
+  using Stripe.V2;
+  using System.Drawing;
   using System.IO;
   using System.Runtime.CompilerServices;
   using System.Security.Cryptography;
@@ -237,7 +239,6 @@
       }
     }
 
-
     [HttpPost("RetireBalance")]
     public async Task<IActionResult> RetireBalance([FromBody] RetireBalanceRequest req)
     {
@@ -275,6 +276,18 @@
 
             user.pending_balance += req.CurrencyAmount;
             user.points -= req.Coins;
+            
+            var withdrawalHistory = new WithdrawalData(
+              Guid.NewGuid(),
+              req.UserId!,
+              req.Coins,
+              req.Currency!,
+              req.CurrencyAmount,
+              DateTime.UtcNow,
+              false,
+              req.method);
+
+            _dbContext.WithdrawalData.Add(withdrawalHistory);
 
             await _dbContext.SaveChangesAsync();
             await transaction.CommitAsync();
@@ -400,6 +413,7 @@
     public double CurrencyAmount { get; set; }
     public string? Currency { get; set; }
     public double Coins { get; set; }
+    public string? method{ get; set; }
   }
 
   public class CreatePaymentIntentRequest

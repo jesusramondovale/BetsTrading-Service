@@ -142,7 +142,6 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
-
     [HttpPost("NewFavorite")]
     public async Task<IActionResult> NewFavorite([FromBody] newFavoriteRequest newFavRequest)
     {
@@ -340,7 +339,6 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
-
     [HttpPost("PendingBalance")]
     public IActionResult PendingBalance([FromBody] idRequest request)
     {
@@ -392,6 +390,35 @@ namespace BetsTrading_Service.Controllers
       catch (Exception ex)
       {
         _logger.Log.Error("[INFO] :: PaymentHistory :: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+    }
+
+    [HttpPost("WithdrawalHistory")]
+    public async Task<IActionResult> WithdrawalHistory([FromBody] idRequest request)
+    {
+      if (request == null || request.id == String.Empty)
+        return BadRequest(new { Message = "Invalid payload" });
+
+      try
+      {
+        var exists = await _dbContext.Users
+            .AsNoTracking()
+            .AnyAsync(u => u.id == request.id);
+        if (!exists)
+          return NotFound(new { Message = "User token not found" });
+
+        var rows = await _dbContext.WithdrawalData
+            .AsNoTracking()
+            .Where(w => w.user_id == request.id)
+            .OrderByDescending(w => w.executed_at)
+            .ToListAsync();
+
+        return Ok(rows.ToList());
+      }
+      catch (Exception ex)
+      {
+        _logger.Log.Error("[INFO] :: WithdrawalHistory :: {msg}", ex.Message);
         return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
     }
@@ -499,7 +526,6 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
-
     [HttpPost("AddBankRetireMethod")]
     public async Task<IActionResult> AddBankRetireMethod([FromBody] addBankWithdrawalMethodRequest request)
     {
@@ -566,7 +592,6 @@ namespace BetsTrading_Service.Controllers
         return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
     }
-
 
     [HttpPost("AddPaypalRetireMethod")]
     public async Task<IActionResult> AddPaypalRetireMethod([FromBody] addPaypalWithdrawalMethodRequest request)
@@ -635,7 +660,6 @@ namespace BetsTrading_Service.Controllers
       }
 
     }
-
 
     [HttpPost("AddCryptoRetireMethod")]
     public async Task<IActionResult> AddCryptoRetireMethod([FromBody] addCryptoWithdrawalMethodRequest request)
