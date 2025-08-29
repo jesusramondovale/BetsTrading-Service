@@ -14,6 +14,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using Stripe.Forwarding;
 
 namespace BetsTrading_Service.Controllers
 {
@@ -40,20 +41,22 @@ namespace BetsTrading_Service.Controllers
     {
       var issuer = _config["Jwt:Issuer"]!;
       var audience = _config["Jwt:Audience"]!;
-      var key = Environment.GetEnvironmentVariable("JWT_LOCAL_KEY", EnvironmentVariableTarget.User)
-                     ?? _config["Jwt:Key"]!;
+      var key = Environment.GetEnvironmentVariable("JWT_LOCAL_KEY")
+               ?? _config["Jwt:Key"]!;
 
       var claims = new[]
       {
-        new Claim("sub", userId),
-        new Claim("email", email ?? ""),
+        new Claim(JwtRegisteredClaimNames.Sub, userId),             // ID interno
+        new Claim(ClaimTypes.NameIdentifier, userId),               // por si acaso
+        new Claim(JwtRegisteredClaimNames.Email, email ?? ""),
         new Claim("name", name ?? ""),
-        new Claim("auth_provider", "local")
+        new Claim("auth_provider", "local"),
+        new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
       };
 
       var creds = new SigningCredentials(
         new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key)),
-        SecurityAlgorithms.HmacSha256); // HS256, que es lo normal
+        SecurityAlgorithms.HmacSha256);
 
       var now = DateTime.UtcNow;
       var token = new JwtSecurityToken(
@@ -66,6 +69,7 @@ namespace BetsTrading_Service.Controllers
 
       return new JwtSecurityTokenHandler().WriteToken(token);
     }
+
 
     private async Task<IActionResult> RegisterInternal(SignUpRequest signUpRequest)
     {
@@ -127,6 +131,7 @@ namespace BetsTrading_Service.Controllers
       return RegisterInternal(req);
     }
 
+    [AllowAnonymous]
     [HttpPost("GoogleQuickRegister")]
     public async Task<IActionResult> GoogleQuickRegister(googleSignRequest isGoogledRequest)
     {
@@ -236,6 +241,22 @@ namespace BetsTrading_Service.Controllers
       {
         try
         {
+          var tokenUserId =
+            User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+            User.FindFirstValue("app_sub") ??
+            User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+          if (string.IsNullOrEmpty(tokenUserId))
+            return Unauthorized(new { Message = "Invalid token" });
+
+          if (!string.IsNullOrEmpty(newPasswordRequest.Username) &&
+              !string.Equals(newPasswordRequest.Username, tokenUserId, StringComparison.Ordinal) &&
+              !User.IsInRole("admin"))
+          {
+            // 403 FORBIDDEN : User ID doesn't match JWT
+            return Forbid();
+          }
+
           string? ip = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault() ?? HttpContext.Connection.RemoteIpAddress?.ToString();
           var geo = await GetGeoLocationFromIp(ip!);
 
@@ -272,6 +293,22 @@ namespace BetsTrading_Service.Controllers
       {
         try
         {
+          var tokenUserId =
+            User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+            User.FindFirstValue("app_sub") ??
+            User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+          if (string.IsNullOrEmpty(tokenUserId))
+            return Unauthorized(new { Message = "Invalid token" });
+
+          if (!string.IsNullOrEmpty(changepasswordRequest.Username) &&
+              !string.Equals(changepasswordRequest.Username, tokenUserId, StringComparison.Ordinal) &&
+              !User.IsInRole("admin"))
+          {
+            // 403 FORBIDDEN : User ID doesn't match JWT
+            return Forbid();
+          }
+
           string? ip = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault() ?? HttpContext.Connection.RemoteIpAddress?.ToString();
           var geo = await GetGeoLocationFromIp(ip!);
 
@@ -360,6 +397,22 @@ namespace BetsTrading_Service.Controllers
       {
         try
         {
+          var tokenUserId =
+            User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+            User.FindFirstValue("app_sub") ??
+            User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+          if (string.IsNullOrEmpty(tokenUserId))
+            return Unauthorized(new { Message = "Invalid token" });
+
+          if (!string.IsNullOrEmpty(logOutRequest.id) &&
+              !string.Equals(logOutRequest.id, tokenUserId, StringComparison.Ordinal) &&
+              !User.IsInRole("admin"))
+          {
+            // 403 FORBIDDEN : User ID doesn't match JWT
+            return Forbid();
+          }
+
           var user = _dbContext.Users.FirstOrDefault(u => u.id == logOutRequest.id);
 
           if (user != null)
@@ -434,6 +487,21 @@ namespace BetsTrading_Service.Controllers
       {
         try
         {
+          var tokenUserId =
+            User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+            User.FindFirstValue("app_sub") ??
+            User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+          if (string.IsNullOrEmpty(tokenUserId))
+            return Unauthorized(new { Message = "Invalid token" });
+
+          if (!string.IsNullOrEmpty(tokenRequest.user_id) &&
+              !string.Equals(tokenRequest.user_id, tokenUserId, StringComparison.Ordinal) &&
+              !User.IsInRole("admin"))
+          {
+            // 403 FORBIDDEN : User ID doesn't match JWT
+            return Forbid();
+          }
 
           string? ip = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault() ?? HttpContext.Connection.RemoteIpAddress?.ToString();
           var geo = await GetGeoLocationFromIp(ip!);
@@ -487,6 +555,23 @@ namespace BetsTrading_Service.Controllers
       {
         try
         {
+
+          var tokenUserId =
+            User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+            User.FindFirstValue("app_sub") ??
+            User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+          if (string.IsNullOrEmpty(tokenUserId))
+            return Unauthorized(new { Message = "Invalid token" });
+
+          if (!string.IsNullOrEmpty(idCardRequest.id) &&
+              !string.Equals(idCardRequest.id, tokenUserId, StringComparison.Ordinal) &&
+              !User.IsInRole("admin"))
+          {
+            // 403 FORBIDDEN : User ID doesn't match JWT
+            return Forbid();
+          }
+
           var user = _dbContext.Users.FirstOrDefault(u => u.id == idCardRequest.id);
 
           if (user != null)

@@ -13,8 +13,10 @@
   using Stripe.Forwarding;
   using Stripe.V2;
   using System.Drawing;
+  using System.IdentityModel.Tokens.Jwt;
   using System.IO;
   using System.Runtime.CompilerServices;
+  using System.Security.Claims;
   using System.Security.Cryptography;
   using System.Text;
   using System.Text.Json;
@@ -64,6 +66,22 @@
 
       try
       {
+        var tokenUserId =
+          User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+          User.FindFirstValue("app_sub") ??
+          User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+        if (string.IsNullOrEmpty(tokenUserId))
+          return Unauthorized(new { Message = "Invalid token" });
+
+        if (!string.IsNullOrEmpty(req.UserId) &&
+            !string.Equals(req.UserId, tokenUserId, StringComparison.Ordinal) &&
+            !User.IsInRole("admin"))
+        {
+          // 403 FORBIDDEN : User ID doesn't match JWT
+          return Forbid();
+        }
+
         var options = new PaymentIntentCreateOptions
         {
           Amount = req.Amount,
@@ -246,6 +264,22 @@
       {
         try
         {
+          var tokenUserId =
+            User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+            User.FindFirstValue("app_sub") ??
+            User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+          if (string.IsNullOrEmpty(tokenUserId))
+            return Unauthorized(new { Message = "Invalid token" });
+
+          if (!string.IsNullOrEmpty(req.UserId) &&
+              !string.Equals(req.UserId, tokenUserId, StringComparison.Ordinal) &&
+              !User.IsInRole("admin"))
+          {
+            // 403 FORBIDDEN : User ID doesn't match JWT
+            return Forbid();
+          }
+
           var user = _dbContext.Users.FirstOrDefault(u => u.fcm == req.fcm && u.id == req.UserId);
           if (user != null)
           {
@@ -285,7 +319,7 @@
               req.CurrencyAmount,
               DateTime.UtcNow,
               false,
-              req.method);
+              req.method!);
 
             _dbContext.WithdrawalData.Add(withdrawalHistory);
 

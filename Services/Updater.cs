@@ -198,8 +198,8 @@ namespace BetsTrading_Service.Services
               continue;
 
             var closes = asset.close.Take(30).ToList();
-            var highs = asset.daily_max.Take(30).ToList();
-            var lows = asset.daily_min.Take(30).ToList();
+            var highs = asset!.daily_max!.Take(30).ToList();
+            var lows = asset!.daily_min!.Take(30).ToList();
 
             double lastClose = closes[0];
             double avgClose = closes.Average();
@@ -950,7 +950,6 @@ namespace BetsTrading_Service.Services
     private Timer? _assetsTimer;
     private Timer? _betsTimer;
     private Timer? _createNewBetsTimer;
-    private Timer? _refreshOddsTimer;
 
 
     public UpdaterHostedService(IServiceProvider serviceProvider, ICustomLogger customLogger)

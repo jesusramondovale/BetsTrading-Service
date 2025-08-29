@@ -13,6 +13,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.AspNetCore.Authorization;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
+using System.Security.Claims;
 
 public class Program
 {
@@ -39,6 +40,13 @@ public class Program
       var localIssuer = builder.Configuration["Jwt:Issuer"] ?? "https://api.betstrading.online";
       var localAudience = builder.Configuration["Jwt:Audience"] ?? "bets-trading-api";
       var jwtLocalKey = Environment.GetEnvironmentVariable("JWT_LOCAL_KEY", EnvironmentVariableTarget.User) ?? "";
+
+      if (jwtLocalKey.IsNullOrEmpty()) Log.Logger.Fatal("[PROGRAM] :: JWT Local Custom Key is empty!");
+      if (googleClientId.IsNullOrEmpty()) Log.Logger.Fatal("[PROGRAM] :: Google JWT Client Id is empty!");
+      if (localIssuer.IsNullOrEmpty()) Log.Logger.Fatal("[PROGRAM] :: JWT Local issuer is empty!");
+      if (localAudience.IsNullOrEmpty()) Log.Logger.Fatal("[PROGRAM] :: JWT Local audience is empty!");
+
+
       JwtSecurityTokenHandler.DefaultMapInboundClaims = false;
 
       var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
@@ -103,10 +111,10 @@ public class Program
           return "LocalJwt";
         };
       })
-      .AddJwtBearer("GoogleJwt", options =>
+      .AddJwtBearer("GoogleJwt", o =>
       {
-        options.Authority = "https://accounts.google.com";
-        options.TokenValidationParameters = new TokenValidationParameters
+        o.Authority = "https://accounts.google.com";
+        o.TokenValidationParameters = new TokenValidationParameters
         {
           ValidateIssuer = true,
           ValidIssuers = new[] { "https://accounts.google.com", "accounts.google.com" },
@@ -114,12 +122,31 @@ public class Program
           ValidAudience = googleClientId,
           ValidateLifetime = true,
           NameClaimType = "sub",
-          ClockSkew = TimeSpan.FromMinutes(2)
+          RoleClaimType = ClaimTypes.Role
         };
-        options.Events = new JwtBearerEvents
+        o.Events = new JwtBearerEvents
         {
-          OnAuthenticationFailed = ctx => { Console.WriteLine($"[GoogleJwt FAIL] {ctx.Exception.Message}"); return Task.CompletedTask; },
-          OnChallenge = ctx => { Console.WriteLine($"[GoogleJwt CHALLENGE] {ctx.Error} {ctx.ErrorDescription}"); return Task.CompletedTask; }
+          OnTokenValidated = async ctx =>
+          {
+            var googleSub = ctx.Principal!.FindFirstValue("sub");
+            var email = ctx.Principal!.FindFirstValue("email")
+                     ?? ctx.Principal!.FindFirstValue("emails")
+                     ?? "";
+            
+            var db = ctx.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
+            var user = await db.Users.FirstOrDefaultAsync(u => u.id == googleSub || u.email == email);
+            if (user == null)
+            {
+              ctx.Fail("User not registered");
+              return;
+            }
+
+            var id = (ClaimsIdentity)ctx!.Principal!.Identity!;
+            
+            id.AddClaim(new Claim(ClaimTypes.NameIdentifier, user.id));
+            id.AddClaim(new Claim("app_sub", user.id));
+            id.AddClaim(new Claim("auth_provider", "google"));
+          }
         };
       })
       .AddJwtBearer("LocalJwt", options =>

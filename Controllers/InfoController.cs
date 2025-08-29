@@ -7,7 +7,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions;
+using System.Security.Claims;
 using System.Text.Json;
+using System.IdentityModel.Tokens.Jwt;
+using Stripe.Forwarding;
 
 namespace BetsTrading_Service.Controllers
 {
@@ -32,9 +35,25 @@ namespace BetsTrading_Service.Controllers
     [HttpPost("UserInfo")]
     public IActionResult UserInfo([FromBody] idRequest userInfoRequest)
     {
-     
       try
       {
+        var tokenUserId =
+            User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+            User.FindFirstValue("app_sub") ??
+            User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+        if (string.IsNullOrEmpty(tokenUserId))
+          return Unauthorized(new { Message = "Invalid token" });
+
+        if (!string.IsNullOrEmpty(userInfoRequest.id) &&
+            !string.Equals(userInfoRequest.id, tokenUserId, StringComparison.Ordinal) &&
+            !User.IsInRole("admin"))
+        {
+          // 403 FORBIDDEN : User ID doesn't match JWT
+          return Forbid();
+        }
+
+
         var user = _dbContext.Users
             .FirstOrDefault(u => u.id == userInfoRequest.id);
 
@@ -77,6 +96,22 @@ namespace BetsTrading_Service.Controllers
     {
       try
       {
+        var tokenUserId =
+            User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+            User.FindFirstValue("app_sub") ??
+            User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+        if (string.IsNullOrEmpty(tokenUserId))
+          return Unauthorized(new { Message = "Invalid token" });
+
+        if (!string.IsNullOrEmpty(userId.id) &&
+            !string.Equals(userId.id, tokenUserId, StringComparison.Ordinal) &&
+            !User.IsInRole("admin"))
+        {
+          // 403 FORBIDDEN : User ID doesn't match JWT
+          return Forbid();
+        }
+
         var favorites = _dbContext.Favorites
             .AsNoTracking()
             .Where(u => u.user_id == userId.id)
@@ -145,6 +180,31 @@ namespace BetsTrading_Service.Controllers
     [HttpPost("NewFavorite")]
     public async Task<IActionResult> NewFavorite([FromBody] newFavoriteRequest newFavRequest)
     {
+      try
+      {
+        var tokenUserId =
+          User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+          User.FindFirstValue("app_sub") ??
+          User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+        if (string.IsNullOrEmpty(tokenUserId))
+          return Unauthorized(new { Message = "Invalid token" });
+
+        if (!string.IsNullOrEmpty(newFavRequest.user_id) &&
+            !string.Equals(newFavRequest.user_id, tokenUserId, StringComparison.Ordinal) &&
+            !User.IsInRole("admin"))
+        {
+          // 403 FORBIDDEN : User ID doesn't match JWT
+          return Forbid();
+        }
+
+      }
+
+      catch (Exception ex)
+      {
+        _logger.Log.Error("[INFO] :: NewFavorite :: Internal server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
       using (var transaction = await _dbContext.Database.BeginTransactionAsync())
       {
         try
@@ -183,6 +243,22 @@ namespace BetsTrading_Service.Controllers
 
       try
       {
+        var tokenUserId =
+          User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+          User.FindFirstValue("app_sub") ??
+          User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+        if (string.IsNullOrEmpty(tokenUserId))
+          return Unauthorized(new { Message = "Invalid token" });
+
+        if (!string.IsNullOrEmpty(userInfoRequest.id) &&
+            !string.Equals(userInfoRequest.id, tokenUserId, StringComparison.Ordinal) &&
+            !User.IsInRole("admin"))
+        {
+          // 403 FORBIDDEN : User ID doesn't match JWT
+          return Forbid();
+        }
+
         /* TO-DO : Custom trends by user*/
 
         var trends = _dbContext.Trends.ToList();
@@ -243,8 +319,24 @@ namespace BetsTrading_Service.Controllers
     {
       try
       {
-        var topUsers = _dbContext.Users.OrderByDescending(u => u.points).ToList();
 
+        var tokenUserId =
+            User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+            User.FindFirstValue("app_sub") ??
+            User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+        if (string.IsNullOrEmpty(tokenUserId))
+          return Unauthorized(new { Message = "Invalid token" });
+
+        if (!string.IsNullOrEmpty(userInfoRequest.id) &&
+            !string.Equals(userInfoRequest.id, tokenUserId, StringComparison.Ordinal) &&
+            !User.IsInRole("admin"))
+        {
+          // 403 FORBIDDEN : User ID doesn't match JWT
+          return Forbid();
+        }
+
+        var topUsers = _dbContext.Users.OrderByDescending(u => u.points).Take(50).ToList();
 
         if (topUsers.Any())
         {
@@ -273,8 +365,7 @@ namespace BetsTrading_Service.Controllers
     {
       try
       {
-        var topUsersByCountry = _dbContext.Users.Where(u => u.country == countryCode.id).OrderByDescending(u => u.points).ToList();
-
+        var topUsersByCountry = _dbContext.Users.Where(u => u.country == countryCode.id).OrderByDescending(u => u.points).Take(50).ToList();
 
         if (topUsersByCountry.Any())
         {
@@ -301,6 +392,32 @@ namespace BetsTrading_Service.Controllers
     [HttpPost("UploadPic")]
     public async Task<IActionResult> UploadPic(uploadPicRequest uploadPicImageRequest)
     {
+      try
+      {
+        var tokenUserId =
+          User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+          User.FindFirstValue("app_sub") ??
+          User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+        if (string.IsNullOrEmpty(tokenUserId))
+          return Unauthorized(new { Message = "Invalid token" });
+
+        if (!string.IsNullOrEmpty(uploadPicImageRequest.id) &&
+            !string.Equals(uploadPicImageRequest.id, tokenUserId, StringComparison.Ordinal) &&
+            !User.IsInRole("admin"))
+        {
+          // 403 FORBIDDEN : User ID doesn't match JWT
+          return Forbid();
+        }
+      }
+
+      catch (Exception ex)
+      {
+        _logger.Log.Error("[INFO] :: UploadPic :: Internal server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+
+
       using (var transaction = await _dbContext.Database.BeginTransactionAsync())
       {
         try
@@ -344,8 +461,23 @@ namespace BetsTrading_Service.Controllers
     {
       try
       {
-        var user = _dbContext.Users.FirstOrDefault(u => u.id == request.id);
+        var tokenUserId =
+          User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+          User.FindFirstValue("app_sub") ??
+          User.FindFirstValue(JwtRegisteredClaimNames.Sub);
 
+        if (string.IsNullOrEmpty(tokenUserId))
+          return Unauthorized(new { Message = "Invalid token" });
+        
+        if (!string.IsNullOrEmpty(request.id) &&
+            !string.Equals(request.id, tokenUserId, StringComparison.Ordinal) &&
+            !User.IsInRole("admin"))
+        {
+          // 403 FORBIDDEN : User ID doesn't match JWT
+          return Forbid(); 
+        }
+
+        var user = _dbContext.Users.FirstOrDefault(u => u.id == request.id);
         if (user == null)
           return NotFound(new { Message = "User not found" });
 
@@ -373,6 +505,22 @@ namespace BetsTrading_Service.Controllers
 
       try
       {
+        var tokenUserId =
+          User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+          User.FindFirstValue("app_sub") ??
+          User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+        if (string.IsNullOrEmpty(tokenUserId))
+          return Unauthorized(new { Message = "Invalid token" });
+
+        if (!string.IsNullOrEmpty(request.id) &&
+            !string.Equals(request.id, tokenUserId, StringComparison.Ordinal) &&
+            !User.IsInRole("admin"))
+        {
+          // 403 FORBIDDEN : User ID doesn't match JWT
+          return Forbid();
+        }
+
         var exists = await _dbContext.Users
             .AsNoTracking()
             .AnyAsync(u => u.id == request.id);
@@ -402,6 +550,22 @@ namespace BetsTrading_Service.Controllers
 
       try
       {
+        var tokenUserId =
+          User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+          User.FindFirstValue("app_sub") ??
+          User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+        if (string.IsNullOrEmpty(tokenUserId))
+          return Unauthorized(new { Message = "Invalid token" });
+
+        if (!string.IsNullOrEmpty(request.id) &&
+            !string.Equals(request.id, tokenUserId, StringComparison.Ordinal) &&
+            !User.IsInRole("admin"))
+        {
+          // 403 FORBIDDEN : User ID doesn't match JWT
+          return Forbid();
+        }
+
         var exists = await _dbContext.Users
             .AsNoTracking()
             .AnyAsync(u => u.id == request.id);
@@ -505,6 +669,22 @@ namespace BetsTrading_Service.Controllers
 
       try
       {
+        var tokenUserId =
+        User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+        User.FindFirstValue("app_sub") ??
+        User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+        if (string.IsNullOrEmpty(tokenUserId))
+          return Unauthorized(new { Message = "Invalid token" });
+
+        if (!string.IsNullOrEmpty(request.user_id) &&
+            !string.Equals(request.user_id, tokenUserId, StringComparison.Ordinal) &&
+            !User.IsInRole("admin"))
+        {
+          // 403 FORBIDDEN : User ID doesn't match JWT
+          return Forbid();
+        }
+
         var userExists = await _dbContext.Users.AsNoTracking().AnyAsync(u => u.id == request.user_id);
         if (!userExists) return NotFound(new { Message = "User token not found" });
 
@@ -529,11 +709,29 @@ namespace BetsTrading_Service.Controllers
     [HttpPost("AddBankRetireMethod")]
     public async Task<IActionResult> AddBankRetireMethod([FromBody] addBankWithdrawalMethodRequest request)
     {
+      
       if (request == null) return BadRequest(new { Message = "Invalid payload" });
 
       using var transaction = await _dbContext.Database.BeginTransactionAsync();
       
       try {
+
+        var tokenUserId =
+          User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+          User.FindFirstValue("app_sub") ??
+          User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+        if (string.IsNullOrEmpty(tokenUserId))
+          return Unauthorized(new { Message = "Invalid token" });
+
+        if (!string.IsNullOrEmpty(request.UserId) &&
+            !string.Equals(request.UserId, tokenUserId, StringComparison.Ordinal) &&
+            !User.IsInRole("admin"))
+        {
+          // 403 FORBIDDEN : User ID doesn't match JWT
+          return Forbid();
+        }
+
         var currentUser = await _dbContext.Users
             .AsNoTracking()
             .FirstOrDefaultAsync(u => u.id == request.UserId);
@@ -596,13 +794,28 @@ namespace BetsTrading_Service.Controllers
     [HttpPost("AddPaypalRetireMethod")]
     public async Task<IActionResult> AddPaypalRetireMethod([FromBody] addPaypalWithdrawalMethodRequest request)
     {
-
       if (request == null) return BadRequest(new { Message = "Invalid payload" });
 
       using var transaction = await _dbContext.Database.BeginTransactionAsync();
 
       try
       {
+        var tokenUserId =
+          User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+          User.FindFirstValue("app_sub") ??
+          User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+        if (string.IsNullOrEmpty(tokenUserId))
+          return Unauthorized(new { Message = "Invalid token" });
+
+        if (!string.IsNullOrEmpty(request.UserId) &&
+            !string.Equals(request.UserId, tokenUserId, StringComparison.Ordinal) &&
+            !User.IsInRole("admin"))
+        {
+          // 403 FORBIDDEN : User ID doesn't match JWT
+          return Forbid();
+        }
+
         var currentUser = await _dbContext.Users
             .AsNoTracking()
             .FirstOrDefaultAsync(u => u.id == request.UserId);
@@ -664,13 +877,28 @@ namespace BetsTrading_Service.Controllers
     [HttpPost("AddCryptoRetireMethod")]
     public async Task<IActionResult> AddCryptoRetireMethod([FromBody] addCryptoWithdrawalMethodRequest request)
     {
-
       if (request == null) return BadRequest(new { Message = "Invalid payload" });
 
       using var transaction = await _dbContext.Database.BeginTransactionAsync();
 
       try
       {
+        var tokenUserId =
+          User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+          User.FindFirstValue("app_sub") ??
+          User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+        if (string.IsNullOrEmpty(tokenUserId))
+          return Unauthorized(new { Message = "Invalid token" });
+
+        if (!string.IsNullOrEmpty(request.UserId) &&
+            !string.Equals(request.UserId, tokenUserId, StringComparison.Ordinal) &&
+            !User.IsInRole("admin"))
+        {
+          // 403 FORBIDDEN : User ID doesn't match JWT
+          return Forbid();
+        }
+
         var currentUser = await _dbContext.Users
             .AsNoTracking()
             .FirstOrDefaultAsync(u => u.id == request.UserId);
