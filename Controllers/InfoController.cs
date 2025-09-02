@@ -60,7 +60,7 @@ namespace BetsTrading_Service.Controllers
         if (user != null) // User exists
         {
           
-          _logger.Log.Information("[INFO] :: UserInfo :: Success on ID: {msg}", userInfoRequest.id);
+          _logger.Log.Debug("[INFO] :: UserInfo :: Success on ID: {msg}", userInfoRequest.id);
           return Ok(new
           {
             Message = "UserInfo SUCCESS",
@@ -138,7 +138,7 @@ namespace BetsTrading_Service.Controllers
           var dailyGain = 0.0;
           var prevClose = 0.0;
           
-          if (tmpAsset.close.Count >= 2)
+          if (tmpAsset.close.Length >= 2)
           {
             prevClose = tmpAsset.close[1];
             dailyGain = ((tmpAsset.current - prevClose) / prevClose) * 100;
@@ -162,7 +162,7 @@ namespace BetsTrading_Service.Controllers
           ));
         }
 
-        _logger.Log.Information("[INFO] :: Favorites :: success to ID: {msg}", userId.id);
+        _logger.Log.Debug("[INFO] :: Favorites :: success to ID: {msg}", userId.id);
 
         return Ok(new
         {
@@ -271,7 +271,7 @@ namespace BetsTrading_Service.Controllers
             var tmpAsset = _dbContext.FinancialAssets.FirstOrDefault(a => a.ticker == trend.ticker);
             if (tmpAsset != null)
             {
-              if (tmpAsset.close.Count == 1)
+              if (tmpAsset.close!.Length == 1)
               {
                 double dailyGain = ((tmpAsset.current - tmpAsset.close[0]) / tmpAsset.close[0]) * 100;
                 trendDTOs.Add(new TrendDTO(id: trend.id, name: tmpAsset.name, icon: tmpAsset.icon!, daily_gain: dailyGain,
@@ -291,7 +291,7 @@ namespace BetsTrading_Service.Controllers
             }
             
           }
-          _logger.Log.Information("[INFO] :: Trends :: success with ID: {msg}", userInfoRequest.id);
+          _logger.Log.Debug("[INFO] :: Trends :: success with ID: {msg}", userInfoRequest.id);
           return Ok(new
           {
             Message = "Trends SUCCESS",
@@ -340,7 +340,7 @@ namespace BetsTrading_Service.Controllers
 
         if (topUsers.Any())
         {
-          _logger.Log.Information("[INFO] :: TopUsers :: success with user ID: {msg}", userInfoRequest.id);
+          _logger.Log.Debug("[INFO] :: TopUsers :: success with user ID: {msg}", userInfoRequest.id);
           return Ok(new
           {
             Message = "TopUsers SUCCESS",
@@ -369,7 +369,7 @@ namespace BetsTrading_Service.Controllers
 
         if (topUsersByCountry.Any())
         {
-          _logger.Log.Information("[INFO] :: TopUsersByCountry :: success with country code: {msg}", countryCode.id);
+          _logger.Log.Debug("[INFO] :: TopUsersByCountry :: success with country code: {msg}", countryCode.id);
           return Ok(new
           {
             Message = "TopUsersByCountry SUCCESS",
@@ -432,7 +432,7 @@ namespace BetsTrading_Service.Controllers
               await _dbContext.SaveChangesAsync();
               await transaction.CommitAsync();
 
-              _logger.Log.Information("[INFO] :: UploadPic :: Success on profile pic updating for ID: {msg}", uploadPicImageRequest.id);
+              _logger.Log.Debug("[INFO] :: UploadPic :: Success on profile pic updating for ID: {msg}", uploadPicImageRequest.id);
               return Ok(new { Message = "Profile pic successfully updated!", UserId = user.id });
             }
             else

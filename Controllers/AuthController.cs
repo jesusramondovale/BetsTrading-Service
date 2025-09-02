@@ -327,7 +327,7 @@ namespace BetsTrading_Service.Controllers
             _dbContext.Users.Update(user);
             await _dbContext.SaveChangesAsync();
             await transaction.CommitAsync();
-            _logger.Log.Information("[AUTH] :: ChanePassword :: Success. User ID: {userId} FROM -> {city} , {region} , {country} , ISP: {isp}", user.id, geo!.City, geo.RegionName, geo.Country, geo.ISP);
+            _logger.Log.Information("[AUTH] :: ChangePassword :: Success. User ID: {userId} FROM -> {city} , {region} , {country} , ISP: {isp}", user.id, geo!.City, geo.RegionName, geo.Country, geo.ISP);
             return Ok(new { Message = "Password updated successfully" });
 
           }
@@ -373,7 +373,7 @@ namespace BetsTrading_Service.Controllers
           user.token_expiration = DateTime.UtcNow.AddDays(SESSION_EXP_DAYS);
           user.is_active = true;
           _dbContext.SaveChanges();
-          _logger.Log.Information("[AUTH] :: Google LogIn :: Sucess. User ID: {userId} from {city} , {region} , {country}. ISP: {isp}", user.id, geo!.City, geo.RegionName, geo.Country , geo.ISP);
+          _logger.Log.Debug("[AUTH] :: Google LogIn :: Sucess. User ID: {userId} from {city} , {region} , {country}. ISP: {isp}", user.id, geo!.City, geo.RegionName, geo.Country , geo.ISP);
           return Ok(new { Message = "Google LogIn SUCCESS", UserId = user.id });
 
         }
@@ -422,7 +422,7 @@ namespace BetsTrading_Service.Controllers
             await _dbContext.SaveChangesAsync();
             await transaction.CommitAsync();
 
-            _logger.Log.Information("[AUTH] :: LogOut :: Success on user {username}", user.username);
+            _logger.Log.Debug("[AUTH] :: LogOut :: Success on user {username}", user.username);
             return Ok(new { Message = "LogOut SUCCESS", UserId = user.id });
           }
           else
@@ -458,7 +458,7 @@ namespace BetsTrading_Service.Controllers
 
           if (user.is_active && user.token_expiration > DateTime.UtcNow)
           {
-            _logger.Log.Information("[AUTH] :: IsLoggedIn :: Session active on id {id}", isLoggedRequest.id);
+            _logger.Log.Debug("[AUTH] :: IsLoggedIn :: Session active on id {id}", isLoggedRequest.id);
             return Ok(new { Message = "User is logged in", UserId = user.id });
           }
           else
@@ -531,7 +531,7 @@ namespace BetsTrading_Service.Controllers
             await _dbContext.SaveChangesAsync();
             await transaction.CommitAsync();
 
-            _logger.Log.Information("[AUTH] :: RefreshFCM :: Success with User ID {id}", tokenRequest.user_id);
+            _logger.Log.Debug("[AUTH] :: RefreshFCM :: Success with User ID {id}", tokenRequest.user_id);
             return Ok(new { Message = "FCM token updated successfully", UserId = user.id });
           }
           else
@@ -580,7 +580,7 @@ namespace BetsTrading_Service.Controllers
             await _dbContext.SaveChangesAsync();
             await transaction.CommitAsync();
 
-            _logger.Log.Information("[AUTH] :: Verify :: Success with ID Card {idCard}", idCardRequest.idCard);
+            _logger.Log.Debug("[AUTH] :: Verify :: Success with ID Card {idCard}", idCardRequest.idCard);
             return Ok(new { Message = "ID card updated successfully", UserId = user.id });
           }
           else

@@ -44,7 +44,7 @@ namespace BetsTrading_Service.Controllers
         _logger.Log.Information("[FINANCIAL] :: ByGroup :: Not found . Group: {grp}", group.id);
         return NotFound();
       }
-      _logger.Log.Information("[FINANCIAL] :: ByGroup :: Success. Assets group : {msg}", group.id);
+      _logger.Log.Debug("[FINANCIAL] :: ByGroup :: Success. Assets group : {msg}", group.id);
       return financialAssets;                 
     }
 
@@ -61,7 +61,7 @@ namespace BetsTrading_Service.Controllers
         _logger.Log.Information("[FINANCIAL] :: ByCountry :: Not found . Group: {grp}", country);
         return NotFound();
       }
-      _logger.Log.Information("[FINANCIAL] :: ByCountry :: Success. Assets country : {msg}", country.id);
+      _logger.Log.Debug("[FINANCIAL] :: ByCountry :: Success. Assets country : {msg}", country.id);
       return financialAssets;
 
     }

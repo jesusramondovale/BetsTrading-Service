@@ -2,7 +2,7 @@
 {
   public class FinancialAsset
   {
-    public FinancialAsset(string name, string group, string? icon, string? country, string? ticker, double current, List<double> close, List<double> open, List<double> daily_max, List<double> daily_min)
+    public FinancialAsset(string name, string group, string? icon, string? country, string? ticker, double current, double[] close, double[] open, double[] daily_max, double[] daily_min)
     {
       this.name = name;
       this.group = group;
@@ -16,7 +16,7 @@
       this.daily_min= daily_min;
     }
 
-    public FinancialAsset(string name, string group, string? icon, string? country, string? ticker, double current, List<double> close)
+    public FinancialAsset(string name, string group, string? icon, string? country, string? ticker, double current, double[] close)
     {
       this.name = name;
       this.group = group;
@@ -27,7 +27,7 @@
       this.close = close;
     }
 
-    public FinancialAsset(int id, string name, string group, string? icon, string? country, string? ticker, double current, List<double> close)
+    public FinancialAsset(int id, string name, string group, string? icon, string? country, string? ticker, double current, double[] close)
     {
       this.id = id;
       this.name = name;
@@ -46,10 +46,10 @@
     public string? country { get; set; }
     public string? ticker { get; set; }
     public double current { get; set; }
-    public List<double> close { get; set; } 
-    public List<double>? open { get; set; }
-    public List<double>? daily_max{ get; set; }
-    public List<double>? daily_min { get; set; }
+    public double[]? close { get; set; } 
+    public double[]? open { get; set; }
+    public double[]? daily_max{ get; set; }
+    public double[]? daily_min { get; set; }
 
   }
 

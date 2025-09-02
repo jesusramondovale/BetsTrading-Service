@@ -13,6 +13,7 @@ using System.Net.Http;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using static BetsTrading_Service.Services.TwelveDataParser;
 
 namespace BetsTrading_Service.Services 
 {
@@ -56,140 +57,223 @@ namespace BetsTrading_Service.Services
     }
 
     //UpdateAssets with TwelveData key list
-    public void UpdateAssets()
+    public async Task UpdateAssetsAsync(CancellationToken ct = default)
     {
-      int i = 0;
-      using (var transaction = _dbContext.Database.BeginTransaction())
+      _logger.Log.Information("[Updater] :: UpdateAssetsAsync() called!");
+
+      if (TWELVE_DATA_KEYS is null || TWELVE_DATA_KEYS.Length == 0 || TWELVE_DATA_KEYS.All(string.IsNullOrWhiteSpace))
       {
+        _logger.Log.Error("[Updater] :: TWELVE DATA KEYS not set in user environment variables!");
+        return;
+      }
+
+      var selectedAssets = await _dbContext.FinancialAssets
+          .AsNoTracking()
+          .Where(fa => fa.group == "Shares" || fa.group == "ETF" || fa.group == "Cryptos")
+          .Select(fa => new { fa.id, fa.ticker, fa.group })
+          .ToListAsync(ct);
+
+      if (selectedAssets.Count == 0)
+      {
+        _logger.Log.Error("[Updater] :: ZERO assets found! CHECK DATABASE");
+        return;
+      }
+
+      using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+
+      const string interval = "1day";
+      const string outputsize = "90";
+      const string desiredQuote = "EUR";
+
+      int keyIndex = 0;
+      int callsWithThisKey = 0;
+
+      string CurrentKey() => TWELVE_DATA_KEYS[keyIndex] ?? string.Empty;
+
+      void NextKey()
+      {
+        keyIndex = (keyIndex + 1) % TWELVE_DATA_KEYS.Length;
+        callsWithThisKey = 0;
+        _logger.Log.Information("[Updater] :: Switching to next TwelveDataKey (index {Index})", keyIndex);
+        if (string.IsNullOrWhiteSpace(CurrentKey()))
+          _logger.Log.Error("[Updater] :: Current TwelveDataKey is EMPTY, check environment variables!");
+      }
+
+      foreach (var asset in selectedAssets)
+      {
+        ct.ThrowIfCancellationRequested();
+
+        // Rate limit
+        if (callsWithThisKey == 8)
+        {
+          var wrapped = (keyIndex + 1) % TWELVE_DATA_KEYS.Length == 0;
+          NextKey();
+          if (wrapped)
+          {
+            _logger.Log.Information("[Updater] :: Sleeping 60 seconds to bypass rate limit");
+            await Task.Delay(TimeSpan.FromSeconds(60), ct);
+          }
+        }
+
+        var symbol = (asset.ticker ?? string.Empty).Split('.')[0].Trim();
+        if (string.IsNullOrWhiteSpace(symbol))
+        {
+          _logger.Log.Warning("[Updater] :: Asset {Id} has empty ticker, skipping", asset.id);
+          continue;
+        }
+
+        string url = asset.group == "Cryptos"
+            ? $"https://api.twelvedata.com/time_series?symbol={symbol}/{desiredQuote}&interval={interval}&outputsize={outputsize}&apikey={CurrentKey()}"
+            : $"https://api.twelvedata.com/time_series?symbol={symbol}&interval={interval}&outputsize={outputsize}&apikey={CurrentKey()}";
+
+        HttpResponseMessage resp;
         try
         {
-          _logger.Log.Information("[Updater] :: UpdateAssets() called!");
-
-          var selectedAssets = _dbContext.FinancialAssets
-              .Where(fa => fa.group.Equals("Shares") || fa.group.Equals("ETF") || fa.group.Equals("Cryptos"))
-              .ToList();
-
-          if (selectedAssets.Count == 0)
-          {
-            _logger.Log.Error("[Updater] :: ZERO assets found! CHECK DATABASE");
-            return;
-          }
-
-          if (!TWELVE_DATA_KEYS.Any())
-          {
-            _logger.Log.Error("[Updater] :: TWELVE DATA KEYS not set in user environment variables!");
-            return;
-          }
-
-          using (HttpClient httpClient = new HttpClient())
-          {
-            foreach (var asset in selectedAssets)
-            {
-              // Bypass 8 calls per min rate limit
-              if (i == 8)
-              {
-                NextKey();
-                _logger.Log.Information("[Updater] :: Switching to next TwelveDataKey");
-                if (string.IsNullOrEmpty(GetCurrentKey()))
-                {
-                  _logger.Log.Error("[Updater] :: Current TwelveDataKey is EMPTY, check environment variables!");
-                }
-
-                if (currentKeyIndex == 0)
-                {
-                  _logger.Log.Information("[Updater] :: Sleeping 60 seconds to bypass rate limit");
-                  Thread.Sleep(60000);
-                }
-                i = 0;
-              }
-              string symbol = asset.ticker?.Split('.')[0] ?? string.Empty;
-              if (string.IsNullOrWhiteSpace(symbol))
-                continue;
-
-              //TODO : Currency, intervals and output size
-              string currency = "USD";
-              string interval= "1day";
-              string outputsize = "90";
-
-
-              string twelveDataEndpointURL;
-              string apiKey = GetCurrentKey();
-              if (asset.group == "Cryptos") twelveDataEndpointURL = $"https://api.twelvedata.com/time_series?symbol={symbol}/{currency}&interval={interval}&outputsize={outputsize}&apikey={apiKey}";
-              else twelveDataEndpointURL = $"https://api.twelvedata.com/time_series?symbol={symbol}&interval={interval}&outputsize={outputsize}&apikey={apiKey}";
-              
-              HttpResponseMessage response = httpClient.GetAsync(twelveDataEndpointURL).Result;
-              if (!response.IsSuccessStatusCode)
-              {
-                _logger.Log.Error($"[Updater] :: TwelveData: Failed to fetch data for symbol {symbol}. HTTP response status code: {response.StatusCode}");
-                i++;
-                continue;
-              }
-
-              i++;
-              string json = response.Content.ReadAsStringAsync().Result;
-
-              var options = new JsonSerializerOptions
-              {
-                PropertyNameCaseInsensitive = true
-              };
-
-              var parsed = JsonSerializer.Deserialize<TwelveDataParser>(json, options);
-              if (parsed?.Values == null || !parsed.Values.Any())
-              {
-                _logger.Log.Warning($"[Updater] :: No market data found for symbol {symbol}");
-                continue;
-              }
-
-              var openPrices = new List<double>();
-              var closePrices = new List<double>();
-              var maxPrices = new List<double>();
-              var minPrices = new List<double>();
-
-              foreach (var day in parsed.Values)
-              {
-                try
-                {
-                  double open = double.Parse(day.Open!, CultureInfo.InvariantCulture);
-                  double high = double.Parse(day.High!, CultureInfo.InvariantCulture);
-                  double low = double.Parse(day.Low!, CultureInfo.InvariantCulture);
-                  double close = double.Parse(day.Close!, CultureInfo.InvariantCulture);
-
-                  openPrices.Add(open);
-                  maxPrices.Add(high);
-                  minPrices.Add(low);
-                  closePrices.Add(close);
-                }
-                catch (Exception ex)
-                {
-                  _logger.Log.Error($"[Updater] :: Error parsing day data for {symbol}: {ex.Message}");
-                  
-                }
-              }
-
-              if (closePrices.Count > 0)
-              {
-                asset.current = closePrices.First(); // Último cierre disponible
-                asset.close = closePrices;
-                asset.open = openPrices;
-                asset.daily_max = maxPrices;
-                asset.daily_min = minPrices;
-
-              }
-            }
-            
-            _dbContext.SaveChanges();
-          }
-
-          transaction.Commit();
-          _logger.Log.Information("[Updater] :: UpdateAssets() completed successfully!");
+          resp = await httpClient.GetAsync(url, ct);
+          callsWithThisKey++;
         }
         catch (Exception ex)
         {
-          _logger.Log.Error($"[Updater] :: UpdateAssets() error: {ex}");
-          transaction.Rollback();
+          _logger.Log.Error(ex, "[Updater] :: HTTP error fetching {Symbol}", symbol);
+          callsWithThisKey++;
+          continue;
+        }
+
+        if (!resp.IsSuccessStatusCode)
+        {
+          _logger.Log.Error("[Updater] :: TwelveData: Failed for {Symbol}. HTTP {Code}", symbol, resp.StatusCode);
+          continue;
+        }
+
+        string json;
+        try
+        {
+          json = await resp.Content.ReadAsStringAsync(ct);
+        }
+        catch (Exception ex)
+        {
+          _logger.Log.Error(ex, "[Updater] :: Error reading content for {Symbol}", symbol);
+          continue;
+        }
+
+        TwelveDataResponse? parsed;
+        try
+        {
+          parsed = JsonSerializer.Deserialize<TwelveDataResponse>(json, new JsonSerializerOptions
+          {
+            PropertyNameCaseInsensitive = true
+          });
+        }
+        catch (Exception ex)
+        {
+          _logger.Log.Error(ex, "[Updater] :: JSON parse error for {Symbol}", symbol);
+          continue;
+        }
+
+        if (parsed == null || parsed.Status?.Equals("error", StringComparison.OrdinalIgnoreCase) == true)
+        {
+          _logger.Log.Warning("[Updater] :: API status not ok for {Symbol}. Raw: {Raw}", symbol, json);
+          continue;
+        }
+
+        if (parsed.Values == null || parsed.Values.Count == 0)
+        {
+          _logger.Log.Warning("[Updater] :: No market data for {Symbol}", symbol);
+          continue;
+        }
+
+        var series = parsed.Values.AsEnumerable();
+
+        var opens = new List<double>(parsed.Values.Count);
+        var highs = new List<double>(parsed.Values.Count);
+        var lows = new List<double>(parsed.Values.Count);
+        var closes = new List<double>(parsed.Values.Count);
+
+        foreach (var day in series)
+        {
+          try
+          {
+            var o = double.Parse(day.Open!, CultureInfo.InvariantCulture);
+            var h = double.Parse(day.High!, CultureInfo.InvariantCulture);
+            var l = double.Parse(day.Low!, CultureInfo.InvariantCulture);
+            var c = double.Parse(day.Close!, CultureInfo.InvariantCulture);
+
+            opens.Add(o);
+            highs.Add(h);
+            lows.Add(l);
+            closes.Add(c);
+          }
+          catch (Exception ex)
+          {
+            _logger.Log.Error(ex, "[Updater] :: Parse error for {Symbol} item {Date}", symbol, day.Datetime);
+          }
+        }
+
+        if (closes.Count == 0)
+        {
+          _logger.Log.Warning("[Updater] :: Empty close series for {Symbol}", symbol);
+          continue;
+        }
+
+        double current = closes[^1];
+
+        var openArr = opens.ToArray();
+        var highArr = highs.ToArray();
+        var lowArr = lows.ToArray();
+        var closeArr = closes.ToArray();
+
+        const int maxRetries = 3;
+        var attempt = 0;
+
+        while (true)
+        {
+          ct.ThrowIfCancellationRequested();
+          try
+          {
+            var affected = await _dbContext.FinancialAssets
+                .Where(f => f.id == asset.id)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(f => f.current, _ => current)
+                    .SetProperty(f => f.open, _ => openArr)
+                    .SetProperty(f => f.daily_max, _ => highArr)
+                    .SetProperty(f => f.daily_min, _ => lowArr)
+                    .SetProperty(f => f.close, _ => closeArr),
+                    ct);
+
+            if (affected == 0)
+            {
+              if (++attempt > maxRetries)
+              {
+                _logger.Log.Warning("[Updater] :: Zero rows updating {Id} after {Attempts} attempts", asset.id, attempt);
+                break;
+              }
+              await Task.Delay(100 * attempt, ct);
+              continue;
+            }
+
+            break;
+          }
+          catch (DbUpdateConcurrencyException ex)
+          {
+            if (++attempt > maxRetries)
+            {
+              _logger.Log.Warning(ex, "[Updater] :: Concurrency on {Id} after {Attempts} attempts", asset.id, attempt);
+              break;
+            }
+            await Task.Delay(100 * attempt, ct);
+          }
+          catch (OperationCanceledException) { throw; }
+          catch (Exception ex)
+          {
+            _logger.Log.Error(ex, "[Updater] :: Error updating {Id}", asset.id);
+            break;
+          }
         }
       }
+
+      _logger.Log.Information("[Updater] :: UpdateAssetsAsync() completed successfully!");
     }
+
 
     #endregion
 
@@ -208,7 +292,7 @@ namespace BetsTrading_Service.Services
 
           foreach (var asset in financialAssets)
           {
-            if (asset.close == null || asset.close.Count < 30)
+            if (asset.close == null || asset.close.Length < 30)
               continue;
 
             var closes = asset.close.Take(30).ToList();
@@ -222,12 +306,10 @@ namespace BetsTrading_Service.Services
             double minLow = lows.Min();
             double priceRange = maxHigh - minLow;
 
-            // Tendencia por regresión lineal
             double slope = CalculateLinearRegressionSlope(closes);
             string trend = slope > stdDev * 0.02 ? "uptrend" :
                            slope < -stdDev * 0.02 ? "downtrend" : "sideways";
 
-            // Definir límites exactos de zonas
             double zoneHeight = priceRange / 3.0;
 
             double lowLow = minLow;
@@ -239,7 +321,6 @@ namespace BetsTrading_Service.Services
             double highLow = midHigh;
             double highHigh = maxHigh;
 
-            // Calcular targets (centros) y márgenes
             double targetLow = (lowLow + lowHigh) / 2.0;
             double targetMid = (midLow + midHigh) / 2.0;
             double targetHigh = (highLow + highHigh) / 2.0;
@@ -248,7 +329,6 @@ namespace BetsTrading_Service.Services
             double marginMid = (midHigh - midLow) / targetMid * 100.0;
             double marginHigh = (highHigh - highLow) / targetHigh * 100.0;
 
-            // Calcular cuotas estimadas
             double oddsLow = EstimateOdds(targetLow, lastClose, stdDev, trend, "low");
             double oddsMid = EstimateOdds(targetMid, lastClose, stdDev, trend, "mid");
             double oddsHigh = EstimateOdds(targetHigh, lastClose, stdDev, trend, "high");
@@ -256,7 +336,6 @@ namespace BetsTrading_Service.Services
             DateTime start = DateTime.Now.AddDays(1);
             DateTime end = DateTime.Now.AddDays(5);
 
-            // Zona inferior
             _dbContext.BetZones.Add(new BetZone(
               asset.ticker!,
               targetLow,
@@ -266,7 +345,7 @@ namespace BetsTrading_Service.Services
               Math.Round(oddsLow, 2)
             ));
 
-            // Zona intermedia
+
             _dbContext.BetZones.Add(new BetZone(
               asset.ticker!,
               targetMid,
@@ -276,7 +355,7 @@ namespace BetsTrading_Service.Services
               Math.Round(oddsMid, 2)
             ));
 
-            // Zona superior
+
             _dbContext.BetZones.Add(new BetZone(
               asset.ticker!,
               targetHigh,
@@ -516,7 +595,7 @@ namespace BetsTrading_Service.Services
 
               bool hasCrossedZone = false;
               
-              for (int i = startIndex; i <= endIndex && i < financialAsset.daily_max.Count; i++)
+              for (int i = startIndex; i <= endIndex && i < financialAsset.daily_max.Length; i++)
               {
                 double dayMax = financialAsset.daily_max[i];
                 double dayMin = financialAsset.daily_min[i];
@@ -734,7 +813,7 @@ namespace BetsTrading_Service.Services
                   country: GetCountryByTicker(ticker.Replace(":", ".")),
                   ticker: ticker.Replace(":", "."),
                   current: (double)item["extracted_price"]!,
-                  close: new List<double> { (double)item["extracted_price"]! }
+                  close: new double[] { (double)item["extracted_price"]! }
               );
 
               _dbContext.FinancialAssets.Add(tmpAsset);
@@ -964,7 +1043,7 @@ namespace BetsTrading_Service.Services
     private Timer? _assetsTimer;
     private Timer? _betsTimer;
     private Timer? _createNewBetsTimer;
-
+    private int _assetsBusy = 0;
 
     public UpdaterHostedService(IServiceProvider serviceProvider, ICustomLogger customLogger)
 
@@ -978,9 +1057,9 @@ namespace BetsTrading_Service.Services
 
       #if RELEASE
         _assetsTimer = new Timer(ExecuteUpdateAssets!, null, TimeSpan.FromSeconds(0), TimeSpan.FromDays(1));
-        _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromMinutes(10), TimeSpan.FromDays(1));
-        _betsTimer = new Timer(ExecuteCheckBets!, null, TimeSpan.FromMinutes(20), TimeSpan.FromDays(1));
-        _createNewBetsTimer = new Timer(ExecuteCleanAndCreateBets!, null, TimeSpan.FromMinutes(30), TimeSpan.FromDays(4));
+        _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromMinutes(5), TimeSpan.FromDays(1));
+        _betsTimer = new Timer(ExecuteCheckBets!, null, TimeSpan.FromMinutes(7), TimeSpan.FromDays(1));
+        _createNewBetsTimer = new Timer(ExecuteCleanAndCreateBets!, null, TimeSpan.FromMinutes(10), TimeSpan.FromDays(4));
       #endif
 
       return Task.CompletedTask;
@@ -1012,14 +1091,29 @@ namespace BetsTrading_Service.Services
         updaterService.CheckAndPayPriceBets();
       }
     }
-    private void ExecuteUpdateAssets(object state)
+
+    private async void ExecuteUpdateAssets(object? state)
     {
-      using (var scope = _serviceProvider.CreateScope())
+      if (Interlocked.Exchange(ref _assetsBusy, 1) == 1)
       {
-        var scopedServices = scope.ServiceProvider;
-        var updaterService = scopedServices.GetRequiredService<Updater>();
+        _customLogger.Log.Warning("[UpdaterHostedService] :: UpdateAssets ya en curso. Skip.");
+        return;
+      }
+
+      try
+      {
+        using var scope = _serviceProvider.CreateScope();
+        var updater = scope.ServiceProvider.GetRequiredService<Updater>();
         _customLogger.Log.Information("[UpdaterHostedService] :: Executing UpdateAssets service.");
-        updaterService.UpdateAssets();
+        await updater.UpdateAssetsAsync();
+      }
+      catch (Exception ex)
+      {
+        _customLogger.Log.Error(ex, "[UpdaterHostedService] :: Error en ExecuteUpdateAssets");
+      }
+      finally
+      {
+        Volatile.Write(ref _assetsBusy, 0);
       }
     }
     private void ExecuteUpdateTrends(object state)
@@ -1073,6 +1167,37 @@ namespace BetsTrading_Service.Services
       public string? Close { get; set; }
       public string? Volume { get; set; }
     }
+
+    public sealed class TwelveDataResponse
+    {
+      public TwelveMeta? Meta { get; set; }
+      public List<TwelveBar> Values { get; set; } = new();
+      public string? Status { get; set; }  // "ok" o "error"
+                                           // Si hay error, podrían venir campos "code" y "message"
+      public object? Code { get; set; }
+      public object? Message { get; set; }
+    }
+
+    public sealed class TwelveMeta
+    {
+      public string? Symbol { get; set; }          // p.ej., "BTC/EUR"
+      public string? Interval { get; set; }        // "1day"
+      public string? Currency_Base { get; set; }   // "Bitcoin"
+      public string? Currency_Quote { get; set; }  // "Euro"
+      public string? Exchange { get; set; }        // "Coinbase Pro"
+      public string? Type { get; set; }            // "Digital Currency"
+    }
+
+    public sealed class TwelveBar
+    {
+      public string? Datetime { get; set; } // "2025-09-02"
+      public string? Open { get; set; }
+      public string? High { get; set; }
+      public string? Low { get; set; }
+      public string? Close { get; set; }
+    }
+
+
   }
   #endregion
 

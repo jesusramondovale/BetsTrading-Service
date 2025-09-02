@@ -42,7 +42,7 @@ namespace BetsTrading_Service.Controllers
           return NotFound(new { Message = "User has no bets!" });
         }
 
-        _logger.Log.Information("[INFO] :: UserBets :: success with ID: {msg}", userInfoRequest.id);
+        _logger.Log.Debug("[INFO] :: UserBets :: success with ID: {msg}", userInfoRequest.id);
         var betDTOs = new List<BetDTO>();
 
         foreach (var bet in bets)
@@ -97,7 +97,7 @@ namespace BetsTrading_Service.Controllers
           return NotFound(new { Message = "User has no bets!" });
         }
 
-        _logger.Log.Information("[INFO] :: UserPriceBets :: success with ID: {msg}", userInfoRequest.id);
+        _logger.Log.Debug("[INFO] :: UserPriceBets :: success with ID: {msg}", userInfoRequest.id);
         var priceBetDTOs = new List<PriceBetDTO>();
 
         foreach (var priceBet in priceBets)
@@ -188,7 +188,7 @@ namespace BetsTrading_Service.Controllers
           _logger.Log.Warning("[INFO] :: CurrentPriceBets :: Empty list of price bets on userID: {msg}", userInfoRequest.id);
           return NotFound(new { Message = "User has no current price bets!" });
         }
-        _logger.Log.Information("[INFO] :: CurrentPriceBets :: success with ID: {msg}", userInfoRequest.id);
+        _logger.Log.Debug("[INFO] :: CurrentPriceBets :: success with ID: {msg}", userInfoRequest.id);
         return Ok(new { Message = "CurrentPriceBets SUCCESS", PriceBets = priceBets });
       }
       catch (Exception ex)
@@ -210,7 +210,7 @@ namespace BetsTrading_Service.Controllers
           _logger.Log.Warning("[INFO] :: HistoricPriceBets :: Empty list of price bets on userID: {msg}", userInfoRequest.id);
           return NotFound(new { Message = "User has no historic price bets!" });
         }
-        _logger.Log.Information("[INFO] :: HistoricPriceBets :: success with ID: {msg}", userInfoRequest.id);
+        _logger.Log.Debug("[INFO] :: HistoricPriceBets :: success with ID: {msg}", userInfoRequest.id);
         return Ok(new { Message = "HistoricPriceBets SUCCESS", PriceBets = priceBets });
       }
       catch (Exception ex)
@@ -304,7 +304,7 @@ namespace BetsTrading_Service.Controllers
 
         if (betZones.Any())
         {
-          _logger.Log.Information("[INFO] :: GetBets :: Success on ticker: {msg}", ticker.id);
+          _logger.Log.Debug("[INFO] :: GetBets :: Success on ticker: {msg}", ticker.id);
           return Ok(new { bets = betZones });
         }
         else
@@ -339,7 +339,7 @@ namespace BetsTrading_Service.Controllers
           }
           if (null != betZone)
           {
-            _logger.Log.Information("[INFO] :: GetBetZone :: Success on bet ID: {msg}", betID.id);
+            _logger.Log.Debug("[INFO] :: GetBetZone :: Success on bet ID: {msg}", betID.id);
             return Ok(new { bets = new List<BetZone> { new BetZone(betZone.ticker, betZone.target_value, betZone.bet_margin,
                                                             betZone.start_date, betZone.end_date, origin_odds) } });
           }
@@ -377,7 +377,7 @@ namespace BetsTrading_Service.Controllers
             _dbContext.Bet.Remove(bet);
             await _dbContext.SaveChangesAsync();
             await transaction.CommitAsync();
-            _logger.Log.Information("[INFO] :: DeleteRecentBet :: Bet removed successfully with ID: {msg}", betIdRequest.id);
+            _logger.Log.Debug("[INFO] :: DeleteRecentBet :: Bet removed successfully with ID: {msg}", betIdRequest.id);
             return Ok(new { });
           }
           else
@@ -412,7 +412,7 @@ namespace BetsTrading_Service.Controllers
             _dbContext.Bet.RemoveRange(bets);
             await _dbContext.SaveChangesAsync();
             await transaction.CommitAsync();
-            _logger.Log.Information("[INFO] :: DeleteHistoricBet :: Bets removed successfully for user: {msg}", userInfoRequestId.id);
+            _logger.Log.Debug("[INFO] :: DeleteHistoricBet :: Bets removed successfully for user: {msg}", userInfoRequestId.id);
             return Ok(new { Message = "Bets deleted successfully" });
           }
           else
