@@ -18,9 +18,11 @@ namespace BetsTrading_Service.Services
 {
   public class Updater
   {
+    
+    private int currentKeyIndex = 0;
 
     // Assets & Crypto
-    private string TWELVE_DATA_KEY = Environment.GetEnvironmentVariable("TWELVE_DATA_KEY", EnvironmentVariableTarget.User) ?? "";
+    private static readonly string[] TWELVE_DATA_KEYS = Enumerable.Range(0, 10).Select(i => Environment.GetEnvironmentVariable($"TWELVE_DATA_KEY{i}", EnvironmentVariableTarget.User) ?? "").ToArray() ?? [];
     // Logos only
     private string MARKETSTACK_KEY = Environment.GetEnvironmentVariable("MARKETSTACK_API_KEY", EnvironmentVariableTarget.User) ?? "";
     // Trends only
@@ -39,12 +41,21 @@ namespace BetsTrading_Service.Services
       _firebaseNotificationService = firebaseNotificationService;
       _dbContext = dbContext;
       _logger = customLogger;
+      
     }
+
     #endregion
 
     #region Update Assets
 
-    //TwelveData
+    private string GetCurrentKey() => TWELVE_DATA_KEYS[currentKeyIndex];
+    
+    private void NextKey()
+    {
+      currentKeyIndex = (currentKeyIndex + 1) % TWELVE_DATA_KEYS.Length;
+    }
+
+    //UpdateAssets with TwelveData key list
     public void UpdateAssets()
     {
       int i = 0;
@@ -64,9 +75,9 @@ namespace BetsTrading_Service.Services
             return;
           }
 
-          if (string.IsNullOrEmpty(TWELVE_DATA_KEY))
+          if (!TWELVE_DATA_KEYS.Any())
           {
-            _logger.Log.Error("[Updater] :: TWELVE DATA KEY not set in user environment variables!");
+            _logger.Log.Error("[Updater] :: TWELVE DATA KEYS not set in user environment variables!");
             return;
           }
 
@@ -75,9 +86,20 @@ namespace BetsTrading_Service.Services
             foreach (var asset in selectedAssets)
             {
               // Bypass 8 calls per min rate limit
-              if (i == 7)
+              if (i == 8)
               {
-                Thread.Sleep(60000);
+                NextKey();
+                _logger.Log.Information("[Updater] :: Switching to next TwelveDataKey");
+                if (string.IsNullOrEmpty(GetCurrentKey()))
+                {
+                  _logger.Log.Error("[Updater] :: Current TwelveDataKey is EMPTY, check environment variables!");
+                }
+
+                if (currentKeyIndex == 0)
+                {
+                  _logger.Log.Information("[Updater] :: Sleeping 60 seconds to bypass rate limit");
+                  Thread.Sleep(60000);
+                }
                 i = 0;
               }
               string symbol = asset.ticker?.Split('.')[0] ?? string.Empty;
@@ -91,16 +113,10 @@ namespace BetsTrading_Service.Services
 
 
               string twelveDataEndpointURL;
-              if(asset.group == "Cryptos")
-              {
-                twelveDataEndpointURL = $"https://api.twelvedata.com/time_series?symbol={symbol}/{currency}&interval={interval}&outputsize={outputsize}&apikey={TWELVE_DATA_KEY}";
-              }
-              else
-              {
-                twelveDataEndpointURL = $"https://api.twelvedata.com/time_series?symbol={symbol}&interval={interval}&outputsize={outputsize}&apikey={TWELVE_DATA_KEY}";
-              }
+              string apiKey = GetCurrentKey();
+              if (asset.group == "Cryptos") twelveDataEndpointURL = $"https://api.twelvedata.com/time_series?symbol={symbol}/{currency}&interval={interval}&outputsize={outputsize}&apikey={apiKey}";
+              else twelveDataEndpointURL = $"https://api.twelvedata.com/time_series?symbol={symbol}&interval={interval}&outputsize={outputsize}&apikey={apiKey}";
               
-
               HttpResponseMessage response = httpClient.GetAsync(twelveDataEndpointURL).Result;
               if (!response.IsSuccessStatusCode)
               {
@@ -158,11 +174,9 @@ namespace BetsTrading_Service.Services
                 asset.daily_max = maxPrices;
                 asset.daily_min = minPrices;
 
-                _dbContext.FinancialAssets.Update(asset);
               }
-              
             }
-
+            
             _dbContext.SaveChanges();
           }
 
@@ -964,9 +978,9 @@ namespace BetsTrading_Service.Services
 
       #if RELEASE
         _assetsTimer = new Timer(ExecuteUpdateAssets!, null, TimeSpan.FromSeconds(0), TimeSpan.FromDays(1));
-        _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromSeconds(3615), TimeSpan.FromDays(1));
-        _betsTimer = new Timer(ExecuteCheckBets!, null, TimeSpan.FromSeconds(3620), TimeSpan.FromDays(1));
-        _createNewBetsTimer = new Timer(ExecuteCleanAndCreateBets!, null, TimeSpan.FromSeconds(3630), TimeSpan.FromDays(4));
+        _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromMinutes(10), TimeSpan.FromDays(1));
+        _betsTimer = new Timer(ExecuteCheckBets!, null, TimeSpan.FromMinutes(20), TimeSpan.FromDays(1));
+        _createNewBetsTimer = new Timer(ExecuteCleanAndCreateBets!, null, TimeSpan.FromMinutes(30), TimeSpan.FromDays(4));
       #endif
 
       return Task.CompletedTask;
@@ -1028,7 +1042,7 @@ namespace BetsTrading_Service.Services
     {
       _trendsTimer!.Dispose();
       _assetsTimer!.Dispose();
-      _betsTimer!.Dispose();
+     _betsTimer!.Dispose();
     }
   }
   #endregion
