@@ -69,7 +69,7 @@ namespace BetsTrading_Service.Services
 
       var selectedAssets = await _dbContext.FinancialAssets
           .AsNoTracking()
-          .Where(fa => fa.group == "Shares" || fa.group == "ETF" || fa.group == "Cryptos")
+          .Where(fa => fa.group == "Shares" || fa.group == "ETF" || fa.group == "Cryptos" || fa.group == "Forex")
           .Select(fa => new { fa.id, fa.ticker, fa.group })
           .ToListAsync(ct);
 
@@ -81,8 +81,8 @@ namespace BetsTrading_Service.Services
 
       using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
 
-      const string interval = "1day";
-      const string outputsize = "90";
+      const string interval = "1h";
+      const string outputsize = "150";
       const string desiredQuote = "EUR";
 
       int keyIndex = 0;
@@ -333,8 +333,8 @@ namespace BetsTrading_Service.Services
             double oddsMid = EstimateOdds(targetMid, lastClose, stdDev, trend, "mid");
             double oddsHigh = EstimateOdds(targetHigh, lastClose, stdDev, trend, "high");
 
-            DateTime start = DateTime.Now.AddDays(1);
-            DateTime end = DateTime.Now.AddDays(5);
+            DateTime start = DateTime.Now.AddHours(1);
+            DateTime end = DateTime.Now.AddHours(5);
 
             _dbContext.BetZones.Add(new BetZone(
               asset.ticker!,
@@ -1056,10 +1056,10 @@ namespace BetsTrading_Service.Services
       _customLogger.Log.Information("[UpdaterHostedService] :: Starting the Updater hosted service.");
 
       #if RELEASE
-        _assetsTimer = new Timer(ExecuteUpdateAssets!, null, TimeSpan.FromSeconds(0), TimeSpan.FromDays(1));
+        _assetsTimer = new Timer(ExecuteUpdateAssets!, null, TimeSpan.FromSeconds(0), TimeSpan.FromHours(1));
         _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromMinutes(5), TimeSpan.FromDays(1));
         _betsTimer = new Timer(ExecuteCheckBets!, null, TimeSpan.FromMinutes(7), TimeSpan.FromDays(1));
-        _createNewBetsTimer = new Timer(ExecuteCleanAndCreateBets!, null, TimeSpan.FromMinutes(10), TimeSpan.FromDays(4));
+        _createNewBetsTimer = new Timer(ExecuteCleanAndCreateBets!, null, TimeSpan.FromMinutes(10), TimeSpan.FromHours(5));
       #endif
 
       return Task.CompletedTask;
