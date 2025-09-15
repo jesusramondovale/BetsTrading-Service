@@ -19,6 +19,19 @@ namespace BetsTrading_Service.Requests
 
   }
 
+  public class symbolWithTimeframe
+  {
+
+    [Required]
+    [StringLength(100, MinimumLength = 1)]
+    public string? id { get; set; }
+
+    [Required]
+    public int? timeframe { get; set; } //1,2,4,24
+
+  }
+
+
 
 
   public class tokenRequest
@@ -47,17 +60,6 @@ namespace BetsTrading_Service.Requests
 
   }
 
-  public class addCoinsRequest
-  {
-
-    [Required]
-    [StringLength(100, MinimumLength = 1)]
-    public string? user_id { get; set; }
-
-    [Required]
-    public double? reward { get; set; }
-
-  }
 
   public class idCardRequest
   {

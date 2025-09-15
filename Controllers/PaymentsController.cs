@@ -38,6 +38,8 @@
       _config = config;
       _logger = customLogger;
       StripeConfiguration.ApiKey = Environment.GetEnvironmentVariable("STRIPE_SECRET_KEY", EnvironmentVariableTarget.User) ?? "";
+      //TO-DO -> Use real Key (already added to env variables)
+      //StripeConfiguration.ApiKey = Environment.GetEnvironmentVariable("STRIPE_REAL_SECRET_KEY", EnvironmentVariableTarget.User) ?? "";
 
     }
 

@@ -50,7 +50,7 @@ namespace BetsTrading_Service.Controllers
           var tmpAsset = await _dbContext.FinancialAssets.FirstOrDefaultAsync(a => a.ticker == bet.ticker);
           if (null != tmpAsset)
           {
-            double tmpAssetDailyGain = (tmpAsset.current - tmpAsset.close[1])/ tmpAsset.close[1];
+            double tmpAssetDailyGain = (tmpAsset.current - tmpAsset.close![1])/ tmpAsset.close[1];
             var tmpBetZone = await _dbContext.BetZones.FirstOrDefaultAsync(bz => bz.id == bet.bet_zone);
             
             TimeSpan timeMargin = (TimeSpan)(tmpBetZone!.end_date - tmpBetZone!.start_date)!;
@@ -295,12 +295,12 @@ namespace BetsTrading_Service.Controllers
     }
 
     [HttpPost("GetBetZones")]
-    public async Task<IActionResult> GetBetZones([FromBody] idRequest ticker)
+    public async Task<IActionResult> GetBetZones([FromBody] symbolWithTimeframe ticker)
     {
       
       try
       {
-        var betZones = await _dbContext.BetZones.Where(bz => bz.ticker == ticker.id && bz.active == true).ToListAsync();
+        var betZones = await _dbContext.BetZones.Where(bz => bz.ticker == ticker.id && bz.timeframe == ticker.timeframe && bz.active == true).ToListAsync();
 
         if (betZones.Any())
         {
@@ -309,7 +309,7 @@ namespace BetsTrading_Service.Controllers
         }
         else
         {
-          _logger.Log.Warning("[INFO] :: GetBets :: Bets not found for ticker: {msg}", ticker.id);
+          _logger.Log.Information("[INFO] :: GetBets :: Bets not found for ticker: {msg}", ticker.id);
           return NotFound(new { Message = "No bets found for this ticker" });
         }
       }
@@ -341,7 +341,7 @@ namespace BetsTrading_Service.Controllers
           {
             _logger.Log.Debug("[INFO] :: GetBetZone :: Success on bet ID: {msg}", betID.id);
             return Ok(new { bets = new List<BetZone> { new BetZone(betZone.ticker, betZone.target_value, betZone.bet_margin,
-                                                            betZone.start_date, betZone.end_date, origin_odds) } });
+                                                            betZone.start_date, betZone.end_date, origin_odds, betZone.timeframe) } });
           }
           else
           {
@@ -399,37 +399,50 @@ namespace BetsTrading_Service.Controllers
     [HttpPost("DeleteHistoricBet")]
     public async Task<IActionResult> DeleteHistoricBet([FromBody] idRequest userInfoRequestId)
     {
-      using (var transaction = await _dbContext.Database.BeginTransactionAsync())
+      await using var transaction = await _dbContext.Database.BeginTransactionAsync();
+      try
       {
-        try
-        {
-          var bets = await _dbContext.Bet
-              .Where(b => b.user_id == userInfoRequestId.id && _dbContext.BetZones.Any(bz => bz.id == b.bet_zone && bz.end_date < DateTime.UtcNow))
-              .ToListAsync();
+        var bets = await _dbContext.Bet
+            .Where(b => b.user_id == userInfoRequestId.id &&
+                        _dbContext.BetZones.Any(bz => bz.id == b.bet_zone && bz.end_date < DateTime.UtcNow))
+            .ToListAsync();
 
-          if (bets != null && bets.Count > 0)
-          {
-            _dbContext.Bet.RemoveRange(bets);
-            await _dbContext.SaveChangesAsync();
-            await transaction.CommitAsync();
-            _logger.Log.Debug("[INFO] :: DeleteHistoricBet :: Bets removed successfully for user: {msg}", userInfoRequestId.id);
-            return Ok(new { Message = "Bets deleted successfully" });
-          }
-          else
-          {
-            await transaction.RollbackAsync();
-            _logger.Log.Warning("[INFO] :: DeleteHistoricBet :: Bets not found for user: {msg}", userInfoRequestId.id);
-            return NotFound(new { Message = "Bets not found for the user" });
-          }
-        }
-        catch (Exception ex)
+        var priceBets = await _dbContext.PriceBets
+            .Where(pb => pb.user_id == userInfoRequestId.id && pb.end_date < DateTime.UtcNow)
+            .ToListAsync();
+
+        if ((bets == null || bets.Count == 0) && (priceBets == null || priceBets.Count == 0))
         {
-          await transaction.RollbackAsync();
-          _logger.Log.Error("[INFO] :: DeleteHistoricBet :: Server error: {msg}", ex.Message);
-          return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+          _logger.Log.Warning("[INFO] :: DeleteHistoricBet :: No bets found for user: {msg}", userInfoRequestId.id);
+          return NotFound(new { Message = "No bets found for the user" });
         }
+
+        if (bets != null && bets.Count > 0)
+        {
+          _dbContext.Bet.RemoveRange(bets);
+          _logger.Log.Debug("[INFO] :: DeleteHistoricBet :: Bets removed successfully for user: {msg}", userInfoRequestId.id);
+        }
+
+        if (priceBets != null && priceBets.Count > 0)
+        {
+          _dbContext.PriceBets.RemoveRange(priceBets);
+          _logger.Log.Debug("[INFO] :: DeleteHistoricBet :: PriceBets removed successfully for user: {msg}", userInfoRequestId.id);
+        }
+
+        await _dbContext.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        return Ok(new { Message = "All old bets deleted successfully" });
+      }
+      catch (Exception ex)
+      {
+        await transaction.RollbackAsync();
+        _logger.Log.Error(ex, "[INFO] :: DeleteHistoricBet :: Server error for user: {msg}", userInfoRequestId.id);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
     }
+
+
 
     #region Private Methods
     private int GetBetCostFromMargin(double margin)

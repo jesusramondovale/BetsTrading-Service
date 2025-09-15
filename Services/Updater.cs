@@ -82,7 +82,7 @@ namespace BetsTrading_Service.Services
       using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
 
       const string interval = "1h";
-      const string outputsize = "150";
+      const string outputsize = "1000";
       const string desiredQuote = "EUR";
 
       int keyIndex = 0;
@@ -333,8 +333,9 @@ namespace BetsTrading_Service.Services
             double oddsMid = EstimateOdds(targetMid, lastClose, stdDev, trend, "mid");
             double oddsHigh = EstimateOdds(targetHigh, lastClose, stdDev, trend, "high");
 
+            //TODO
             DateTime start = DateTime.Now.AddHours(1);
-            DateTime end = DateTime.Now.AddHours(5);
+            DateTime end = DateTime.Now.AddDays(5);
 
             _dbContext.BetZones.Add(new BetZone(
               asset.ticker!,
@@ -342,7 +343,8 @@ namespace BetsTrading_Service.Services
               Math.Round(marginLow, 2),
               start,
               end,
-              Math.Round(oddsLow, 2)
+              Math.Round(oddsLow, 2),
+              1
             ));
 
 
@@ -352,7 +354,8 @@ namespace BetsTrading_Service.Services
               Math.Round(marginMid, 2),
               start,
               end,
-              Math.Round(oddsMid, 2)
+              Math.Round(oddsMid, 2),
+              1
             ));
 
 
@@ -362,8 +365,105 @@ namespace BetsTrading_Service.Services
               Math.Round(marginHigh, 2),
               start,
               end,
-              Math.Round(oddsHigh, 2)
+              Math.Round(oddsHigh, 2),
+              1
             ));
+
+            _dbContext.BetZones.Add(new BetZone(
+               asset.ticker!,
+               targetLow,
+               Math.Round(marginLow, 2),
+               start,
+               end,
+               Math.Round(oddsLow, 2),
+               2
+             ));
+
+            _dbContext.BetZones.Add(new BetZone(
+              asset.ticker!,
+              targetMid,
+              Math.Round(marginMid, 2),
+              start,
+              end,
+              Math.Round(oddsMid, 2),
+              2
+            ));
+
+
+            _dbContext.BetZones.Add(new BetZone(
+              asset.ticker!,
+              targetHigh,
+              Math.Round(marginHigh, 2),
+              start,
+              end,
+              Math.Round(oddsHigh, 2),
+              2
+            ));
+
+            _dbContext.BetZones.Add(new BetZone(
+             asset.ticker!,
+             targetLow,
+             Math.Round(marginLow, 2),
+             start,
+             end,
+             Math.Round(oddsLow, 2),
+             4
+           ));
+
+
+            _dbContext.BetZones.Add(new BetZone(
+              asset.ticker!,
+              targetMid,
+              Math.Round(marginMid, 2),
+              start,
+              end,
+              Math.Round(oddsMid, 2),
+              4
+            ));
+
+
+            _dbContext.BetZones.Add(new BetZone(
+              asset.ticker!,
+              targetHigh,
+              Math.Round(marginHigh, 2),
+              start,
+              end,
+              Math.Round(oddsHigh, 2),
+              4
+            ));
+
+            _dbContext.BetZones.Add(new BetZone(
+              asset.ticker!,
+              targetLow,
+              Math.Round(marginLow, 2),
+              start,
+              end,
+              Math.Round(oddsLow, 2),
+              24
+            ));
+
+
+            _dbContext.BetZones.Add(new BetZone(
+              asset.ticker!,
+              targetMid,
+              Math.Round(marginMid, 2),
+              start,
+              end,
+              Math.Round(oddsMid, 2),
+              24
+            ));
+
+
+            _dbContext.BetZones.Add(new BetZone(
+              asset.ticker!,
+              targetHigh,
+              Math.Round(marginHigh, 2),
+              start,
+              end,
+              Math.Round(oddsHigh, 2),
+              24
+            ));
+
           }
 
           _dbContext.SaveChanges();
@@ -1056,6 +1156,7 @@ namespace BetsTrading_Service.Services
       _customLogger.Log.Information("[UpdaterHostedService] :: Starting the Updater hosted service.");
 
       #if RELEASE
+      //TO-DO
         _assetsTimer = new Timer(ExecuteUpdateAssets!, null, TimeSpan.FromSeconds(0), TimeSpan.FromHours(1));
         _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromMinutes(5), TimeSpan.FromDays(1));
         _betsTimer = new Timer(ExecuteCheckBets!, null, TimeSpan.FromMinutes(7), TimeSpan.FromDays(1));
