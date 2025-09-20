@@ -138,9 +138,9 @@ namespace BetsTrading_Service.Controllers
           var dailyGain = 0.0;
           var prevClose = 0.0;
           
-          if (tmpAsset.close.Length >= 2)
+          if (tmpAsset.close.Length >= 24)
           {
-            prevClose = tmpAsset.close[1];
+            prevClose = tmpAsset.close[24];
             dailyGain = ((tmpAsset.current - prevClose) / prevClose) * 100;
           }
           else
@@ -279,9 +279,9 @@ namespace BetsTrading_Service.Controllers
               }
               else
               {
-                double dailyGain = ((tmpAsset.current - tmpAsset.close[1]) / tmpAsset.close[1]) * 100;
+                double dailyGain = ((tmpAsset.current - tmpAsset.close[24]) / tmpAsset.close[24]) * 100;
                 trendDTOs.Add(new TrendDTO(id: trend.id, name: tmpAsset.name, icon: tmpAsset.icon!, daily_gain: dailyGain,
-                  close: tmpAsset.close[1], current: tmpAsset.current, ticker: trend.ticker));
+                  close: tmpAsset.close[24], current: tmpAsset.current, ticker: trend.ticker));
               }
             }
             

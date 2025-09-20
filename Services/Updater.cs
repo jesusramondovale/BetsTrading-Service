@@ -215,7 +215,7 @@ namespace BetsTrading_Service.Services
           continue;
         }
 
-        double current = closes[^1];
+        double current = closes[0];
 
         var openArr = opens.ToArray();
         var highArr = highs.ToArray();
