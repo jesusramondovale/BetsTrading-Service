@@ -68,79 +68,62 @@ namespace BetsTrading_Service.Controllers
 
     // POST: api/FinancialAssets/FetchCandles
     [HttpPost("FetchCandles")]
-    public async Task<ActionResult<FinancialAsset>> FetchCandlesAsync([FromBody] symbolWithTimeframe symbol)
+    public async Task<ActionResult<IEnumerable<CandleDto>>> FetchCandlesAsync([FromBody] symbolWithTimeframe symbol, CancellationToken ct)
     {
       int timeframe = symbol.timeframe ?? 1;
 
       var financialAsset = await _context.FinancialAssets
-          .FirstOrDefaultAsync(fa => fa.ticker == symbol.id);
+          .AsNoTracking()
+          .FirstOrDefaultAsync(fa => fa.ticker == symbol.id, ct);
 
-      if (financialAsset == null) return NotFound();
+      if (financialAsset == null)
+        return NotFound();
 
-      // Si timeframe = 1 devolvemos los datos tal cual
-      if (timeframe <= 1) return financialAsset;
+      var candles = await _context.AssetCandles
+          .AsNoTracking()
+          .Where(c => c.AssetId == financialAsset.id && c.Interval == "1h")
+          .OrderByDescending(c => c.DateTime) 
+          .ToListAsync(ct);
 
-      // Normalizamos arrays a orden cronológico (antiguo → reciente)
-      var closes = (financialAsset.close ?? Array.Empty<double>()).Reverse().ToArray();
-      var opens = (financialAsset.open ?? Array.Empty<double>()).Reverse().ToArray();
-      var highs = (financialAsset.daily_max ?? Array.Empty<double>()).Reverse().ToArray();
-      var lows = (financialAsset.daily_min ?? Array.Empty<double>()).Reverse().ToArray();
-
-      int groupedCount = closes.Length / timeframe;
-
-      List<double> groupedClose = new();
-      List<double> groupedOpen = new();
-      List<double> groupedHigh = new();
-      List<double> groupedLow = new();
-
-      for (int i = 0; i < groupedCount; i++)
+      if (candles.Count == 0)
+        return Ok(new List<CandleDto>());
+      
+      if (timeframe <= 1)
       {
-        int start = i * timeframe;
-        int end = Math.Min(start + timeframe, closes.Length);
+        var resultRaw = candles.Select(c => new CandleDto
+        {
+          DateTime = c.DateTime,
+          Open = c.Open,
+          High = c.High,
+          Low = c.Low,
+          Close = c.Close
+        });
 
-        var blockCloses = closes.Skip(start).Take(end - start).ToArray();
-        var blockOpens = opens.Skip(start).Take(end - start).ToArray();
-        var blockHighs = highs.Skip(start).Take(end - start).ToArray();
-        var blockLows = lows.Skip(start).Take(end - start).ToArray();
-
-        if (blockCloses.Length == 0) continue;
-
-        // open = apertura de la PRIMERA vela del bloque
-        double openValue = blockOpens.First();
-
-        // close = cierre de la ÚLTIMA vela del bloque
-        double closeValue = blockCloses.Last();
-
-        groupedOpen.Add(openValue);
-        groupedClose.Add(closeValue);
-        groupedHigh.Add(blockHighs.Max());
-        groupedLow.Add(blockLows.Min());
+        return Ok(resultRaw);
       }
+      
+      var grouped = candles
+        .GroupBy(c => new DateTime(
+            c.DateTime.Year,
+            c.DateTime.Month,
+            c.DateTime.Day,
+            c.DateTime.Hour / timeframe * timeframe,
+            0, 0, DateTimeKind.Utc))
+        .Select(g => new CandleDto
+        {
+          DateTime = g.Key,
+          Open = g.OrderBy(c => c.DateTime).First().Open,
+          Close = g.OrderBy(c => c.DateTime).Last().Close,
+          High = g.Max(c => c.High),
+          Low = g.Min(c => c.Low)
+        })
+        .OrderByDescending(c => c.DateTime)
+        .ToList();
 
-      // Invertimos de nuevo para mantener el formato esperado (última vela primero)
-      groupedOpen.Reverse();
-      groupedClose.Reverse();
-      groupedHigh.Reverse();
-      groupedLow.Reverse();
 
-      var groupedAsset = new FinancialAsset(
-          financialAsset.id,
-          financialAsset.name,
-          financialAsset.group,
-          financialAsset.icon,
-          financialAsset.country,
-          financialAsset.ticker,
-          financialAsset.current,
-          groupedClose.ToArray()
-      )
-      {
-        open = groupedOpen.ToArray(),
-        daily_max = groupedHigh.ToArray(),
-        daily_min = groupedLow.ToArray()
-      };
-
-      return groupedAsset;
+      return Ok(grouped);
     }
+
 
   }
 }

@@ -22,7 +22,6 @@ namespace BetsTrading_Service.Controllers
     private readonly ICustomLogger _logger;
     private readonly IWebHostEnvironment _env;
 
-
     public InfoController(IWebHostEnvironment env, AppDbContext dbContext, ICustomLogger customLogger)
     {
       _env = env;
@@ -92,7 +91,7 @@ namespace BetsTrading_Service.Controllers
     }
 
     [HttpPost("Favorites")]
-    public IActionResult Favorites([FromBody] idRequest userId)
+    public async Task<IActionResult> Favorites([FromBody] idRequest userId, CancellationToken ct)
     {
       try
       {
@@ -108,16 +107,15 @@ namespace BetsTrading_Service.Controllers
             !string.Equals(userId.id, tokenUserId, StringComparison.Ordinal) &&
             !User.IsInRole("admin"))
         {
-          // 403 FORBIDDEN : User ID doesn't match JWT
           return Forbid();
         }
 
-        var favorites = _dbContext.Favorites
+        var favorites = await _dbContext.Favorites
             .AsNoTracking()
             .Where(u => u.user_id == userId.id)
-            .ToList();
+            .ToListAsync(ct);
 
-        if (favorites == null || favorites.Count == 0)
+        if (favorites.Count == 0)
         {
           _logger.Log.Warning("[INFO] :: Favorites :: Empty list of Favorites to userID: {msg}", userId.id);
           return NotFound(new { Message = "ERROR :: No Favorites!" });
@@ -127,27 +125,56 @@ namespace BetsTrading_Service.Controllers
 
         foreach (var fav in favorites)
         {
-          var tmpAsset = _dbContext.FinancialAssets
+          var tmpAsset = await _dbContext.FinancialAssets
               .AsNoTracking()
-              .FirstOrDefault(fa => fa.ticker == fav.ticker);
+              .FirstOrDefaultAsync(fa => fa.ticker == fav.ticker, ct);
 
-          // Comprobar si hay datos y que close tenga al menos 2 elementos
-          if (tmpAsset == null || tmpAsset.close == null)
-            continue;
+          if (tmpAsset == null) continue;
 
-          var dailyGain = 0.0;
-          var prevClose = 0.0;
-          
-          if (tmpAsset.close.Length >= 24)
+          var lastCandle = await _dbContext.AssetCandles
+              .AsNoTracking()
+              .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h")
+              .OrderByDescending(c => c.DateTime)
+              .FirstOrDefaultAsync(ct);
+
+          if (lastCandle == null) continue;
+
+          var lastDay = lastCandle.DateTime.Date;
+          AssetCandle? finalCandle;
+
+          if (tmpAsset.group == "Cryptos" || tmpAsset.group == "Forex")
           {
-            prevClose = tmpAsset.close[24];
-            dailyGain = ((tmpAsset.current - prevClose) / prevClose) * 100;
+            finalCandle = await _dbContext.AssetCandles
+                .AsNoTracking()
+                .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h" && c.DateTime.Date == lastDay)
+                .OrderBy(c => c.DateTime)
+                .FirstOrDefaultAsync(ct);
           }
           else
           {
-            //Fake increment 5% on assets with no data
+            finalCandle = lastCandle;
+          }
+
+          if (finalCandle == null) continue;
+
+          var prevCandle = await _dbContext.AssetCandles
+              .AsNoTracking()
+              .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h" && c.DateTime.Date < lastDay)
+              .OrderByDescending(c => c.DateTime)
+              .FirstOrDefaultAsync(ct);
+
+          double prevClose;
+          double dailyGain;
+
+          if (prevCandle != null)
+          {
+            prevClose = (double)prevCandle.Close;
+            dailyGain = prevClose == 0 ? 0 : (((double)tmpAsset.current - prevClose) / prevClose) * 100.0;
+          }
+          else
+          {
             prevClose = tmpAsset.current * 0.95;
-            dailyGain = ((tmpAsset.current - prevClose) / prevClose) * 100;
+            dailyGain = ((tmpAsset.current - prevClose) / prevClose) * 100.0;
           }
 
           favsDTO.Add(new FavoriteDTO(
@@ -156,7 +183,7 @@ namespace BetsTrading_Service.Controllers
               icon: tmpAsset.icon ?? "noIcon",
               daily_gain: dailyGain,
               close: prevClose,
-              current: tmpAsset.current,
+              current: (double)lastCandle.Close,
               user_id: userId.id!,
               ticker: fav.ticker
           ));
@@ -172,7 +199,7 @@ namespace BetsTrading_Service.Controllers
       }
       catch (Exception ex)
       {
-        _logger.Log.Error("[INFO] :: Favorites :: Internal server error: {msg}", ex.Message);
+        _logger.Log.Error(ex, "[INFO] :: Favorites :: Internal server error: {msg}", ex.Message);
         return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
     }
@@ -238,15 +265,14 @@ namespace BetsTrading_Service.Controllers
     }
 
     [HttpPost("Trends")]
-    public IActionResult Trends([FromBody] idRequest userInfoRequest)
+    public async Task<IActionResult> Trends([FromBody] idRequest userInfoRequest, CancellationToken ct)
     {
-
       try
       {
         var tokenUserId =
-          User.FindFirstValue(ClaimTypes.NameIdentifier) ??
-          User.FindFirstValue("app_sub") ??
-          User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+            User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+            User.FindFirstValue("app_sub") ??
+            User.FindFirstValue(JwtRegisteredClaimNames.Sub);
 
         if (string.IsNullOrEmpty(tokenUserId))
           return Unauthorized(new { Message = "Invalid token" });
@@ -255,63 +281,111 @@ namespace BetsTrading_Service.Controllers
             !string.Equals(userInfoRequest.id, tokenUserId, StringComparison.Ordinal) &&
             !User.IsInRole("admin"))
         {
-          // 403 FORBIDDEN : User ID doesn't match JWT
           return Forbid();
         }
 
-        /* TO-DO : Custom trends by user*/
+        var trends = await _dbContext.Trends
+            .AsNoTracking()
+            .ToListAsync(ct);
 
-        var trends = _dbContext.Trends.ToList();
-
-        if (trends.Any())
-        {
-          List<TrendDTO> trendDTOs = new List<TrendDTO>();
-          foreach (var trend in trends) {
-
-            var tmpAsset = _dbContext.FinancialAssets.FirstOrDefault(a => a.ticker == trend.ticker);
-            if (tmpAsset != null)
-            {
-              if (tmpAsset.close!.Length == 1)
-              {
-                double dailyGain = ((tmpAsset.current - tmpAsset.close[0]) / tmpAsset.close[0]) * 100;
-                trendDTOs.Add(new TrendDTO(id: trend.id, name: tmpAsset.name, icon: tmpAsset.icon!, daily_gain: dailyGain,
-                  close: tmpAsset.close[0], current: tmpAsset.current, ticker: trend.ticker));
-              }
-              else
-              {
-                double dailyGain = ((tmpAsset.current - tmpAsset.close[24]) / tmpAsset.close[24]) * 100;
-                trendDTOs.Add(new TrendDTO(id: trend.id, name: tmpAsset.name, icon: tmpAsset.icon!, daily_gain: dailyGain,
-                  close: tmpAsset.close[24], current: tmpAsset.current, ticker: trend.ticker));
-              }
-            }
-            
-            else
-            {
-              trendDTOs.Add(new TrendDTO(id: trend.id, name: "?", icon: "null", daily_gain: trend.daily_gain, close: 0.0, current: 0.0, ticker: trend.ticker));
-            }
-            
-          }
-          _logger.Log.Debug("[INFO] :: Trends :: success with ID: {msg}", userInfoRequest.id);
-          return Ok(new
-          {
-            Message = "Trends SUCCESS",
-            Trends = trendDTOs
-
-          }); ;
-
-        }
-        else // No trends
+        if (!trends.Any())
         {
           _logger.Log.Warning("[INFO] :: Trends :: Empty list of trends to ID: {msg}", userInfoRequest.id);
-          return NotFound(new { Message = "ERROR :: No trends!" }); 
+          return NotFound(new { Message = "ERROR :: No trends!" });
         }
+
+        var trendDTOs = new List<TrendDTO>();
+
+        foreach (var trend in trends)
+        {
+          var tmpAsset = await _dbContext.FinancialAssets
+              .AsNoTracking()
+              .FirstOrDefaultAsync(a => a.ticker == trend.ticker, ct);
+
+          if (tmpAsset == null)
+          {
+            trendDTOs.Add(new TrendDTO(
+                id: trend.id,
+                name: "?",
+                icon: "null",
+                daily_gain: trend.daily_gain,
+                close: 0.0,
+                current: 0.0,
+                ticker: trend.ticker
+            ));
+            continue;
+          }
+
+          var lastCandle = await _dbContext.AssetCandles
+              .AsNoTracking()
+              .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h")
+              .OrderByDescending(c => c.DateTime)
+              .FirstOrDefaultAsync(ct);
+
+          if (lastCandle == null) continue;
+
+          var lastDay = lastCandle.DateTime.Date;
+          AssetCandle? finalCandle;
+
+          if (tmpAsset.group == "Cryptos" || tmpAsset.group == "Forex")
+          {
+            finalCandle = await _dbContext.AssetCandles
+                .AsNoTracking()
+                .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h" && c.DateTime.Date == lastDay)
+                .OrderBy(c => c.DateTime)
+                .FirstOrDefaultAsync(ct);
+          }
+          else
+          {
+            finalCandle = lastCandle;
+          }
+
+          if (finalCandle == null) continue;
+
+          var prevCandle = await _dbContext.AssetCandles
+              .AsNoTracking()
+              .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h" && c.DateTime.Date < lastDay)
+              .OrderByDescending(c => c.DateTime)
+              .FirstOrDefaultAsync(ct);
+
+          double prevClose;
+          double dailyGain;
+
+          if (prevCandle != null)
+          {
+            prevClose = (double)prevCandle.Close;
+            dailyGain = prevClose == 0 ? 0 : (((double)finalCandle.Close - prevClose) / prevClose) * 100.0;
+          }
+          else
+          {
+            prevClose = tmpAsset.current * 0.95;
+            dailyGain = ((tmpAsset.current - prevClose) / prevClose) * 100.0;
+          }
+
+          trendDTOs.Add(new TrendDTO(
+              id: trend.id,
+              name: tmpAsset.name,
+              icon: tmpAsset.icon ?? "noIcon",
+              daily_gain: dailyGain,
+              close: prevClose,
+              current: (double)finalCandle.Close,
+              ticker: trend.ticker
+          ));
+        }
+
+        _logger.Log.Debug("[INFO] :: Trends :: success with ID: {msg}", userInfoRequest.id);
+
+        return Ok(new
+        {
+          Message = "Trends SUCCESS",
+          Trends = trendDTOs
+        });
       }
       catch (Exception ex)
       {
-        _logger.Log.Error("[INFO] :: Trends :: Internal server error: {msg}", ex.Message);
+        _logger.Log.Error(ex, "[INFO] :: Trends :: Internal server error: {msg}", ex.Message);
         return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
-
     }
 
     [HttpPost("TopUsers")]

@@ -29,7 +29,7 @@ public class Program
 
     try
     {
-      customLogger.Log.Information("[PROGRAM] :: ****** STARTING BETSTRADING BACKEND SERVICE ******");
+      customLogger.Log.Information("[PROGRAM] :: ******  ****** ****** ****** ****** ****** ****** STARTING BETSTRADING BACKEND SERVICE ****** ****** ****** ****** ****** ****** ******");
 
       var builder = WebApplication.CreateBuilder(args);
       builder.Services.AddSingleton(customLogger);
@@ -53,7 +53,10 @@ public class Program
 
       JwtSecurityTokenHandler.DefaultMapInboundClaims = false;
 
-      builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString));
+      builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString),
+        contextLifetime: ServiceLifetime.Scoped,
+        optionsLifetime: ServiceLifetime.Scoped);
+
       builder.Services.AddMemoryCache();
       builder.Services.Configure<IpRateLimitOptions>(builder.Configuration.GetSection("IpRateLimiting"));
       builder.Services.AddInMemoryRateLimiting();
