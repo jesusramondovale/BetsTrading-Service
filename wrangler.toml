@@ -1,5 +1,5 @@
 name = "betstrading-worker"
-main = "worker.js"
+main = "add-app-worker.js"
 compatibility_date = "2023-09-22"
 
 routes = [
