@@ -1,0 +1,7 @@
+name = "betstrading-worker"
+main = "worker.js"
+compatibility_date = "2023-09-22"
+
+routes = [
+  { pattern = "betstrading.online/app-ads.txt", zone_name = "betstrading.online" }
+]
