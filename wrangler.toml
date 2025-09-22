@@ -1,4 +1,4 @@
-name = "betstrading-worker"
+name = "betrader"
 main = "add-app-worker.js"
 compatibility_date = "2023-09-22"
 
