@@ -23,6 +23,7 @@
     public DbSet<User> Users { get; set; }
     public DbSet<Bet> Bet{ get; set; }
     public DbSet<FinancialAsset> FinancialAssets { get; set; }
+    public DbSet<AssetCandle> AssetCandles { get; set; }
     public DbSet<Trend> Trends { get; set; }
     public DbSet<Favorite> Favorites { get; set; }
     public DbSet<BetZone> BetZones { get; set; }
@@ -46,7 +47,8 @@
 
       modelBuilder.Entity<FinancialAsset>(entity =>
       {
-        entity.HasKey(e => e.ticker);
+        entity.HasKey(e => e.id);
+        entity.HasIndex(e => e.ticker).IsUnique();
         entity.Property(e => e.name).IsRequired();
       });
 
@@ -61,6 +63,26 @@
           .Property(e => e.end_date)
           .HasConversion(v => v, v => DateTime.SpecifyKind(v, DateTimeKind.Utc))
           .HasColumnType("timestamp without time zone");
+
+      modelBuilder.Entity<AssetCandle>(entity =>
+      {
+        entity.ToTable("AssetCandles");
+        entity.HasKey(c => new { c.AssetId, c.Exchange, c.Interval, c.DateTime });
+
+        entity.Property(c => c.AssetId).HasColumnName("AssetId");
+        entity.Property(c => c.Exchange).HasColumnName("exchange");
+        entity.Property(c => c.Interval).HasColumnName("interval");
+        entity.Property(c => c.DateTime).HasColumnName("datetime");
+        entity.Property(c => c.Open).HasColumnName("open");
+        entity.Property(c => c.High).HasColumnName("high");
+        entity.Property(c => c.Low).HasColumnName("low");
+        entity.Property(c => c.Close).HasColumnName("close");
+
+        entity.HasOne(c => c.Asset)
+              .WithMany(a => a.Candles)
+              .HasForeignKey(c => c.AssetId);
+      });
+
 
 
       base.OnModelCreating(modelBuilder);

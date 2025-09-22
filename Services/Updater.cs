@@ -14,6 +14,8 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using static BetsTrading_Service.Services.TwelveDataParser;
+using EFCore.BulkExtensions;
+
 
 namespace BetsTrading_Service.Services 
 {
@@ -23,7 +25,7 @@ namespace BetsTrading_Service.Services
     private int currentKeyIndex = 0;
 
     // Assets & Crypto
-    private static readonly string[] TWELVE_DATA_KEYS = Enumerable.Range(0, 10).Select(i => Environment.GetEnvironmentVariable($"TWELVE_DATA_KEY{i}", EnvironmentVariableTarget.User) ?? "").ToArray() ?? [];
+    private static readonly string[] TWELVE_DATA_KEYS = Enumerable.Range(0, 11).Select(i => Environment.GetEnvironmentVariable($"TWELVE_DATA_KEY{i}", EnvironmentVariableTarget.User) ?? "").ToArray() ?? [];
     // Logos only
     private string MARKETSTACK_KEY = Environment.GetEnvironmentVariable("MARKETSTACK_API_KEY", EnvironmentVariableTarget.User) ?? "";
     // Trends only
@@ -57,21 +59,24 @@ namespace BetsTrading_Service.Services
     }
 
     //UpdateAssets with TwelveData key list
-    public async Task UpdateAssetsAsync(CancellationToken ct = default)
+    public async Task UpdateAssetsAsync(IServiceScopeFactory scopeFactory, CancellationToken ct = default)
     {
       _logger.Log.Information("[Updater] :: UpdateAssetsAsync() called!");
 
       if (TWELVE_DATA_KEYS is null || TWELVE_DATA_KEYS.Length == 0 || TWELVE_DATA_KEYS.All(string.IsNullOrWhiteSpace))
       {
-        _logger.Log.Error("[Updater] :: TWELVE DATA KEYS not set in user environment variables!");
+        _logger.Log.Error("[Updater] :: TWELVE DATA KEYS not set in environment variables!");
         return;
       }
+      
+      using var scope = scopeFactory.CreateScope();
+      
+      var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-      var selectedAssets = await _dbContext.FinancialAssets
-          .AsNoTracking()
-          .Where(fa => fa.group == "Shares" || fa.group == "ETF" || fa.group == "Cryptos" || fa.group == "Forex")
-          .Select(fa => new { fa.id, fa.ticker, fa.group })
-          .ToListAsync(ct);
+      var selectedAssets = await db.FinancialAssets
+        .AsNoTracking()
+        .Where(fa => fa.group == "Shares" || fa.group == "ETF" || fa.group == "Cryptos" || fa.group == "Forex")
+        .ToListAsync(ct);
 
       if (selectedAssets.Count == 0)
       {
@@ -83,7 +88,7 @@ namespace BetsTrading_Service.Services
 
       const string interval = "1h";
       const string outputsize = "1000";
-      const string desiredQuote = "EUR";
+      const string desiredQuote = "EUR"; //TO-DO;
 
       int keyIndex = 0;
       int callsWithThisKey = 0;
@@ -103,7 +108,7 @@ namespace BetsTrading_Service.Services
       {
         ct.ThrowIfCancellationRequested();
 
-        // Rate limit
+        // rate limit: 8 llamadas por key
         if (callsWithThisKey == 8)
         {
           var wrapped = (keyIndex + 1) % TWELVE_DATA_KEYS.Length == 0;
@@ -182,92 +187,60 @@ namespace BetsTrading_Service.Services
           continue;
         }
 
-        var series = parsed.Values.AsEnumerable();
+        var exchange = parsed.Meta?.Exchange ?? "Unknown";
+        var candles = new List<AssetCandle>(parsed.Values.Count);
 
-        var opens = new List<double>(parsed.Values.Count);
-        var highs = new List<double>(parsed.Values.Count);
-        var lows = new List<double>(parsed.Values.Count);
-        var closes = new List<double>(parsed.Values.Count);
-
-        foreach (var day in series)
+        foreach (var v in parsed.Values)
         {
           try
           {
-            var o = double.Parse(day.Open!, CultureInfo.InvariantCulture);
-            var h = double.Parse(day.High!, CultureInfo.InvariantCulture);
-            var l = double.Parse(day.Low!, CultureInfo.InvariantCulture);
-            var c = double.Parse(day.Close!, CultureInfo.InvariantCulture);
+            var dtRaw = DateTime.Parse(v.Datetime!, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal);
+            var dt = new DateTime(dtRaw.Year, dtRaw.Month, dtRaw.Day, dtRaw.Hour, 0, 0, DateTimeKind.Utc);
 
-            opens.Add(o);
-            highs.Add(h);
-            lows.Add(l);
-            closes.Add(c);
+            candles.Add(new AssetCandle
+            {
+              AssetId = asset.id,
+              Exchange = exchange,
+              Interval = interval,
+              DateTime = dt,
+              Open = decimal.Parse(v.Open!, CultureInfo.InvariantCulture),
+              High = decimal.Parse(v.High!, CultureInfo.InvariantCulture),
+              Low = decimal.Parse(v.Low!, CultureInfo.InvariantCulture),
+              Close = decimal.Parse(v.Close!, CultureInfo.InvariantCulture)
+            });
           }
           catch (Exception ex)
           {
-            _logger.Log.Error(ex, "[Updater] :: Parse error for {Symbol} item {Date}", symbol, day.Datetime);
+            _logger.Log.Error(ex, "[Updater] :: Parse error for {Symbol} at {Date}", symbol, v.Datetime);
           }
         }
 
-        if (closes.Count == 0)
+        if (candles.Count == 0)
         {
-          _logger.Log.Warning("[Updater] :: Empty close series for {Symbol}", symbol);
+          _logger.Log.Warning("[Updater] :: No valid candles for {Symbol}", symbol);
           continue;
         }
 
-        double current = closes[0];
-
-        var openArr = opens.ToArray();
-        var highArr = highs.ToArray();
-        var lowArr = lows.ToArray();
-        var closeArr = closes.ToArray();
-
-        const int maxRetries = 3;
-        var attempt = 0;
-
-        while (true)
+        try
         {
-          ct.ThrowIfCancellationRequested();
-          try
+          var bulkConfig = new BulkConfig
           {
-            var affected = await _dbContext.FinancialAssets
-                .Where(f => f.id == asset.id)
-                .ExecuteUpdateAsync(s => s
-                    .SetProperty(f => f.current, _ => current)
-                    .SetProperty(f => f.open, _ => openArr)
-                    .SetProperty(f => f.daily_max, _ => highArr)
-                    .SetProperty(f => f.daily_min, _ => lowArr)
-                    .SetProperty(f => f.close, _ => closeArr),
-                    ct);
+            UpdateByProperties = new List<string> { "AssetId", "Exchange", "Interval", "DateTime" },
+            SetOutputIdentity = false
+          };
 
-            if (affected == 0)
-            {
-              if (++attempt > maxRetries)
-              {
-                _logger.Log.Warning("[Updater] :: Zero rows updating {Id} after {Attempts} attempts", asset.id, attempt);
-                break;
-              }
-              await Task.Delay(100 * attempt, ct);
-              continue;
-            }
+          await db.BulkInsertOrUpdateAsync(candles, bulkConfig, cancellationToken: ct);
+          
+          var lastClose = candles.OrderByDescending(c => c.DateTime).First().Close;
+          await _dbContext.FinancialAssets
+              .Where(f => f.id == asset.id)
+              .ExecuteUpdateAsync(s => s.SetProperty(f => f.current, _ => (double)lastClose), ct);
 
-            break;
-          }
-          catch (DbUpdateConcurrencyException ex)
-          {
-            if (++attempt > maxRetries)
-            {
-              _logger.Log.Warning(ex, "[Updater] :: Concurrency on {Id} after {Attempts} attempts", asset.id, attempt);
-              break;
-            }
-            await Task.Delay(100 * attempt, ct);
-          }
-          catch (OperationCanceledException) { throw; }
-          catch (Exception ex)
-          {
-            _logger.Log.Error(ex, "[Updater] :: Error updating {Id}", asset.id);
-            break;
-          }
+          _logger.Log.Information("[Updater] :: Saved {Count} candles for {Symbol}", candles.Count, symbol);
+        }
+        catch (Exception ex)
+        {
+          _logger.Log.Error(ex, "[Updater] :: Error saving candles for {Symbol}", symbol);
         }
       }
 
@@ -278,28 +251,33 @@ namespace BetsTrading_Service.Services
     #endregion
 
     #region Create Bets
-
-
-    public void CreateBets()
-    {
-      _logger.Log.Information("[Updater] :: CreateBets() called!");
-
-      using (var transaction = _dbContext.Database.BeginTransaction())
+        
+    public async Task CreateBets()
+      {
+        _logger.Log.Information("[Updater] :: CreateBets() called!");
+        using (var transaction = await _dbContext.Database.BeginTransactionAsync())
       {
         try
         {
-          var financialAssets = _dbContext.FinancialAssets.ToList();
+          var financialAssets = await _dbContext.FinancialAssets.ToListAsync();
 
           foreach (var asset in financialAssets)
           {
-            if (asset.close == null || asset.close.Length < 30)
+            // Coger últimas 30 velas 1h del asset
+            var candles = await _dbContext.AssetCandles
+                .Where(c => c.AssetId == asset.id && c.Interval == "1h")
+                .OrderByDescending(c => c.DateTime)
+                .Take(30)
+                .ToListAsync();
+
+            if (candles.Count < 30)
               continue;
 
-            var closes = asset.close.Take(30).ToList();
-            var highs = asset!.daily_max!.Take(30).ToList();
-            var lows = asset!.daily_min!.Take(30).ToList();
+            var closes = candles.Select(c => (double)c.Close).ToList();
+            var highs = candles.Select(c => (double)c.High).ToList();
+            var lows = candles.Select(c => (double)c.Low).ToList();
 
-            double lastClose = closes[0];
+            double lastClose = closes.First();
             double avgClose = closes.Average();
             double stdDev = Math.Sqrt(closes.Average(c => Math.Pow(c - avgClose, 2)));
             double maxHigh = highs.Max();
@@ -333,227 +311,127 @@ namespace BetsTrading_Service.Services
             double oddsMid = EstimateOdds(targetMid, lastClose, stdDev, trend, "mid");
             double oddsHigh = EstimateOdds(targetHigh, lastClose, stdDev, trend, "high");
 
-            //TODO
-            DateTime start = DateTime.Now.AddHours(1);
-            DateTime end = DateTime.Now.AddDays(5);
+            // TODO: Fechas exactas según tu lógica
+            DateTime start = DateTime.UtcNow.AddHours(1);
+            DateTime end = DateTime.UtcNow.AddDays(5);
 
-            _dbContext.BetZones.Add(new BetZone(
-              asset.ticker!,
-              targetLow,
-              Math.Round(marginLow, 2),
-              start,
-              end,
-              Math.Round(oddsLow, 2),
-              1
-            ));
-
-
-            _dbContext.BetZones.Add(new BetZone(
-              asset.ticker!,
-              targetMid,
-              Math.Round(marginMid, 2),
-              start,
-              end,
-              Math.Round(oddsMid, 2),
-              1
-            ));
-
-
-            _dbContext.BetZones.Add(new BetZone(
-              asset.ticker!,
-              targetHigh,
-              Math.Round(marginHigh, 2),
-              start,
-              end,
-              Math.Round(oddsHigh, 2),
-              1
-            ));
-
-            _dbContext.BetZones.Add(new BetZone(
-               asset.ticker!,
-               targetLow,
-               Math.Round(marginLow, 2),
-               start,
-               end,
-               Math.Round(oddsLow, 2),
-               2
-             ));
-
-            _dbContext.BetZones.Add(new BetZone(
-              asset.ticker!,
-              targetMid,
-              Math.Round(marginMid, 2),
-              start,
-              end,
-              Math.Round(oddsMid, 2),
-              2
-            ));
-
-
-            _dbContext.BetZones.Add(new BetZone(
-              asset.ticker!,
-              targetHigh,
-              Math.Round(marginHigh, 2),
-              start,
-              end,
-              Math.Round(oddsHigh, 2),
-              2
-            ));
-
-            _dbContext.BetZones.Add(new BetZone(
-             asset.ticker!,
-             targetLow,
-             Math.Round(marginLow, 2),
-             start,
-             end,
-             Math.Round(oddsLow, 2),
-             4
-           ));
-
-
-            _dbContext.BetZones.Add(new BetZone(
-              asset.ticker!,
-              targetMid,
-              Math.Round(marginMid, 2),
-              start,
-              end,
-              Math.Round(oddsMid, 2),
-              4
-            ));
-
-
-            _dbContext.BetZones.Add(new BetZone(
-              asset.ticker!,
-              targetHigh,
-              Math.Round(marginHigh, 2),
-              start,
-              end,
-              Math.Round(oddsHigh, 2),
-              4
-            ));
-
-            _dbContext.BetZones.Add(new BetZone(
-              asset.ticker!,
-              targetLow,
-              Math.Round(marginLow, 2),
-              start,
-              end,
-              Math.Round(oddsLow, 2),
-              24
-            ));
-
-
-            _dbContext.BetZones.Add(new BetZone(
-              asset.ticker!,
-              targetMid,
-              Math.Round(marginMid, 2),
-              start,
-              end,
-              Math.Round(oddsMid, 2),
-              24
-            ));
-
-
-            _dbContext.BetZones.Add(new BetZone(
-              asset.ticker!,
-              targetHigh,
-              Math.Round(marginHigh, 2),
-              start,
-              end,
-              Math.Round(oddsHigh, 2),
-              24
-            ));
-
+            int[] horizons = { 1, 2, 4, 24 }; // 1h, 2h, 4h, 24h
+            foreach (var h in horizons)
+            {
+              _dbContext.BetZones.Add(new BetZone(
+                  asset.ticker!,
+                  targetLow,
+                  Math.Round(marginLow, 2),
+                  start,
+                  end,
+                  Math.Round(oddsLow, 2),
+                  h
+              ));
+              _dbContext.BetZones.Add(new BetZone(
+                  asset.ticker!,
+                  targetMid,
+                  Math.Round(marginMid, 2),
+                  start,
+                  end,
+                  Math.Round(oddsMid, 2),
+                  h
+              ));
+              _dbContext.BetZones.Add(new BetZone(
+                  asset.ticker!,
+                  targetHigh,
+                  Math.Round(marginHigh, 2),
+                  start,
+                  end,
+                  Math.Round(oddsHigh, 2),
+                  h
+              ));
+            }
           }
 
-          _dbContext.SaveChanges();
-          transaction.Commit();
+          await _dbContext.SaveChangesAsync();
+          await transaction.CommitAsync();
           _logger.Log.Information("[Updater] :: CreateBets() completed successfully with exact margins.");
         }
         catch (Exception ex)
         {
-          _logger.Log.Error("[Updater] :: CreateBets() error: ", ex.ToString());
-          transaction.Rollback();
+          _logger.Log.Error(ex, "[Updater] :: CreateBets() error");
+          await transaction.RollbackAsync();
         }
       }
-    }
 
-
-
-    private double CalculateLinearRegressionSlope(List<double> data)
-    {
-      int n = data.Count;
-      double sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
-
-      for (int i = 0; i < n; i++)
-      {
-        sumX += i;
-        sumY += data[i];
-        sumXY += i * data[i];
-        sumX2 += i * i;
       }
 
-      double numerator = n * sumXY - sumX * sumY;
-      double denominator = n * sumX2 - sumX * sumX;
+    private double CalculateLinearRegressionSlope(List<double> data)
+      {
+        int n = data.Count;
+        double sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
 
-      return denominator == 0 ? 0 : numerator / denominator;
-    }
+        for (int i = 0; i < n; i++)
+        {
+          sumX += i;
+          sumY += data[i];
+          sumXY += i * data[i];
+          sumX2 += i * i;
+        }
+
+        double numerator = n * sumXY - sumX * sumY;
+        double denominator = n * sumX2 - sumX * sumX;
+
+        return denominator == 0 ? 0 : numerator / denominator;
+      }
 
     private double EstimateOdds(double target, double current, double stdDev, string trend, string zone)
-    {
-      double distance = Math.Abs(current - target);
-      double relativeRisk = distance / stdDev;
-
-      double baseOdds = zone switch
       {
-        "mid" => 1.8,
-        "low" => 2.0,
-        "high" => 2.0,
-        _ => 2.0
-      };
+        double distance = Math.Abs(current - target);
+        double relativeRisk = distance / stdDev;
 
-      if (zone == "low" && trend == "uptrend") baseOdds += 0.4;
-      if (zone == "high" && trend == "downtrend") baseOdds += 0.4;
-      if (zone == "low" && trend == "downtrend") baseOdds -= 0.2;
-      if (zone == "high" && trend == "uptrend") baseOdds -= 0.2;
+        double baseOdds = zone switch
+        {
+          "mid" => 1.8,
+          "low" => 2.0,
+          "high" => 2.0,
+          _ => 2.0
+        };
 
-      return Math.Max(1.01, baseOdds + relativeRisk * 0.3);
-    }
+        if (zone == "low" && trend == "uptrend") baseOdds += 0.4;
+        if (zone == "high" && trend == "downtrend") baseOdds += 0.4;
+        if (zone == "low" && trend == "downtrend") baseOdds -= 0.2;
+        if (zone == "high" && trend == "uptrend") baseOdds -= 0.2;
 
+        return Math.Max(1.01, baseOdds + relativeRisk * 0.3);
+      }
 
-    public void RemoveOldBets()
+    public async Task RemoveOldBets()
     {
       _logger.Log.Information("[Updater] :: RemoveOldBets() called!");
 
-      using (var transaction = _dbContext.Database.BeginTransaction())
+      await using var transaction = await _dbContext.Database.BeginTransactionAsync();
+      try
       {
-        try
-        {
-          //var oldBetZones = _dbContext.BetZones.Where(bz => bz.start_date < DateTime.Now.AddDays(-15)).ToList();
-          var oldBetZones = _dbContext.BetZones.ToList();
+        var oldBetZones = await _dbContext.BetZones.ToListAsync();
 
-          foreach (var currentBz in oldBetZones)
+        foreach (var currentBz in oldBetZones)
+        {
+          var betsToRemove = await _dbContext.Bet
+              .Where(b => b.bet_zone == currentBz.id)
+              .ToListAsync();
+
+          if (betsToRemove.Any())
           {
-            var betsToRemove = _dbContext.Bet
-                .Where(b => b.bet_zone == currentBz.id)
-                .ToList();
-          
-            if (betsToRemove.Any())
-            {
-              _dbContext.Bet.RemoveRange(betsToRemove);
-            }
+            _dbContext.Bet.RemoveRange(betsToRemove);
           }
+        }
 
-          _dbContext.BetZones.RemoveRange(oldBetZones);
-          _dbContext.SaveChanges();
-          transaction.Commit();
-          _logger.Log.Debug("[Updater] :: RemoveOldBets() completed successfully!");
-        }
-        catch (Exception ex)
-        {
-          _logger.Log.Error("[Updater] :: RemoveOldBets() error: ", ex.ToString());
-          transaction.Rollback();
-        }
+        _dbContext.BetZones.RemoveRange(oldBetZones);
+        await _dbContext.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        _logger.Log.Debug("[Updater] :: RemoveOldBets() completed successfully!");
+      }
+      catch (Exception ex)
+      {
+        _logger.Log.Error(ex, "[Updater] :: RemoveOldBets() error");
+        await transaction.RollbackAsync();
       }
     }
 
@@ -561,458 +439,395 @@ namespace BetsTrading_Service.Services
     #endregion
 
     #region Update Bets
-    public void SetFinishedBets()
+    public Task SetFinishedBets()
     {
       _logger.Log.Information("[Updater] :: SetFinishedBets() called!");
-      using (var transaction = _dbContext.Database.BeginTransaction())
+
+      var betsZonesToCheck = _dbContext.BetZones
+          .Where(bz => DateTime.UtcNow >= bz.end_date.AddDays(1))
+          .Select(bz => bz.id)
+          .ToList();
+
+      if (betsZonesToCheck.Count == 0)
+        return Task.CompletedTask;
+      var betsToMark = _dbContext.Bet
+          .Where(b => betsZonesToCheck.Contains(b.bet_zone) && !b.finished)
+          .ToList();
+
+      foreach (var currentBet in betsToMark)
       {
-        try
-        {
-
-          var betsZonesToCheck = _dbContext.BetZones
-             .Where(bz => DateTime.Now >= bz.end_date.AddDays(1))
-             .Select(bz => bz.id)
-             .ToList();
-          
-          if (0 != betsZonesToCheck.Count)
-          {
-            var betsToMark = _dbContext.Bet.Where(b => betsZonesToCheck.Contains(b.bet_zone) && b.finished == false).ToList();
-
-            foreach (var currentBet in betsToMark)
-            {
-              currentBet.finished = true;
-              _dbContext.Bet.Update(currentBet);
-            }
-
-            _dbContext.SaveChanges();
-            transaction.Commit();
-            _logger.Log.Debug("[Updater] :: SetFinishedBets() ended succesfully!");
-
-          }
-
-        }
-        catch (DbUpdateConcurrencyException ex)
-        {
-          _logger.Log.Error("[Updater] :: SetFinishedBets() concurrency error :", ex.ToString());
-          transaction.Rollback();
-        }
-        catch (Exception ex)
-        {
-          _logger.Log.Error("[Updater] :: SetFinishedBets() unexpected error :", ex.ToString());
-          transaction.Rollback();
-        }
+        currentBet.finished = true;
+        _dbContext.Bet.Update(currentBet);
       }
+
+      _dbContext.SaveChanges();
+      _logger.Log.Debug("[Updater] :: SetFinishedBets() ended succesfully!");
+      return Task.CompletedTask;
     }
-    public void SetInactiveBets()
+
+    public Task SetInactiveBets()
     {
       _logger.Log.Information("[Updater] :: SetInactiveBets() called!");
-      using (var transaction = _dbContext.Database.BeginTransaction())
+
+      var betZonesToCheck = _dbContext.BetZones
+          .Where(bz => bz.start_date <= DateTime.UtcNow)
+          .ToList();
+
+      foreach (var currentBetZone in betZonesToCheck)
       {
-        try
-        {
-          List <BetZone> betZonesToCheck = _dbContext.BetZones
-             .Where(bz => bz.start_date <= DateTime.Now)
-             .ToList();
-         
-          foreach (var currentBetZone in betZonesToCheck)
-          {
-            currentBetZone.active = false;
-            _dbContext.BetZones.Update(currentBetZone);
-          }
-
-          _dbContext.SaveChanges();
-          transaction.Commit();
-          _logger.Log.Debug("[Updater] :: SetInactiveBets() ended succesfrully!");
-          
-        }
-        
-        catch (DbUpdateConcurrencyException ex)
-        {
-          _logger.Log.Error("[Updater] :: SetInactiveBets() concurrency error :", ex.ToString());
-          transaction.Rollback();
-        }
-        catch (Exception ex)
-        {
-          _logger.Log.Error("[Updater] :: SetInactiveBets() unexpected error :", ex.ToString());
-          transaction.Rollback();
-        }
-
+        currentBetZone.active = false;
+        _dbContext.BetZones.Update(currentBetZone);
       }
 
+      _dbContext.SaveChanges();
+      _logger.Log.Debug("[Updater] :: SetInactiveBets() ended succesfully!");
+      return Task.CompletedTask;
     }
-    public void CheckBets()
+
+    public async Task CheckBets()
     {
       _logger.Log.Information("[Updater] :: CheckBets() called!");
-      using (var transaction = _dbContext.Database.BeginTransaction())
+
+      var now = DateTime.UtcNow;
+
+      var betZonesToCheck = await _dbContext.BetZones
+          .Where(bz => now >= bz.start_date && now <= bz.end_date)
+          .Select(bz => bz.id)
+          .ToListAsync();
+
+      if (betZonesToCheck.Count == 0)
       {
-        try
-        {
-          var betZonesToCheck = _dbContext.BetZones
-              .Where(bz => DateTime.Now >= bz.start_date && DateTime.Now <= bz.end_date)
-              .Select(bz => bz.id)
-              .ToList();
-
-          if (betZonesToCheck.Count != 0)
-          {
-            var betsToUpdate = _dbContext.Bet
-                .Where(b => betZonesToCheck.Contains(b.bet_zone))
-                .ToList();
-
-            foreach (var currentBet in betsToUpdate)
-            {
-              var currentBetZone = _dbContext.BetZones
-                  .FirstOrDefault(bz => bz.id == currentBet.bet_zone && currentBet.finished == false);
-
-              if (currentBetZone == null)
-              {
-                _logger.Log.Error("[Updater] :: CheckBets() :: Bet zone is null on bet with ID: [{0}]!", currentBet.id);
-                continue;
-              }
-
-              var financialAsset = _dbContext.FinancialAssets
-                  .FirstOrDefault(fa => fa.ticker == currentBet.ticker);
-
-              if (financialAsset == null)
-              {
-                _logger.Log.Error("[Updater] :: CheckBets() :: Financial asset is null on bet with Ticker: [{0}]!", currentBet.ticker);
-                continue;
-              }
-
-              if (financialAsset.daily_max == null || financialAsset.daily_min == null)
-              {
-                _logger.Log.Warning("[Updater] :: CheckBets() :: Daily max/min data is missing for asset with Ticker: [{0}]!", currentBet.ticker);
-                continue;
-              }
-              
-              int startIndex = (DateTime.Now - currentBetZone.end_date).Days;
-              int endIndex = (DateTime.Now - currentBetZone.start_date).Days;
-                            
-              startIndex = Math.Max(0, startIndex);
-              endIndex = Math.Max(0, endIndex);
-                            
-              double upperBound = currentBetZone.target_value + (currentBetZone.target_value * currentBetZone.bet_margin / 200);
-              double lowerBound = currentBetZone.target_value - (currentBetZone.target_value * currentBetZone.bet_margin / 200);
-
-              bool hasCrossedZone = false;
-              
-              for (int i = startIndex; i <= endIndex && i < financialAsset.daily_max.Length; i++)
-              {
-                double dayMax = financialAsset.daily_max[i];
-                double dayMin = financialAsset.daily_min[i];
-
-                if (dayMax >= lowerBound && dayMin <= upperBound)
-                {
-                  hasCrossedZone = true;
-                  break;
-                }
-              }
-
-              currentBet.target_won = hasCrossedZone;
-              currentBet.finished = true;
-
-              _dbContext.Bet.Update(currentBet);
-            }
-
-            _dbContext.SaveChanges();
-            transaction.Commit();
-            _logger.Log.Debug("[Updater] :: CheckBets() ended successfully!");
-          }
-          else
-          {
-            _logger.Log.Warning("[Updater] :: CheckBets() :: No bets to update!");
-          }
-        }
-        catch (DbUpdateConcurrencyException ex)
-        {
-          _logger.Log.Error("[Updater] :: CheckBets() concurrency error :", ex.ToString());
-          transaction.Rollback();
-        }
-        catch (Exception ex)
-        {
-          _logger.Log.Error("[Updater] :: CheckBets() unexpected error :", ex.ToString());
-          transaction.Rollback();
-        }
+        _logger.Log.Warning("[Updater] :: CheckBets() :: No bets to update!");
+        return;
       }
+
+      var betsToUpdate = await _dbContext.Bet
+          .Where(b => betZonesToCheck.Contains(b.bet_zone) && !b.finished)
+          .ToListAsync();
+
+      foreach (var currentBet in betsToUpdate)
+      {
+        var currentBetZone = await _dbContext.BetZones
+            .FirstOrDefaultAsync(bz => bz.id == currentBet.bet_zone);
+
+        if (currentBetZone == null)
+        {
+          _logger.Log.Error("[Updater] :: CheckBets() :: Bet zone null on bet [{0}]", currentBet.id);
+          continue;
+        }
+
+        var asset = await _dbContext.FinancialAssets
+            .FirstOrDefaultAsync(fa => fa.ticker == currentBet.ticker);
+
+        if (asset == null)
+        {
+          _logger.Log.Error("[Updater] :: CheckBets() :: Asset null on bet [{0}]", currentBet.ticker);
+          continue;
+        }
+
+        var candles = await _dbContext.AssetCandles
+            .Where(c => c.AssetId == asset.id &&
+                        c.Interval == "1h" &&
+                        c.DateTime >= currentBetZone.start_date &&
+                        c.DateTime <= currentBetZone.end_date)
+            .ToListAsync();
+
+        if (candles.Count == 0)
+        {
+          _logger.Log.Warning("[Updater] :: CheckBets() :: No candles for [{0}] zone [{1}]", asset.ticker, currentBetZone.id);
+          continue;
+        }
+
+        double upperBound = currentBetZone.target_value + (currentBetZone.target_value * currentBetZone.bet_margin / 200);
+        double lowerBound = currentBetZone.target_value - (currentBetZone.target_value * currentBetZone.bet_margin / 200);
+
+        bool hasCrossedZone = candles.Any(c =>
+            (double)c.High >= lowerBound &&
+            (double)c.Low <= upperBound);
+
+        currentBet.target_won = hasCrossedZone;
+        currentBet.finished = true;
+
+        _dbContext.Bet.Update(currentBet);
+      }
+
+      await _dbContext.SaveChangesAsync();
+      _logger.Log.Debug("[Updater] :: CheckBets() ended successfully!");
     }
-    public void PayBets()
+
+    public Task PayBets()
     {
       _logger.Log.Information("[Updater] :: PayBets() called!");
-      
-      using (var transaction = _dbContext.Database.BeginTransaction())
+
+      var betsToPay = _dbContext.Bet
+          .Where(b => b.finished && !b.paid && b.target_won)
+          .ToList();
+
+      foreach (var currentBet in betsToPay)
       {
+        var currentBetZone = _dbContext.BetZones.FirstOrDefault(bz => bz.id == currentBet.bet_zone);
+        var winnerUser = _dbContext.Users.FirstOrDefault(u => u.id == currentBet.user_id);
 
-        try
+        if (winnerUser != null && currentBetZone != null)
         {
-          var betsToPay = _dbContext.Bet.Where(b => b.finished == true && b.paid == false && b.target_won == true).ToList();
+          winnerUser.points += currentBet.bet_amount * currentBetZone.target_odds;
+          currentBet.paid = true;
 
-          foreach (var currentBet in betsToPay)
-          {
+          _dbContext.Bet.Update(currentBet);
+          _dbContext.Users.Update(winnerUser);
 
-            var currentBetZone = _dbContext.BetZones.Where(bz => bz.id == currentBet.bet_zone).FirstOrDefault();
-            
-            
-            var winnerUser = _dbContext.Users.Where(u => u.id == currentBet.user_id).FirstOrDefault();
+          string youWonMessageTemplate = LocalizedTexts.GetTranslationByCountry(winnerUser.country, "youWon");
+          string msg = string.Format(youWonMessageTemplate,
+              (currentBet.bet_amount * currentBetZone.target_odds).ToString("N2"),
+              currentBet.ticker);
 
-            if (winnerUser != null && currentBetZone != null)
-            {
-              winnerUser.points += currentBet.bet_amount * currentBetZone.target_odds;
-              currentBet.paid = true;
+          _ = _firebaseNotificationService.SendNotificationToUser(
+              winnerUser.fcm, "Betrader", msg, new() { { "type", "betting" } });
 
-              _dbContext.Bet.Update(currentBet);
-              _dbContext.Users.Update(winnerUser);
-              
-              string youWonMessageTemplate = LocalizedTexts.GetTranslationByCountry(winnerUser.country, "youWon");
-              string msg = string.Format(youWonMessageTemplate, (currentBet.bet_amount * currentBetZone.target_odds).ToString("N2"), currentBet.ticker);
-
-              _ = _firebaseNotificationService.SendNotificationToUser(winnerUser.fcm, "Betrader", msg, new() { { "type", "betting" } });
-              _logger.Log.Debug("[Updater] :: PayBets() paid to user {0}", winnerUser.id);
-            }
-
-            
-          }
-
-          _dbContext.SaveChanges();
-          transaction.Commit();
-          _logger.Log.Debug("[Updater] :: PayBets() ended succesfully!");
-
+          _logger.Log.Debug("[Updater] :: PayBets() paid to user {0}", winnerUser.id);
         }
-        catch (DbUpdateConcurrencyException ex)
-        {
-          _logger.Log.Error("[Updater] :: PayBets() concurrency error :", ex.ToString());
-          transaction.Rollback();
-        }
-        catch (SerpApiSearchException ex)
-        {
-          _logger.Log.Error("[Updater] :: PayBets() SerpApi rror :", ex.ToString());
-          transaction.Rollback();
-        }
-        catch (Exception ex)
-        {
-          _logger.Log.Error("[Updater] :: PayBets() unexpected error :", ex.ToString());
-          transaction.Rollback();
-        }
-
       }
+
+      _dbContext.SaveChanges();
+      _logger.Log.Debug("[Updater] :: PayBets() ended succesfully!");
+      return Task.CompletedTask;
     }
+
     #endregion
 
     #region Refresh odds
     //Called from OddsAdjusterService.cs:41
     public void RefreshTargetOdds()
-    {
-      _logger.Log.Debug("[Updater] :: RefreshTargetOdds() called!");
-
-      using (var transaction = _dbContext.Database.BeginTransaction())
       {
-        try
-        {
-          
-          var betZoneGroups = _dbContext.BetZones
-            .GroupBy(bz => new { bz.ticker })
-            .ToList();
+        _logger.Log.Debug("[Updater] :: RefreshTargetOdds() called!");
 
-          foreach (var group in betZoneGroups)
+        using (var transaction = _dbContext.Database.BeginTransaction())
+        {
+          try
           {
-            var zones = group.ToList();
           
-            if (zones.Count < 2)
-              continue;
-          
-            var zoneVolumes = zones.Select(zone => new
-            {
-              Zone = zone,
-              Volume = _dbContext.Bet.Where(b => b.bet_zone == zone.id).Sum(b => b.bet_amount)
-            }).ToList();
-            double totalVolume = zoneVolumes.Sum(z => z.Volume);
-          
-            if (totalVolume == 0)
-              continue;
-
-            foreach (var z in zoneVolumes)
-            {
-              
-              double oppositeVolume = totalVolume - z.Volume;
-
-              double odds = (z.Volume == 0)
-                ? 2.5
-                : (oppositeVolume / z.Volume) * 0.99;
-
-              z.Zone.target_odds = Math.Max(Math.Round(odds, 2),1.1);
-              _dbContext.BetZones.Update(z.Zone);
-
-              _logger.Log.Debug("[Updater] :: RefreshTargetOdds() :: ZONE {0} updated: volume={1}, odd={2}",
-                z.Zone.id, z.Volume, odds);
-            }
-          }
-
-          _dbContext.SaveChanges();
-          transaction.Commit();
-          _logger.Log.Debug("[Updater] :: RefreshTargetOdds() completed successfully.");
-        }
-        catch (Exception ex)
-        {
-          _logger.Log.Error("[Updater] :: AdjustTargetOdds() error: ", ex.ToString());
-          transaction.Rollback();
-        }
-      }
-    }
-    #endregion
-
-    #region Update Trends
-    public void UpdateTrends()
-    {
-      using (var transaction = _dbContext.Database.BeginTransaction())
-      {
-        try
-        {
-          Hashtable ht = new Hashtable() { { "engine", "google_finance_markets" }, { "trend", "most-active" } };
-          _logger.Log.Information("[Updater] :: UpdateTrends() called!");
-
-          GoogleSearch search = new GoogleSearch(ht, SERP_API_KEY);
-          JObject data = search.GetJson();
-          var mostActive = data["market_trends"]!.FirstOrDefault(x => (string)x["title"]! == "Most active")?["results"];
-
-          if (mostActive == null || mostActive.Count() == 0)
-          {
-            _logger.Log.Warning("[Updater] :: No active trends found.");
-            return;
-          }
-          
-          var existingTrends = _dbContext.Trends.ToList();
-          _dbContext.Trends.RemoveRange(existingTrends);
-          _dbContext.SaveChanges();
-          
-          var top5Trending = mostActive
-              .OrderByDescending(x => (double)x["price_movement"]!["percentage"]!)
-              .Take(5)
+            var betZoneGroups = _dbContext.BetZones
+              .GroupBy(bz => new { bz.ticker })
               .ToList();
 
-          var newTrends = new List<Trend>();
-          int maxId = _dbContext.FinancialAssets.Max(fa => fa.id);
-
-          for (int i = 0; i < top5Trending.Count; i++)
-          {
-            var item = top5Trending[i];
-            string ticker = ((string)item["stock"]!).Replace(":", ".");
-
-            double dailyGain = ((string)item["price_movement"]!["movement"]! == "Down" ?
-                               -(double)item["price_movement"]!["value"]! :
-                                (double)item["price_movement"]!["value"]!);
-
-            newTrends.Add(new Trend(id: i + 1, daily_gain: dailyGain, ticker: ticker));
-            var currentAsset = _dbContext.FinancialAssets.AsNoTracking().Where(fa => fa.ticker == ticker.Replace(":", ".")).FirstOrDefault();
-
-            if (currentAsset == null)
+            foreach (var group in betZoneGroups)
             {
+              var zones = group.ToList();
+          
+              if (zones.Count < 2)
+                continue;
+          
+              var zoneVolumes = zones.Select(zone => new
+              {
+                Zone = zone,
+                Volume = _dbContext.Bet.Where(b => b.bet_zone == zone.id).Sum(b => b.bet_amount)
+              }).ToList();
+              double totalVolume = zoneVolumes.Sum(z => z.Volume);
+          
+              if (totalVolume == 0)
+                continue;
 
-              FinancialAsset tmpAsset = new FinancialAsset(
-                  id: ++maxId,
-                  name: (string)item["name"]!,
-                  group: "Shares",
-                  icon: "null",
-                  country: GetCountryByTicker(ticker.Replace(":", ".")),
-                  ticker: ticker.Replace(":", "."),
-                  current: (double)item["extracted_price"]!,
-                  close: new double[] { (double)item["extracted_price"]! }
-              );
+              foreach (var z in zoneVolumes)
+              {
+              
+                double oppositeVolume = totalVolume - z.Volume;
 
-              _dbContext.FinancialAssets.Add(tmpAsset);
-              _dbContext.SaveChanges();
+                double odds = (z.Volume == 0)
+                  ? 2.5
+                  : (oppositeVolume / z.Volume) * 0.99;
+
+                z.Zone.target_odds = Math.Max(Math.Round(odds, 2),1.1);
+                _dbContext.BetZones.Update(z.Zone);
+
+                _logger.Log.Debug("[Updater] :: RefreshTargetOdds() :: ZONE {0} updated: volume={1}, odd={2}",
+                  z.Zone.id, z.Volume, odds);
+              }
             }
 
-
+            _dbContext.SaveChanges();
+            transaction.Commit();
+            _logger.Log.Debug("[Updater] :: RefreshTargetOdds() completed successfully.");
           }
-
-          _dbContext.Trends.AddRange(newTrends);
-          _dbContext.SaveChanges();
-
-          
-          foreach (User user in _dbContext.Users.ToList())
+          catch (Exception ex)
           {
-            _ = _firebaseNotificationService.SendNotificationToUser(
-                user.fcm, "Betrader",
-                LocalizedTexts.GetTranslationByCountry(user.country, "updatedTrends"),
-                new() { { "type", "trends" } }
-            );
+            _logger.Log.Error("[Updater] :: AdjustTargetOdds() error: ", ex.ToString());
+            transaction.Rollback();
           }
-
-          transaction.Commit();
-          _logger.Log.Debug("[Updater] :: UpdateTrends() ended successfully!");
-        }
-        catch (Exception ex)
-        {
-          _logger.Log.Error($"[Updater] :: UpdateTrends() error: {ex.Message}\n{ex.StackTrace}");
-          transaction.Rollback();
         }
       }
-    }
+      #endregion
+
+    #region Update Trends
+      public void UpdateTrends()
+      {
+        using (var transaction = _dbContext.Database.BeginTransaction())
+        {
+          try
+          {
+            Hashtable ht = new Hashtable() { { "engine", "google_finance_markets" }, { "trend", "most-active" } };
+            _logger.Log.Information("[Updater] :: UpdateTrends() called!");
+
+            GoogleSearch search = new GoogleSearch(ht, SERP_API_KEY);
+            JObject data = search.GetJson();
+            var mostActive = data["market_trends"]!.FirstOrDefault(x => (string)x["title"]! == "Most active")?["results"];
+
+            if (mostActive == null || mostActive.Count() == 0)
+            {
+              _logger.Log.Warning("[Updater] :: No active trends found.");
+              return;
+            }
+          
+            var existingTrends = _dbContext.Trends.ToList();
+            _dbContext.Trends.RemoveRange(existingTrends);
+            _dbContext.SaveChanges();
+          
+            var top5Trending = mostActive
+                .OrderByDescending(x => (double)x["price_movement"]!["percentage"]!)
+                .Take(5)
+                .ToList();
+
+            var newTrends = new List<Trend>();
+            int maxId = _dbContext.FinancialAssets.Max(fa => fa.id);
+
+            for (int i = 0; i < top5Trending.Count; i++)
+            {
+              var item = top5Trending[i];
+              string ticker = ((string)item["stock"]!).Replace(":", ".");
+
+              double dailyGain = ((string)item["price_movement"]!["movement"]! == "Down" ?
+                                 -(double)item["price_movement"]!["value"]! :
+                                  (double)item["price_movement"]!["value"]!);
+
+              newTrends.Add(new Trend(id: i + 1, daily_gain: dailyGain, ticker: ticker));
+              var currentAsset = _dbContext.FinancialAssets.AsNoTracking().Where(fa => fa.ticker == ticker.Replace(":", ".")).FirstOrDefault();
+
+              if (currentAsset == null)
+              {
+
+                FinancialAsset tmpAsset = new FinancialAsset(
+                    id: ++maxId,
+                    name: (string)item["name"]!,
+                    group: "Shares",
+                    icon: "null",
+                    country: GetCountryByTicker(ticker.Replace(":", ".")),
+                    ticker: ticker.Replace(":", "."),
+                    current: (double)item["extracted_price"]!
+                    //close: new double[] { (double)item["extracted_price"]! }
+                );
+
+                _dbContext.FinancialAssets.Add(tmpAsset);
+                _dbContext.SaveChanges();
+              }
+
+
+            }
+
+            _dbContext.Trends.AddRange(newTrends);
+            _dbContext.SaveChanges();
+
+          
+            foreach (User user in _dbContext.Users.Where(u => u.is_active).ToList())
+            {
+              _ = _firebaseNotificationService.SendNotificationToUser(
+                  user.fcm, "Betrader",
+                  LocalizedTexts.GetTranslationByCountry(user.country, "updatedTrends"),
+                  new() { { "type", "trends" } }
+              );
+            }
+
+            transaction.Commit();
+            _logger.Log.Information("[Updater] :: UpdateTrends() ended successfully!");
+          }
+          catch (Exception ex)
+          {
+            _logger.Log.Error($"[Updater] :: UpdateTrends() error: {ex.Message}\n{ex.StackTrace}");
+            transaction.Rollback();
+          }
+        }
+      }
 
 
 
 
-    #endregion
+      #endregion
 
     #region Check Price-Bets
-    public void CheckAndPayPriceBets()
-    {
-      _logger.Log.Information("[Updater] :: CheckAndPayPriceBets() called!");
-
-      using (var transaction = _dbContext.Database.BeginTransaction())
+      public async Task CheckAndPayPriceBets()
+      {
+        _logger.Log.Information("[Updater] :: CheckAndPayPriceBets() called!");
+        using (var transaction = await _dbContext.Database.BeginTransactionAsync())
       {
         try
         {
-          var priceBetsToPay = _dbContext.PriceBets.Where(pb => !pb.paid && pb.end_date < DateTime.UtcNow).ToList();
+          var priceBetsToPay = await _dbContext.PriceBets
+              .Where(pb => !pb.paid && pb.end_date < DateTime.UtcNow)
+              .ToListAsync();
 
           foreach (var priceBet in priceBetsToPay)
           {
-            var asset = _dbContext.FinancialAssets.FirstOrDefault(fa => fa.ticker == priceBet.ticker);
+            var asset = await _dbContext.FinancialAssets
+                .FirstOrDefaultAsync(fa => fa.ticker == priceBet.ticker);
 
-            var user = _dbContext.Users.FirstOrDefault(u => u.id == priceBet.user_id);
+            var user = await _dbContext.Users
+                .FirstOrDefaultAsync(u => u.id == priceBet.user_id);
 
             if (asset != null && user != null)
             {
-              
-              //TODO
-              //WON BET
-              if (asset.close!.Last() == priceBet.price_bet)
+              // 🔹 Precio real al final del periodo (última vela antes del end_date)
+              var lastCandle = await _dbContext.AssetCandles
+                  .Where(c => c.AssetId == asset.id && c.DateTime <= priceBet.end_date)
+                  .OrderByDescending(c => c.DateTime)
+                  .FirstOrDefaultAsync();
+
+              double finalClose = lastCandle != null ? (double)lastCandle.Close : asset.current;
+
+              // WON BET
+              if (Math.Abs(finalClose - priceBet.price_bet) < 0.0001) // tolerancia por decimales
               {
                 user.points += PRICE_BET_WIN_PRICE;
                 priceBet.paid = true;
+
                 _dbContext.PriceBets.Update(priceBet);
                 _dbContext.Users.Update(user);
 
                 string youWonMessageTemplate = LocalizedTexts.GetTranslationByCountry(user.country, "youWon");
-                string msg = string.Format(youWonMessageTemplate, (PRICE_BET_WIN_PRICE).ToString("N2"), priceBet.ticker);
+                string msg = string.Format(youWonMessageTemplate, PRICE_BET_WIN_PRICE.ToString("N2"), priceBet.ticker);
 
-                _ = _firebaseNotificationService.SendNotificationToUser(user.fcm, "Betrader", msg, new() { { "type", "price_bet" } });
+                _ = _firebaseNotificationService.SendNotificationToUser(
+                    user.fcm,
+                    "Betrader",
+                    msg,
+                    new() { { "type", "price_bet" } }
+                );
+
                 _logger.Log.Debug("[Updater] :: CheckAndPayPriceBets :: Paid exact price bet to user {0}", user.id);
               }
-              //LOST BET
-              else
+              else // LOST BET
               {
                 priceBet.paid = true;
                 _dbContext.PriceBets.Update(priceBet);
+
                 _logger.Log.Debug("[Updater] :: CheckAndPayPriceBets :: User {0} lost exact price bet on {1}", user.id, priceBet.ticker);
               }
             }
-            // UNEXISTENT USER
             else
             {
-              _logger.Log.Error("[Updater] :: CheckAndPayPriceBets ::  Unexistent user or asset!");
+              _logger.Log.Error("[Updater] :: CheckAndPayPriceBets :: Unexistent user or asset for PriceBet ID {0}", priceBet.id);
             }
           }
 
-          _dbContext.SaveChanges();
-          transaction.Commit();
+          await _dbContext.SaveChangesAsync();
+          await transaction.CommitAsync();
           _logger.Log.Information("[Updater] :: CheckAndPayPriceBets ended successfully!");
         }
         catch (Exception ex)
         {
-          _logger.Log.Error("[Updater] :: CheckAndPayPriceBets error: {0}. Rolling back transaction", ex.ToString());
-          transaction.Rollback();
+          _logger.Log.Error(ex, "[Updater] :: CheckAndPayPriceBets error. Rolling back transaction");
+          await transaction.RollbackAsync();
         }
       }
-    }
+
+      }
 
     #endregion
 
@@ -1132,6 +947,7 @@ namespace BetsTrading_Service.Services
       }
     }
     #endregion
+  
   }
 
   #region UpdaterService
@@ -1155,43 +971,55 @@ namespace BetsTrading_Service.Services
     {
       _customLogger.Log.Information("[UpdaterHostedService] :: Starting the Updater hosted service.");
 
-      #if RELEASE
+#if RELEASE
       //TO-DO
-        _assetsTimer = new Timer(ExecuteUpdateAssets!, null, TimeSpan.FromSeconds(0), TimeSpan.FromHours(1));
-        _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromMinutes(5), TimeSpan.FromDays(1));
-        _betsTimer = new Timer(ExecuteCheckBets!, null, TimeSpan.FromMinutes(7), TimeSpan.FromDays(1));
-        _createNewBetsTimer = new Timer(ExecuteCleanAndCreateBets!, null, TimeSpan.FromMinutes(10), TimeSpan.FromHours(5));
+      _assetsTimer = new Timer(ExecuteUpdateAssets!, null, TimeSpan.FromSeconds(0), TimeSpan.FromMinutes(10));
+      _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromMinutes(5), TimeSpan.FromHours(12));
+      _betsTimer = new Timer(_ =>  { _ = Task.Run(async () =>  { await ExecuteCheckBets(); }); }, null, TimeSpan.FromMinutes(6), TimeSpan.FromHours(1));
+      _createNewBetsTimer = new Timer(_ => { _ = Task.Run(async () => { await ExecuteCleanAndCreateBets(); }); }, null, TimeSpan.FromMinutes(10), TimeSpan.FromHours(5));
+      
       #endif
 
       return Task.CompletedTask;
     }
-    private void ExecuteCleanAndCreateBets(object state)
+    private async Task ExecuteCleanAndCreateBets()
     {
       using (var scope = _serviceProvider.CreateScope())
       {
         var scopedServices = scope.ServiceProvider;
         var updaterService = scopedServices.GetRequiredService<Updater>();
+
         _customLogger.Log.Information("[UpdaterHostedService] :: Executing RemoveOldBets service.");
-        updaterService.RemoveOldBets();
+        await updaterService.RemoveOldBets();
 
         _customLogger.Log.Information("[UpdaterHostedService] :: Executing CreateBets service.");
-        updaterService.CreateBets();
+        await updaterService.CreateBets();
       }
     }
-    private void ExecuteCheckBets(object state)
+
+    private async Task ExecuteCheckBets()
     {
-      using (var scope = _serviceProvider.CreateScope())
+      using var scope = _serviceProvider.CreateScope();
+      var updaterService = scope.ServiceProvider.GetRequiredService<Updater>();
+
+      _customLogger.Log.Information("[UpdaterHostedService] :: Executing UpdateBets service.");
+
+      try
       {
-        var scopedServices = scope.ServiceProvider;
-        var updaterService = scopedServices.GetRequiredService<Updater>();
-        _customLogger.Log.Information("[UpdaterHostedService] :: Executing UpdateBets service.");
-        updaterService.CheckBets();
-        updaterService.SetInactiveBets();
-        updaterService.SetFinishedBets();
-        updaterService.PayBets();
-        updaterService.CheckAndPayPriceBets();
+        await updaterService.CheckBets();
+        await updaterService.SetInactiveBets();
+        await updaterService.SetFinishedBets();
+        await updaterService.PayBets();
+        await updaterService.CheckAndPayPriceBets();
+
+        _customLogger.Log.Information("[UpdaterHostedService] :: Batch finished successfully!");
+      }
+      catch (Exception ex)
+      {
+        _customLogger.Log.Error(ex, "[UpdaterHostedService] :: Error during update batch");
       }
     }
+
 
     private async void ExecuteUpdateAssets(object? state)
     {
@@ -1206,7 +1034,7 @@ namespace BetsTrading_Service.Services
         using var scope = _serviceProvider.CreateScope();
         var updater = scope.ServiceProvider.GetRequiredService<Updater>();
         _customLogger.Log.Information("[UpdaterHostedService] :: Executing UpdateAssets service.");
-        await updater.UpdateAssetsAsync();
+        await updater.UpdateAssetsAsync(_serviceProvider.GetRequiredService<IServiceScopeFactory>());
       }
       catch (Exception ex)
       {
@@ -1291,7 +1119,7 @@ namespace BetsTrading_Service.Services
 
     public sealed class TwelveBar
     {
-      public string? Datetime { get; set; } // "2025-09-02"
+      public string? Datetime { get; set; } // ""2025-09-21 08:00:00"
       public string? Open { get; set; }
       public string? High { get; set; }
       public string? Low { get; set; }
