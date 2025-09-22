@@ -29,7 +29,21 @@ namespace BetsTrading_Service.Controllers
       _logger = customLogger;
 
     }
-        
+
+    [AllowAnonymous]
+    [HttpGet("AddAps")]
+    public async Task<IActionResult> GetAppAds()
+    {
+      var path = Path.Combine(AppContext.BaseDirectory, "app-ads.txt");
+
+      if (!System.IO.File.Exists(path))
+      {
+        return NotFound("app-ads.txt not found");
+      }
+
+      var content = await System.IO.File.ReadAllTextAsync(path);
+      return Content(content, "text/plain");
+    }
 
     [HttpPost("UserInfo")]
     public IActionResult UserInfo([FromBody] idRequest userInfoRequest)
