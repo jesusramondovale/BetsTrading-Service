@@ -27,14 +27,15 @@ namespace BetsTrading_Service.Controllers
     private readonly ICustomLogger _logger;
     private readonly FirebaseNotificationService _firebaseNotificationService;
     private readonly IConfiguration _config;
+    private readonly IEmailService _emailService;
 
-    public AuthController(AppDbContext dbContext, IConfiguration config, ICustomLogger customLogger, FirebaseNotificationService firebaseNotificationService)
+    public AuthController(AppDbContext dbContext, IConfiguration config, ICustomLogger customLogger, FirebaseNotificationService firebaseNotificationService, IEmailService emailService)
     {
       _dbContext = dbContext;
       _logger = customLogger;
       _firebaseNotificationService = firebaseNotificationService;
       _config = config;
-
+      _emailService = emailService;
     }
 
     private string GenerateLocalJwt(string userId, string email, string? name)
@@ -233,6 +234,53 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
+    [AllowAnonymous]
+    [HttpPost("ResetPassword")]
+    public async Task<IActionResult> ResetPassword([FromBody] idRequest request)
+    {
+      using (var transaction = await _dbContext.Database.BeginTransactionAsync())
+      {
+        try
+        {
+          if (string.IsNullOrEmpty(request.id))
+            return BadRequest(new { Message = "Email/ID required" });
+          
+          var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.email == request.id);
+          if (user == null)
+            return NotFound(new { Message = "User not found" });
+          
+          string newPassword = GenerateSecurePassword();
+          
+          string hashedPassword = BCrypt.Net.BCrypt.HashPassword(newPassword);
+          user.password = hashedPassword;
+          _dbContext.Users.Update(user);
+          await _dbContext.SaveChangesAsync();
+
+          string localedBodyTemplate = LocalizedTexts.GetTranslationByCountry(user.country, "resetPasswordEmailBody");
+
+          string localedBody = string.Format(localedBodyTemplate, user.fullname, newPassword);
+          
+          await _emailService.SendEmailAsync(
+              to: user.email,
+              subject: "Betrader password",
+              body: localedBody
+          );
+
+          await transaction.CommitAsync();
+
+          _logger.Log.Information("[AUTH] :: NewPassword :: Success. User ID: {userId}", user.id);
+
+          return Ok(new { Message = "New password generated and sent by email" });
+        }
+        catch (Exception ex)
+        {
+          await transaction.RollbackAsync();
+          _logger.Log.Error("[AUTH] :: NewPassword :: Internal server error: {msg}", ex.Message);
+          return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+        }
+      }
+    }
+
     [HttpPost("NewPassword")]
     public async Task<IActionResult> NewPassword([FromBody] Requests.LoginRequest newPasswordRequest)
     {
@@ -327,6 +375,18 @@ namespace BetsTrading_Service.Controllers
             _dbContext.Users.Update(user);
             await _dbContext.SaveChangesAsync();
             await transaction.CommitAsync();
+
+
+            string localedBodyTemplate = LocalizedTexts.GetTranslationByCountry(user.country, "newPasswordEmailBody");
+
+            string localedBody = string.Format(localedBodyTemplate, user.fullname, changepasswordRequest.Password);
+
+            await _emailService.SendEmailAsync(
+                to: user.email,
+                subject: "Betrader password",
+                body: localedBody
+            );
+
             _logger.Log.Information("[AUTH] :: ChangePassword :: Success. User ID: {userId} FROM -> {city} , {region} , {country} , ISP: {isp}", user.id, geo!.City, geo.RegionName, geo.Country, geo.ISP);
             return Ok(new { Message = "Password updated successfully" });
 
@@ -614,6 +674,29 @@ namespace BetsTrading_Service.Controllers
       {
         return null;
       }
+    }
+
+    private string GenerateSecurePassword(int length = 12)
+    {
+      const string lower = "abcdefghijklmnopqrstuvwxyz";
+      const string upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+      const string digits = "0123456789";
+      const string all = lower + upper + digits;
+
+      var rnd = new Random();
+      var passwordChars = new List<char>
+    {
+        upper[rnd.Next(upper.Length)],   // Garantizar al menos una mayúscula
+        digits[rnd.Next(digits.Length)]  // Garantizar al menos un dígito
+    };
+
+      for (int i = passwordChars.Count; i < length; i++)
+      {
+        passwordChars.Add(all[rnd.Next(all.Length)]);
+      }
+
+      // Mezclar caracteres
+      return new string(passwordChars.OrderBy(_ => rnd.Next()).ToArray());
     }
 
     public class IpGeoResponse

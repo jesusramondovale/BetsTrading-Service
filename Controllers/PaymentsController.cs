@@ -2,13 +2,16 @@
 {
   using BetsTrading_Service.Database;
   using BetsTrading_Service.Interfaces;
+  using BetsTrading_Service.Locale;
   using BetsTrading_Service.Models;
   using BetsTrading_Service.Requests;
+  using BetsTrading_Service.Services;
   using Google.Apis.Auth.OAuth2.Requests;
   using Microsoft.AspNetCore.Authorization;
   using Microsoft.AspNetCore.Identity.Data;
   using Microsoft.AspNetCore.Mvc;
   using Microsoft.EntityFrameworkCore;
+  using Newtonsoft.Json;
   using Stripe;
   using Stripe.Forwarding;
   using Stripe.V2;
@@ -30,13 +33,14 @@
     private readonly IConfiguration _config;
     private readonly AppDbContext _dbContext;
     private readonly ICustomLogger _logger;
+    private readonly IEmailService _emailService;
 
-
-    public PaymentsController(AppDbContext dbContext, IConfiguration config, ICustomLogger customLogger)
+    public PaymentsController(AppDbContext dbContext, IConfiguration config, ICustomLogger customLogger, IEmailService emailService)
     {
       _dbContext = dbContext;
       _config = config;
       _logger = customLogger;
+      _emailService = emailService;
       StripeConfiguration.ApiKey = Environment.GetEnvironmentVariable("STRIPE_SECRET_KEY", EnvironmentVariableTarget.User) ?? "";
       //TO-DO -> Use real Key (already added to env variables)
       //StripeConfiguration.ApiKey = Environment.GetEnvironmentVariable("STRIPE_REAL_SECRET_KEY", EnvironmentVariableTarget.User) ?? "";
@@ -282,13 +286,14 @@
             return Forbid();
           }
 
+          string? ip = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault() ?? HttpContext.Connection.RemoteIpAddress?.ToString();
+          var geo = await AuthController.GetGeoLocationFromIp(ip!);
+
           var user = _dbContext.Users.FirstOrDefault(u => u.fcm == req.fcm && u.id == req.UserId);
           if (user != null)
           {
             if (!BCrypt.Net.BCrypt.Verify(req.Password, user.password))
             {
-              string? ip = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault() ?? HttpContext.Connection.RemoteIpAddress?.ToString();
-              var geo = await AuthController.GetGeoLocationFromIp(ip!);
               if (geo == null)
               {
                 _logger.Log.Error("[PAYMENTS] :: INCORRECT RETIRE ATTEMPT FOR USER {user} FROM IP {ip}", req.UserId, ip ?? "UNKNOWN");
@@ -302,7 +307,7 @@
             }
             var path = Path.Combine(Directory.GetCurrentDirectory(), $"exchange_options_{req.Currency}.json");
             var optionsJson = await System.IO.File.ReadAllTextAsync(path);
-            var options = JsonSerializer.Deserialize<List<ExchangeOption>>(optionsJson);
+            var options = System.Text.Json.JsonSerializer.Deserialize<List<ExchangeOption>>(optionsJson);
 
             if (!options!.Any(o => o.Type == "exchange" && o.Coins == req.Coins && o.Euros == req.CurrencyAmount))
             {
@@ -327,6 +332,60 @@
 
             await _dbContext.SaveChangesAsync();
             await transaction.CommitAsync();
+            
+            var parts = req.method!.Split('#');
+            string methodType = parts[0];       // ej: withdrawMethodPaypal
+            string methodId = parts.Length > 1 ? parts[1] : string.Empty;
+            
+            var method = await _dbContext.WithdrawalMethods
+                .FirstOrDefaultAsync(m => m.Id.ToString() == methodId);
+
+            string methodDetails = methodType; // fallback
+
+            if (method != null)
+            {
+              string json = method.Data.RootElement.GetRawText();
+
+              dynamic data = JsonConvert.DeserializeObject(json);
+
+              switch (method.Type.ToLower()) // si tienes una columna 'type'
+              {
+                case "bank":
+                  methodDetails =
+                      $"Bank transfer\n" +
+                      $"Holder: {data!.holder}\n" +
+                      $"IBAN: {data!.iban}\n" +
+                      (data.bic != null ? $"BIC: {data.bic}\n" : "");
+                  break;
+
+                case "paypal":
+                  methodDetails = $"PayPal account: {data!.email}";
+                  break;
+
+                case "crypto":
+                  methodDetails =
+                      $"Crypto\n" +
+                      $"Address: {data!.address}\n" +
+                      $"Network: {data!.network}";
+                  break;
+
+                default:
+                  methodDetails = method.Type;
+                  break;
+              }
+            }
+            
+            string localedBodyTemplate = LocalizedTexts.GetTranslationByCountry(user.country, "withdrawalEmailBody");
+
+            string localedBody = geo != null
+                ? string.Format(localedBodyTemplate, user.fullname, req.CurrencyAmount, req.Currency!.ToUpper(), methodDetails, geo.City, geo.RegionName, geo.Country)
+                : string.Format(localedBodyTemplate, user.fullname, req.CurrencyAmount, req.Currency!.ToUpper(), methodDetails, "?", "", "");
+
+            await _emailService.SendEmailAsync(
+                to: user.email,
+                subject: "Betrader payment",
+                body: localedBody
+            );
 
             _logger.Log.Information("[PAYMENTS] :: RetireBalance :: Success with User ID {id}", req.UserId);
             return Ok(new { Message = $"Retired {req.CurrencyAmount}€ ({req.Coins} coins) of user {req.UserId} successfully" });

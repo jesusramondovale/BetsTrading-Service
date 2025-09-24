@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Authorization;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
 using System.Security.Claims;
+using Microsoft.Extensions.Options;
 
 public class Program
 {
@@ -52,7 +53,22 @@ public class Program
       var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
       JwtSecurityTokenHandler.DefaultMapInboundClaims = false;
-
+      builder.Configuration.AddJsonFile("appsettings.json", optional: true, reloadOnChange: true).AddEnvironmentVariables();
+      builder.Services.Configure<SmtpSettings>(settings =>
+      {
+        builder.Configuration.GetSection("SMTP").Bind(settings);
+        var envPassword = Environment.GetEnvironmentVariable("SMTP__Password", EnvironmentVariableTarget.User);
+        if (!string.IsNullOrEmpty(envPassword))
+        {
+          settings.Password = envPassword;
+        }
+      });
+      
+      builder.Services.AddSingleton<IEmailService>(sp =>
+      {
+        var settings = sp.GetRequiredService<IOptions<SmtpSettings>>().Value;
+        return new EmailService(settings);
+      });
       builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString),
         contextLifetime: ServiceLifetime.Scoped,
         optionsLifetime: ServiceLifetime.Scoped);

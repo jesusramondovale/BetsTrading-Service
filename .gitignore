@@ -5,3 +5,4 @@ CA
 obj
 Properties/PublishProfiles/FolderProfile.pubxml.user
 betrader-v1-firebase.json
+appsettings.json
