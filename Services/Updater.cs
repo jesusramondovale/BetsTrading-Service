@@ -24,7 +24,7 @@ namespace BetsTrading_Service.Services
     
     private int currentKeyIndex = 0;
 
-    // Assets & Crypto
+    // Assets & Crypto & Forex
     private static readonly string[] TWELVE_DATA_KEYS = Enumerable.Range(0, 11).Select(i => Environment.GetEnvironmentVariable($"TWELVE_DATA_KEY{i}", EnvironmentVariableTarget.User) ?? "").ToArray() ?? [];
     // Logos only
     private string MARKETSTACK_KEY = Environment.GetEnvironmentVariable("MARKETSTACK_API_KEY", EnvironmentVariableTarget.User) ?? "";
@@ -655,104 +655,124 @@ namespace BetsTrading_Service.Services
           }
         }
       }
-      #endregion
+    #endregion
 
     #region Update Trends
-      public void UpdateTrends()
+    public void UpdateTrends()
+    {
+      using (var transaction = _dbContext.Database.BeginTransaction())
       {
-        using (var transaction = _dbContext.Database.BeginTransaction())
+        try
         {
-          try
+          Hashtable ht = new Hashtable()
+            {
+                { "engine", "google_finance_markets" },
+                { "trend", "most-active" }
+            };
+          _logger.Log.Information("[Updater] :: UpdateTrends() called!");
+
+          GoogleSearch search = new GoogleSearch(ht, SERP_API_KEY);
+          JObject data = search.GetJson();
+          var mostActive = data["market_trends"]!
+              .FirstOrDefault(x => (string)x["title"]! == "Most active")?["results"];
+
+          if (mostActive == null || mostActive.Count() == 0)
           {
-            Hashtable ht = new Hashtable() { { "engine", "google_finance_markets" }, { "trend", "most-active" } };
-            _logger.Log.Information("[Updater] :: UpdateTrends() called!");
+            _logger.Log.Warning("[Updater] :: No active trends found.");
+            return;
+          }
 
-            GoogleSearch search = new GoogleSearch(ht, SERP_API_KEY);
-            JObject data = search.GetJson();
-            var mostActive = data["market_trends"]!.FirstOrDefault(x => (string)x["title"]! == "Most active")?["results"];
+          var top5Trending = mostActive
+              .OrderByDescending(x => (double)x["price_movement"]!["percentage"]!)
+              .Take(5)
+              .ToList();
 
-            if (mostActive == null || mostActive.Count() == 0)
+          var newTrends = new List<Trend>();
+          int maxId = _dbContext.FinancialAssets.Max(fa => fa.id);
+
+          for (int i = 0; i < top5Trending.Count;)
+          {
+            var item = top5Trending[i];
+            string ticker = ((string)item["stock"]!).Replace(":", ".");
+
+            double dailyGain = ((string)item["price_movement"]!["movement"]! == "Down"
+                               ? -(double)item["price_movement"]!["value"]!
+                               : (double)item["price_movement"]!["value"]!);
+
+            newTrends.Add(new Trend(
+                id: ++i,
+                daily_gain: dailyGain,
+                ticker: ticker
+            ));
+
+            var currentAsset = _dbContext.FinancialAssets
+                .AsNoTracking()
+                .FirstOrDefault(fa => fa.ticker == ticker);
+
+            if (currentAsset == null)
             {
-              _logger.Log.Warning("[Updater] :: No active trends found.");
-              return;
-            }
-          
-            var existingTrends = _dbContext.Trends.ToList();
-            _dbContext.Trends.RemoveRange(existingTrends);
-            _dbContext.SaveChanges();
-          
-            var top5Trending = mostActive
-                .OrderByDescending(x => (double)x["price_movement"]!["percentage"]!)
-                .Take(5)
-                .ToList();
-
-            var newTrends = new List<Trend>();
-            int maxId = _dbContext.FinancialAssets.Max(fa => fa.id);
-
-            for (int i = 0; i < top5Trending.Count; i++)
-            {
-              var item = top5Trending[i];
-              string ticker = ((string)item["stock"]!).Replace(":", ".");
-
-              double dailyGain = ((string)item["price_movement"]!["movement"]! == "Down" ?
-                                 -(double)item["price_movement"]!["value"]! :
-                                  (double)item["price_movement"]!["value"]!);
-
-              newTrends.Add(new Trend(id: i + 1, daily_gain: dailyGain, ticker: ticker));
-              var currentAsset = _dbContext.FinancialAssets.AsNoTracking().Where(fa => fa.ticker == ticker.Replace(":", ".")).FirstOrDefault();
-
-              if (currentAsset == null)
-              {
-
-                FinancialAsset tmpAsset = new FinancialAsset(
-                    id: ++maxId,
-                    name: (string)item["name"]!,
-                    group: "Shares",
-                    icon: "null",
-                    country: GetCountryByTicker(ticker.Replace(":", ".")),
-                    ticker: ticker.Replace(":", "."),
-                    current: (double)item["extracted_price"]!
-                    //close: new double[] { (double)item["extracted_price"]! }
-                );
-
-                _dbContext.FinancialAssets.Add(tmpAsset);
-                _dbContext.SaveChanges();
-              }
-
-
-            }
-
-            _dbContext.Trends.AddRange(newTrends);
-            _dbContext.SaveChanges();
-
-          
-            foreach (User user in _dbContext.Users.Where(u => u.is_active).ToList())
-            {
-              _ = _firebaseNotificationService.SendNotificationToUser(
-                  user.fcm, "Betrader",
-                  LocalizedTexts.GetTranslationByCountry(user.country, "updatedTrends"),
-                  new() { { "type", "trends" } }
+              FinancialAsset tmpAsset = new FinancialAsset(
+                  id: ++maxId,
+                  name: (string)item["name"]!,
+                  group: "Shares",
+                  icon: "null",
+                  country: GetCountryByTicker(ticker),
+                  ticker: ticker,
+                  current: (double)item["extracted_price"]!
               );
-            }
 
-            transaction.Commit();
-            _logger.Log.Information("[Updater] :: UpdateTrends() ended successfully!");
+              _dbContext.FinancialAssets.Add(tmpAsset);
+              _dbContext.SaveChanges();
+            }
           }
-          catch (Exception ex)
+
+          int incoming = Math.Min(5, newTrends.Count);
+
+          var existingTrends = _dbContext.Trends
+              .OrderBy(t => t.id)
+              .ToList();
+
+          int deletions = Math.Min(incoming, existingTrends.Count);
+
+          if (deletions > 0)
           {
-            _logger.Log.Error($"[Updater] :: UpdateTrends() error: {ex.Message}\n{ex.StackTrace}");
-            transaction.Rollback();
+            var toDelete = existingTrends.Take(deletions).ToList();
+            _dbContext.Trends.RemoveRange(toDelete);
+            _dbContext.SaveChanges();
           }
+          
+          if (incoming > 0)
+          {
+            _dbContext.Trends.AddRange(newTrends.Take(incoming));
+            _dbContext.SaveChanges();
+          }
+          
+          foreach (User user in _dbContext.Users.Where(u => u.is_active).ToList())
+          {
+            _ = _firebaseNotificationService.SendNotificationToUser(
+                user.fcm,
+                "Betrader",
+                LocalizedTexts.GetTranslationByCountry(user.country, "updatedTrends"),
+                new() { { "type", "trends" } }
+            );
+          }
+
+          transaction.Commit();
+          _logger.Log.Information("[Updater] :: UpdateTrends() ended successfully!");
+        }
+        catch (Exception ex)
+        {
+          _logger.Log.Error($"[Updater] :: UpdateTrends() error: {ex.Message}\n{ex.StackTrace}");
+          transaction.Rollback();
         }
       }
+    }
 
 
-
-
-      #endregion
+    #endregion
 
     #region Check Price-Bets
-      public async Task CheckAndPayPriceBets()
+    public async Task CheckAndPayPriceBets()
       {
         _logger.Log.Information("[Updater] :: CheckAndPayPriceBets() called!");
         using (var transaction = await _dbContext.Database.BeginTransactionAsync())
@@ -971,13 +991,12 @@ namespace BetsTrading_Service.Services
     {
       _customLogger.Log.Information("[UpdaterHostedService] :: Starting the Updater hosted service.");
 
-#if RELEASE
+      #if RELEASE
       //TO-DO : config times and more actions
-      _assetsTimer = new Timer(ExecuteUpdateAssets!, null, TimeSpan.FromSeconds(0), TimeSpan.FromHours(1));
-      _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromMinutes(10), TimeSpan.FromHours(12));
-      _betsTimer = new Timer(_ =>  { _ = Task.Run(async () =>  { await ExecuteCheckBets(); }); }, null, TimeSpan.FromMinutes(15), TimeSpan.FromHours(1));
-      _createNewBetsTimer = new Timer(_ => { _ = Task.Run(async () => { await ExecuteCleanAndCreateBets(); }); }, null, TimeSpan.FromMinutes(20), TimeSpan.FromHours(5));
-      
+      _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromMinutes(0), TimeSpan.FromHours(2));
+      _assetsTimer = new Timer(ExecuteUpdateAssets!, null, TimeSpan.FromSeconds(20), TimeSpan.FromHours(1));
+      _betsTimer = new Timer(_ =>  { _ = Task.Run(async () =>  { await ExecuteCheckBets(); }); }, null, TimeSpan.FromMinutes(6), TimeSpan.FromHours(1));
+      _createNewBetsTimer = new Timer(_ => { _ = Task.Run(async () => { await ExecuteCleanAndCreateBets(); }); }, null, TimeSpan.FromMinutes(7), TimeSpan.FromHours(3));
       #endif
 
       return Task.CompletedTask;
@@ -996,7 +1015,6 @@ namespace BetsTrading_Service.Services
         await updaterService.CreateBets();
       }
     }
-
     private async Task ExecuteCheckBets()
     {
       using var scope = _serviceProvider.CreateScope();
@@ -1019,8 +1037,6 @@ namespace BetsTrading_Service.Services
         _customLogger.Log.Error(ex, "[UpdaterHostedService] :: Error during update batch");
       }
     }
-
-
     private async void ExecuteUpdateAssets(object? state)
     {
       if (Interlocked.Exchange(ref _assetsBusy, 1) == 1)

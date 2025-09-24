@@ -336,10 +336,27 @@ namespace BetsTrading_Service.Controllers
               .OrderByDescending(c => c.DateTime)
               .FirstOrDefaultAsync(ct);
 
-          if (lastCandle == null) continue;
+          double prevClose;
+          double dailyGain;
+
+          if (lastCandle == null)
+          {
+            prevClose = tmpAsset.current / ((100.0+trend.daily_gain)/100.0);
+            
+            trendDTOs.Add(new TrendDTO(
+             id: trend.id,
+             name: tmpAsset.name,
+             icon: tmpAsset.icon ?? "noIcon",
+             daily_gain: trend.daily_gain,
+             close: prevClose,
+             current: tmpAsset.current,
+             ticker: trend.ticker));
+            continue;
+          }
 
           var lastDay = lastCandle.DateTime.Date;
           AssetCandle? finalCandle;
+          
 
           if (tmpAsset.group == "Cryptos" || tmpAsset.group == "Forex")
           {
@@ -354,7 +371,21 @@ namespace BetsTrading_Service.Controllers
             finalCandle = lastCandle;
           }
 
-          if (finalCandle == null) continue;
+          if (finalCandle == null)
+          {
+            prevClose = tmpAsset.current * 0.95;
+            dailyGain = ((tmpAsset.current - prevClose) / prevClose) * 100.0;
+            trendDTOs.Add(new TrendDTO(
+             id: trend.id,
+             name: tmpAsset.name,
+             icon: tmpAsset.icon ?? "noIcon",
+             daily_gain: dailyGain,
+             close: prevClose,
+             current: (double)finalCandle!.Close,
+             ticker: trend.ticker
+             ));
+            continue;
+          }
 
           var prevCandle = await _dbContext.AssetCandles
               .AsNoTracking()
@@ -362,8 +393,7 @@ namespace BetsTrading_Service.Controllers
               .OrderByDescending(c => c.DateTime)
               .FirstOrDefaultAsync(ct);
 
-          double prevClose;
-          double dailyGain;
+          
 
           if (prevCandle != null)
           {
