@@ -973,10 +973,10 @@ namespace BetsTrading_Service.Services
 
 #if RELEASE
       //TO-DO : config times and more actions
-      //_assetsTimer = new Timer(ExecuteUpdateAssets!, null, TimeSpan.FromSeconds(0), TimeSpan.FromHours(1));
-      //_trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromMinutes(10), TimeSpan.FromHours(12));
-      //_betsTimer = new Timer(_ =>  { _ = Task.Run(async () =>  { await ExecuteCheckBets(); }); }, null, TimeSpan.FromMinutes(15), TimeSpan.FromHours(1));
-      //_createNewBetsTimer = new Timer(_ => { _ = Task.Run(async () => { await ExecuteCleanAndCreateBets(); }); }, null, TimeSpan.FromMinutes(20), TimeSpan.FromHours(5));
+      _assetsTimer = new Timer(ExecuteUpdateAssets!, null, TimeSpan.FromSeconds(0), TimeSpan.FromHours(1));
+      _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromMinutes(10), TimeSpan.FromHours(12));
+      _betsTimer = new Timer(_ =>  { _ = Task.Run(async () =>  { await ExecuteCheckBets(); }); }, null, TimeSpan.FromMinutes(15), TimeSpan.FromHours(1));
+      _createNewBetsTimer = new Timer(_ => { _ = Task.Run(async () => { await ExecuteCleanAndCreateBets(); }); }, null, TimeSpan.FromMinutes(20), TimeSpan.FromHours(5));
       
       #endif
 
