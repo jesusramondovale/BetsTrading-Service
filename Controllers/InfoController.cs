@@ -346,7 +346,7 @@ namespace BetsTrading_Service.Controllers
           AssetCandle? finalCandle;
           
 
-          if (tmpAsset.group == "Cryptos" || tmpAsset.group == "Forex")
+          if (tmpAsset!.group == "Cryptos" || tmpAsset.group == "Forex")
           {
             finalCandle = await _dbContext.AssetCandles
                 .AsNoTracking()

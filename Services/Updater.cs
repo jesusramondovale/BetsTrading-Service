@@ -702,14 +702,14 @@ namespace BetsTrading_Service.Services
 
           var top5 = gains
               .Join(_dbContext.FinancialAssets.AsNoTracking(),
-                    g => g.AssetId,
+                    g => g!.AssetId,
                     fa => fa.id,
                     (g, fa) => new
                     {
                       fa.id,
                       fa.ticker,
                       fa.name,
-                      g.Gain
+                      g!.Gain
                     })
               .OrderByDescending(x => Math.Abs(x.Gain))
               .Take(5)
