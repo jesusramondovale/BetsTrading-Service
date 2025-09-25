@@ -67,15 +67,14 @@ namespace BetsTrading_Service.Services
         _logger.Log.Error("[Updater] :: TWELVE DATA KEYS not set in environment variables!");
         return;
       }
-      
+
       using var scope = scopeFactory.CreateScope();
-      
       var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
       var selectedAssets = await db.FinancialAssets
-        .AsNoTracking()
-        .Where(fa => fa.group == "Shares" || fa.group == "ETF" || fa.group == "Cryptos" || fa.group == "Forex")
-        .ToListAsync(ct);
+          .AsNoTracking()
+          .Where(fa => fa.group == "Shares" || fa.group == "ETF" || fa.group == "Cryptos" || fa.group == "Forex")
+          .ToListAsync(ct);
 
       if (selectedAssets.Count == 0)
       {
@@ -107,15 +106,14 @@ namespace BetsTrading_Service.Services
       {
         ct.ThrowIfCancellationRequested();
 
-        // rate limit: 8 llamadas por key
         if (callsWithThisKey == 8)
         {
           var wrapped = (keyIndex + 1) % TWELVE_DATA_KEYS.Length == 0;
           NextKey();
           if (wrapped)
           {
-            _logger.Log.Information("[Updater] :: Sleeping 60 seconds to bypass rate limit");
-            await Task.Delay(TimeSpan.FromSeconds(60), ct);
+            _logger.Log.Information("[Updater] :: Sleeping 35 seconds to bypass rate limit");
+            await Task.Delay(TimeSpan.FromSeconds(35), ct);
           }
         }
 
@@ -222,18 +220,23 @@ namespace BetsTrading_Service.Services
 
         try
         {
+          await using var transaction = await db.Database.BeginTransactionAsync(ct);
+
           var bulkConfig = new BulkConfig
           {
             UpdateByProperties = new List<string> { "AssetId", "Exchange", "Interval", "DateTime" },
-            SetOutputIdentity = false
+            SetOutputIdentity = false,
+            UseTempDB = true
           };
 
           await db.BulkInsertOrUpdateAsync(candles, bulkConfig, cancellationToken: ct);
-          
+
           var lastClose = candles.OrderByDescending(c => c.DateTime).First().Close;
-          await _dbContext.FinancialAssets
+          await db.FinancialAssets
               .Where(f => f.id == asset.id)
               .ExecuteUpdateAsync(s => s.SetProperty(f => f.current, _ => (double)lastClose), ct);
+
+          await transaction.CommitAsync(ct);
 
           _logger.Log.Information("[Updater] :: Saved {Count} candles for {Symbol}", candles.Count, symbol);
         }
@@ -247,10 +250,11 @@ namespace BetsTrading_Service.Services
     }
 
 
+
     #endregion
 
     #region Create Bets
-        
+
     public async Task CreateBets()
       {
         _logger.Log.Information("[Updater] :: CreateBets() called!");
@@ -715,8 +719,6 @@ namespace BetsTrading_Service.Services
               .Take(5)
               .ToList();
 
-
-
           var newTrends = new List<Trend>();
           int i = 0;
           foreach (var x in top5)
@@ -982,8 +984,9 @@ namespace BetsTrading_Service.Services
       #if RELEASE
       //TO-DO : config times and more actions
       _assetsTimer = new Timer(ExecuteUpdateAssets!, null, TimeSpan.FromSeconds(0), TimeSpan.FromHours(1));
-      _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromMinutes(5), TimeSpan.FromHours(6));
-      _betsTimer = new Timer(_ =>  { _ = Task.Run(async () =>  { await ExecuteCheckBets(); }); }, null, TimeSpan.FromMinutes(6), TimeSpan.FromHours(1));
+      _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromMinutes(3), TimeSpan.FromHours(12));
+
+      _betsTimer = new Timer(_ =>  { _ = Task.Run(async () =>  { await ExecuteCheckBets(); }); }, null, TimeSpan.FromMinutes(5), TimeSpan.FromHours(1));
       _createNewBetsTimer = new Timer(_ => { _ = Task.Run(async () => { await ExecuteCleanAndCreateBets(); }); }, null, TimeSpan.FromMinutes(7), TimeSpan.FromHours(3));
       #endif
 
