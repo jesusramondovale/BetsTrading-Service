@@ -28,8 +28,7 @@ namespace BetsTrading_Service.Services
     private static readonly string[] TWELVE_DATA_KEYS = Enumerable.Range(0, 11).Select(i => Environment.GetEnvironmentVariable($"TWELVE_DATA_KEY{i}", EnvironmentVariableTarget.User) ?? "").ToArray() ?? [];
     // Logos only
     private string MARKETSTACK_KEY = Environment.GetEnvironmentVariable("MARKETSTACK_API_KEY", EnvironmentVariableTarget.User) ?? "";
-    // Trends only
-    private string SERP_API_KEY = Environment.GetEnvironmentVariable("SERP_API_KEY", EnvironmentVariableTarget.User) ?? "";
+    
 
     private const int PRICE_BET_WIN_PRICE = 50000;
     private readonly FirebaseNotificationService _firebaseNotificationService;
@@ -664,89 +663,80 @@ namespace BetsTrading_Service.Services
       {
         try
         {
-          Hashtable ht = new Hashtable()
-            {
-                { "engine", "google_finance_markets" },
-                { "trend", "most-active" }
-            };
-          _logger.Log.Information("[Updater] :: UpdateTrends() called!");
 
-          GoogleSearch search = new GoogleSearch(ht, SERP_API_KEY);
-          JObject data = search.GetJson();
-          var mostActive = data["market_trends"]!
-              .FirstOrDefault(x => (string)x["title"]! == "Most active")?["results"];
+          var lastCandles = _dbContext.AssetCandles
+    .Where(ac => ac.Interval == "1h")
+    .AsNoTracking()
+    .ToList();
 
-          if (mostActive == null || mostActive.Count() == 0)
-          {
-            _logger.Log.Warning("[Updater] :: No active trends found.");
-            return;
-          }
+          var dailyCloses = lastCandles
+              .GroupBy(c => new { c.AssetId, Day = c.DateTime.Date })
+              .Select(g => new
+              {
+                g.Key.AssetId,
+                Day = g.Key.Day,
+                CloseDaily = g.OrderByDescending(x => x.DateTime).First().Close
+              })
+              .OrderByDescending(x => x.Day)
+              .ToList();
 
-          var top5Trending = mostActive
-              .OrderByDescending(x => (double)x["price_movement"]!["percentage"]!)
+          var gains = dailyCloses
+              .GroupBy(x => x.AssetId)
+              .Select(g =>
+              {
+                var ordered = g.OrderByDescending(x => x.Day).Take(2).ToList();
+                if (ordered.Count() < 2) return null;
+
+                var last = ordered[0];
+                var prev = ordered[1];
+
+                return new
+                {
+                  AssetId = g.Key,
+                  LastDay = last.Day,
+                  Gain = (double)((last.CloseDaily - prev.CloseDaily) / prev.CloseDaily * 100m)
+                };
+              })
+              .Where(x => x != null)
+              .ToList();
+
+          var top5 = gains
+              .Join(_dbContext.FinancialAssets.AsNoTracking(),
+                    g => g.AssetId,
+                    fa => fa.id,
+                    (g, fa) => new
+                    {
+                      fa.id,
+                      fa.ticker,
+                      fa.name,
+                      g.Gain
+                    })
+              .OrderByDescending(x => Math.Abs(x.Gain))
               .Take(5)
               .ToList();
 
+
+
           var newTrends = new List<Trend>();
-          int maxId = _dbContext.FinancialAssets.Max(fa => fa.id);
-
-          for (int i = 0; i < top5Trending.Count;)
+          int i = 0;
+          foreach (var x in top5)
           {
-            var item = top5Trending[i];
-            string ticker = ((string)item["stock"]!).Replace(":", ".");
-
-            double dailyGain = ((string)item["price_movement"]!["movement"]! == "Down"
-                               ? -(double)item["price_movement"]!["value"]!
-                               : (double)item["price_movement"]!["value"]!);
-
             newTrends.Add(new Trend(
                 id: ++i,
-                daily_gain: dailyGain,
-                ticker: ticker
+                daily_gain: x.Gain,
+                ticker: x.ticker!
             ));
-
-            var currentAsset = _dbContext.FinancialAssets
-                .AsNoTracking()
-                .FirstOrDefault(fa => fa.ticker == ticker);
-
-            if (currentAsset == null)
-            {
-              FinancialAsset tmpAsset = new FinancialAsset(
-                  id: ++maxId,
-                  name: (string)item["name"]!,
-                  group: "Shares",
-                  icon: "null",
-                  country: GetCountryByTicker(ticker),
-                  ticker: ticker,
-                  current: (double)item["extracted_price"]!
-              );
-
-              _dbContext.FinancialAssets.Add(tmpAsset);
-              _dbContext.SaveChanges();
-            }
           }
-
-          int incoming = Math.Min(5, newTrends.Count);
 
           var existingTrends = _dbContext.Trends
-              .OrderBy(t => t.id)
               .ToList();
-
-          int deletions = Math.Min(incoming, existingTrends.Count);
-
-          if (deletions > 0)
-          {
-            var toDelete = existingTrends.Take(deletions).ToList();
-            _dbContext.Trends.RemoveRange(toDelete);
-            _dbContext.SaveChanges();
-          }
+            
+          _dbContext.Trends.RemoveRange(existingTrends);
+          _dbContext.Trends.AddRange(newTrends);
+          _dbContext.SaveChanges();
+          transaction.Commit();
           
-          if (incoming > 0)
-          {
-            _dbContext.Trends.AddRange(newTrends.Take(incoming));
-            _dbContext.SaveChanges();
-          }
-          
+
           foreach (User user in _dbContext.Users.Where(u => u.is_active).ToList())
           {
             _ = _firebaseNotificationService.SendNotificationToUser(
@@ -757,7 +747,6 @@ namespace BetsTrading_Service.Services
             );
           }
 
-          transaction.Commit();
           _logger.Log.Information("[Updater] :: UpdateTrends() ended successfully!");
         }
         catch (Exception ex)
@@ -767,7 +756,6 @@ namespace BetsTrading_Service.Services
         }
       }
     }
-
 
     #endregion
 
@@ -993,8 +981,8 @@ namespace BetsTrading_Service.Services
 
       #if RELEASE
       //TO-DO : config times and more actions
-      _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromMinutes(0), TimeSpan.FromHours(2));
-      _assetsTimer = new Timer(ExecuteUpdateAssets!, null, TimeSpan.FromSeconds(20), TimeSpan.FromHours(1));
+      _assetsTimer = new Timer(ExecuteUpdateAssets!, null, TimeSpan.FromSeconds(0), TimeSpan.FromHours(1));
+      _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromMinutes(5), TimeSpan.FromHours(6));
       _betsTimer = new Timer(_ =>  { _ = Task.Run(async () =>  { await ExecuteCheckBets(); }); }, null, TimeSpan.FromMinutes(6), TimeSpan.FromHours(1));
       _createNewBetsTimer = new Timer(_ => { _ = Task.Run(async () => { await ExecuteCleanAndCreateBets(); }); }, null, TimeSpan.FromMinutes(7), TimeSpan.FromHours(3));
       #endif
@@ -1081,7 +1069,7 @@ namespace BetsTrading_Service.Services
     {
       _trendsTimer!.Dispose();
       _assetsTimer!.Dispose();
-     _betsTimer!.Dispose();
+      _betsTimer!.Dispose();
     }
   }
   #endregion

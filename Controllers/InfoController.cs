@@ -312,36 +312,24 @@ namespace BetsTrading_Service.Controllers
 
         foreach (var trend in trends)
         {
-          var tmpAsset = await _dbContext.FinancialAssets
-              .AsNoTracking()
-              .FirstOrDefaultAsync(a => a.ticker == trend.ticker, ct);
-
-          if (tmpAsset == null)
-          {
-            trendDTOs.Add(new TrendDTO(
-                id: trend.id,
-                name: "?",
-                icon: "null",
-                daily_gain: trend.daily_gain,
-                close: 0.0,
-                current: 0.0,
-                ticker: trend.ticker
-            ));
-            continue;
-          }
-
-          var lastCandle = await _dbContext.AssetCandles
-              .AsNoTracking()
-              .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h")
-              .OrderByDescending(c => c.DateTime)
-              .FirstOrDefaultAsync(ct);
-
           double prevClose;
           double dailyGain;
 
+          var tmpAsset = await _dbContext.FinancialAssets
+              .AsNoTracking()
+              .FirstOrDefaultAsync(a => a.ticker == trend.ticker, ct);
+                   
+
+          var lastCandle = await _dbContext.AssetCandles
+              .AsNoTracking()
+              .Where(c => c.AssetId == tmpAsset!.id && c.Interval == "1h")
+              .OrderByDescending(c => c.DateTime)
+              .FirstOrDefaultAsync(ct);
+                    
+
           if (lastCandle == null)
           {
-            prevClose = tmpAsset.current / ((100.0+trend.daily_gain)/100.0);
+            prevClose = tmpAsset!.current / ((100.0+trend.daily_gain)/100.0);
             
             trendDTOs.Add(new TrendDTO(
              id: trend.id,
