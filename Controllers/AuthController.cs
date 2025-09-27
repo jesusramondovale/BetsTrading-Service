@@ -379,7 +379,7 @@ namespace BetsTrading_Service.Controllers
 
             string localedBodyTemplate = LocalizedTexts.GetTranslationByCountry(user.country, "newPasswordEmailBody");
 
-            string localedBody = string.Format(localedBodyTemplate, user.fullname, changepasswordRequest.Password);
+            string localedBody = string.Format(localedBodyTemplate, user.fullname);
 
             await _emailService.SendEmailAsync(
                 to: user.email,
