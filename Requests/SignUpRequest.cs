@@ -8,9 +8,6 @@ namespace BetsTrading_Service.Requests
     [StringLength(100, MinimumLength = 20)]
     public string? Token { get; set; }
 
-    //[Required]
-    public string? IdCard { get; set; }
-
     [Required]
     public string? Fcm { get; set; }
     

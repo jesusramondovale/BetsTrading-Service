@@ -2,13 +2,12 @@
 {
   public class User
   {
-    public User(string id,  string? idcard, string fcm, string fullname, string? password,
+    public User(string id,string fcm, string fullname, string? password,
                 string? country, string? gender,
                 string email, DateTime birthday, DateTime signin_date,
                 DateTime last_session, string? credit_card, string username)
     {
       this.id = id;
-      this.idcard = idcard!;
       this.fcm = fcm;
       this.fullname = fullname;
       this.password = password!; // SHA-256
@@ -20,7 +19,7 @@
       this.last_session = last_session;
       this.credit_card = credit_card!;
       this.username = username;
-
+      is_verified = false;
       token_expiration = null;
       is_active = true;
       failed_attempts = 0;
@@ -30,13 +29,12 @@
       profile_pic = null;
     }
 
-    public User(string id, string idcard, string fcm, string fullname, string password,
+    public User(string id, string fcm, string fullname, string password,
                 string country, string gender,
                 string email, DateTime birthday, DateTime signin_date,
                 DateTime last_session, string credit_card, string username, string profile_pic, double points)
     {
       this.id = id;
-      this.idcard = idcard!;
       this.fcm = fcm;
       this.fullname = fullname;
       this.password = password!;
@@ -51,6 +49,7 @@
       this.profile_pic = profile_pic;
       this.points = points;
 
+      is_verified = false;
       token_expiration = null;
       is_active = true;
       failed_attempts = 0;
@@ -61,7 +60,6 @@
 
     public string id { get; private set; }
     public string fcm { get; set; }
-    public string idcard { get; set; }
     public string fullname { get; private set; }
     public string password { get; set; }
     public string country { get; private set; }
@@ -73,6 +71,7 @@
     public string credit_card { get; private set; }
     public string username { get; private set; }
     public DateTime? token_expiration { get;  set; }
+    public bool is_verified { get; set; }
     public bool is_active { get; set; }
     public int failed_attempts { get; private set; }
     public DateTime? last_login_attempt { get; private set; }
@@ -80,6 +79,7 @@
     public string? profile_pic { get; set; }
     public double points{ get; set; }
     public double pending_balance { get; set; }
+
 
   }
 

@@ -92,7 +92,6 @@ namespace BetsTrading_Service.Controllers
 
           var newUser = new User(
               guid,
-              signUpRequest.IdCard ?? "-",
               signUpRequest.Fcm ?? "-",
               signUpRequest.FullName ?? "-",
               hashedPassword,
@@ -608,54 +607,6 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
-    [HttpPost("VerifyID")]
-    public async Task<IActionResult> Verify([FromBody] idCardRequest idCardRequest)
-    {
-      using (var transaction = await _dbContext.Database.BeginTransactionAsync())
-      {
-        try
-        {
-
-          var tokenUserId =
-            User.FindFirstValue(ClaimTypes.NameIdentifier) ??
-            User.FindFirstValue("app_sub") ??
-            User.FindFirstValue(JwtRegisteredClaimNames.Sub);
-
-          if (string.IsNullOrEmpty(tokenUserId))
-            return Unauthorized(new { Message = "Invalid token" });
-
-          if (!string.IsNullOrEmpty(idCardRequest.id) &&
-              !string.Equals(idCardRequest.id, tokenUserId, StringComparison.Ordinal) &&
-              !User.IsInRole("admin"))
-          {
-            // 403 FORBIDDEN : User ID doesn't match JWT
-            return Forbid();
-          }
-
-          var user = _dbContext.Users.FirstOrDefault(u => u.id == idCardRequest.id);
-
-          if (user != null)
-          {
-            user.idcard = idCardRequest.idCard!;
-            await _dbContext.SaveChangesAsync();
-            await transaction.CommitAsync();
-
-            _logger.Log.Debug("[AUTH] :: Verify :: Success with ID Card {idCard}", idCardRequest.idCard);
-            return Ok(new { Message = "ID card updated successfully", UserId = user.id });
-          }
-          else
-          {
-            return NotFound(new { Message = "User not found" });
-          }
-        }
-        catch (Exception ex)
-        {
-          await transaction.RollbackAsync();
-          _logger.Log.Error("[AUTH] :: Verify :: Internal Server Error: {msg}", ex.Message);
-          return StatusCode(500, new { Message = "Server error", Error = ex.Message });
-        }
-      }
-    }
 
     public static async Task<IpGeoResponse?> GetGeoLocationFromIp(string ip)
     {
