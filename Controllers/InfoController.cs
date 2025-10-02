@@ -78,7 +78,7 @@ namespace BetsTrading_Service.Controllers
           {
             Message = "UserInfo SUCCESS",
             Username = user.username,
-            Idcard = user.idcard,
+            Isverified = user.is_verified,
             Email = user.email,
             Birthday = user.birthday,
             Fullname = user.fullname,
@@ -866,7 +866,7 @@ namespace BetsTrading_Service.Controllers
             UserId = request.UserId,
             Type = "bank",
             Label = request.Label!,
-            Verified = !(currentUser.idcard.Length < 5), // marca verificado si tiene idcard
+            Verified = currentUser.is_verified,
             Data = jsonDoc,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
@@ -948,7 +948,7 @@ namespace BetsTrading_Service.Controllers
             UserId = request.UserId,
             Type = "paypal",
             Label = request.Label!,
-            Verified = !(currentUser.idcard.Length < 5),
+            Verified = currentUser.is_verified,
             Data = jsonDoc,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
@@ -1034,7 +1034,7 @@ namespace BetsTrading_Service.Controllers
             UserId = request.UserId,
             Type = "crypto",
             Label = request.Label!,
-            Verified = !(currentUser.idcard.Length < 5),
+            Verified = currentUser.is_verified,
             Data = jsonDoc,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
