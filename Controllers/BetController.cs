@@ -46,7 +46,7 @@ namespace BetsTrading_Service.Controllers
 
         if (!bets.Any())
         {
-          _logger.Log.Warning("[INFO] :: UserBets :: Empty list of bets on userID: {msg}", userInfoRequest.id);
+          _logger.Log.Debug("[INFO] :: UserBets :: Empty list of bets on userID: {msg}", userInfoRequest.id);
           return NotFound(new { Message = "User has no bets!" });
         }
 

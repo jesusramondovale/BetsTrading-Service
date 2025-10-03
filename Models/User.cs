@@ -62,9 +62,9 @@
 
     public string id { get; private set; }
     public string fcm { get; set; }
-    public string fullname { get; private set; }
+    public string fullname { get; set; }
     public string password { get; set; }
-    public string country { get; private set; }
+    public string country { get; set; }
     public string gender { get; private set; }
     public string email { get; private set; }
     public DateTime birthday { get; set; }
