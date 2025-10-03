@@ -20,6 +20,7 @@
       this.credit_card = credit_card!;
       this.username = username;
       is_verified = false;
+      didit_session_id = null;
       token_expiration = null;
       is_active = true;
       failed_attempts = 0;
@@ -49,6 +50,7 @@
       this.profile_pic = profile_pic;
       this.points = points;
 
+      didit_session_id = null;
       is_verified = false;
       token_expiration = null;
       is_active = true;
@@ -65,13 +67,14 @@
     public string country { get; private set; }
     public string gender { get; private set; }
     public string email { get; private set; }
-    public DateTime birthday { get; private set; }
+    public DateTime birthday { get; set; }
     public DateTime signin_date { get; private set; }
     public DateTime last_session { get; set; }
     public string credit_card { get; private set; }
     public string username { get; private set; }
     public DateTime? token_expiration { get;  set; }
     public bool is_verified { get; set; }
+    public string? didit_session_id { get; set; }
     public bool is_active { get; set; }
     public int failed_attempts { get; private set; }
     public DateTime? last_login_attempt { get; private set; }

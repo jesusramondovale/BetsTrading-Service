@@ -4,6 +4,7 @@ using BetsTrading_Service.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 
@@ -34,6 +35,7 @@ namespace BetsTrading_Service.Controllers
 
         var apiKey = Environment.GetEnvironmentVariable("DIDIT_API_KEY", EnvironmentVariableTarget.User) ?? "";
         var workflowId = Environment.GetEnvironmentVariable("DIDIT_WORKFLOW_ID", EnvironmentVariableTarget.User) ?? "";
+        //TODO
         var callbackUrl = "https://api.betstrading.online/api/Didit/Webhook";
 
         using var http = new HttpClient();
@@ -47,8 +49,9 @@ namespace BetsTrading_Service.Controllers
         };
 
         var response = await http.PostAsync(
-          "https://verification.didit.me/v2/session/",
-          new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+          //TODO
+            "https://verification.didit.me/v2/session/",
+            new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
         );
 
         var body = await response.Content.ReadAsStringAsync();
@@ -59,8 +62,18 @@ namespace BetsTrading_Service.Controllers
           return StatusCode((int)response.StatusCode, body);
         }
 
-        _logger.Log.Information("[DIDIT] :: Session created for user {id}", user.id);
-        return Ok(JsonSerializer.Deserialize<JsonElement>(body));
+        var json = JsonSerializer.Deserialize<JsonElement>(body);
+
+        if (json.TryGetProperty("session_id", out var idProp))
+        {
+          var sessionId = idProp.GetString();
+          user.didit_session_id = sessionId ?? null;
+          await _dbContext.SaveChangesAsync();
+
+          _logger.Log.Information("[DIDIT] :: Session {sid} created for user {id}", sessionId, user.id);
+        }
+
+        return Ok(json);
       }
       catch (Exception ex)
       {
@@ -79,18 +92,10 @@ namespace BetsTrading_Service.Controllers
         var json = await reader.ReadToEndAsync();
 
         var payload = JsonSerializer.Deserialize<JsonElement>(json);
-
-        if (!payload.TryGetProperty("decision", out var decision))
-        {
-          _logger.Log.Warning("[DIDIT] :: Webhook payload without decision node: {json}", json);
-          return BadRequest();
-        }
-
-        string? vendorData = null;
-        if (decision.TryGetProperty("vendor_data", out var vendorProp))
-        {
-          vendorData = vendorProp.GetString();
-        }
+        
+        string? vendorData = payload.TryGetProperty("vendor_data", out var vendorProp)
+            ? vendorProp.GetString()
+            : null;
 
         if (string.IsNullOrEmpty(vendorData))
         {
@@ -104,24 +109,80 @@ namespace BetsTrading_Service.Controllers
           _logger.Log.Warning("[DIDIT] :: Webhook for non-existent user {vendor}", vendorData);
           return NotFound();
         }
+        
+        if (payload.TryGetProperty("session_id", out var sidProp))
+        {
+          var sessionId = sidProp.GetString();
+          if (!string.IsNullOrEmpty(sessionId))
+          {
+            user.didit_session_id = sessionId;
+            await _dbContext.SaveChangesAsync();
+            _logger.Log.Information("[DIDIT] :: Updated user {id} with session {sid}", user.id, sessionId);
+          }
+        }
+        
+        string webhookType = payload.TryGetProperty("webhook_type", out var wtProp)
+            ? wtProp.GetString() ?? ""
+            : "";
 
-        double score = 0;
-        if (decision.TryGetProperty("face_match", out var faceMatch) &&
-            faceMatch.TryGetProperty("score", out var scoreProp))
+        string status = payload.TryGetProperty("status", out var stProp)
+            ? stProp.GetString() ?? ""
+            : "";
+
+        if (webhookType == "status.updated")
         {
-          score = scoreProp.GetDouble();
+          _logger.Log.Information("[DIDIT] :: Status update for user {id}: {status}", user.id, status);
+          
+          if (status == "Approved" || status == "Declined")
+          {
+            if (!string.IsNullOrEmpty(user.didit_session_id))
+            {
+              using var http = new HttpClient();
+              http.DefaultRequestHeaders.Add("x-api-key",
+                  Environment.GetEnvironmentVariable("DIDIT_API_KEY", EnvironmentVariableTarget.User) ?? "");
+
+              //TODO
+              var response = await http.GetAsync($"https://verification.didit.me/v2/session/{user.didit_session_id}/decision");
+              if (response.IsSuccessStatusCode)
+              {
+                var body = await response.Content.ReadAsStringAsync();
+                var sessionJson = JsonSerializer.Deserialize<JsonElement>(body);
+
+                if (sessionJson.TryGetProperty("id_verification", out var idVer))
+                {
+                  
+                  if (idVer.TryGetProperty("date_of_birth", out var dobProp))
+                  {
+                    var dobStr = dobProp.GetString();
+                    if (!string.IsNullOrEmpty(dobStr) && DateTime.TryParse(dobStr, out var dob))
+                    {
+                      user.birthday = dob;
+                      _logger.Log.Information("[DIDIT] :: User {id} DOB set to {dob}", user.id, dob);
+                    }
+                  }
+                  
+                  if (status == "Approved")
+                  {
+                    user.is_verified = true;
+                    _logger.Log.Information("[DIDIT] :: User {id} verified", user.id);
+                  }
+                  else
+                  {
+                    user.is_verified = false;
+                    _logger.Log.Warning("[DIDIT] :: User {id} verification declined", user.id);
+                  }
+                }
+              }
+              else
+              {
+                _logger.Log.Warning("[DIDIT] :: Failed to fetch session {sid}, status {status}",
+                    user.didit_session_id, response.StatusCode);
+              }
+            }
+          }
         }
 
-        if (score >= 75)
-        {
-          user.is_verified = true;
-          await _dbContext.SaveChangesAsync();
-          _logger.Log.Information("[DIDIT] :: User {id} verified with score {score}", user.id, score);
-        }
-        else
-        {
-          _logger.Log.Warning("[DIDIT] :: User {id} verification failed, score {score}", user.id, score);
-        }
+        await _dbContext.SaveChangesAsync();
 
         return Ok(new { Message = "Webhook processed" });
       }
@@ -131,6 +192,7 @@ namespace BetsTrading_Service.Controllers
         return StatusCode(500, new { Message = "Internal server error" });
       }
     }
+
 
   }
 
