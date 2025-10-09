@@ -11,6 +11,7 @@ namespace BetsTrading_Service.Locale
     {
       { "en", new Dictionary<string, string>()
         {
+            { "emailCodeSentBody", "Hello ,\n\nYour verification code is: {0}\n\nPlease enter this code in the app to complete your registration.\n\nIf you did not request this, please ignore this message.\n\nBest regards,\nBetrader Support Team" },
             { "updatedTrends", "Updated trends!" },
             { "youWon", "You've won {0} points on {1}!" },
             { "sessionStartedElsewhere", "Session started on another device" },
@@ -20,7 +21,8 @@ namespace BetsTrading_Service.Locale
         }
       },
       { "es", new Dictionary<string, string>()
-        {
+        {      
+            { "emailCodeSentBody", "Hola,\n\nTu código de verificación es: {0}\n\nIntroduce este código en la aplicación para completar tu registro.\n\nSi no has solicitado este código, simplemente ignora este mensaje.\n\nAtentamente,\nEquipo de soporte de Betrader" },
             { "updatedTrends", "Tendencias actualizadas!" },
             { "youWon", "¡Has ganado {0} puntos en {1}!" },
             { "sessionStartedElsewhere", "Sesión iniciada en otro dispositivo" },
@@ -31,6 +33,7 @@ namespace BetsTrading_Service.Locale
       },
       { "fr", new Dictionary<string, string>()
         {
+            { "emailCodeSentBody", "Bonjour,\n\nVotre code de vérification est : {0}\n\nVeuillez saisir ce code dans l'application pour finaliser votre inscription.\n\nSi vous n'avez pas demandé ce code, ignorez simplement ce message.\n\nCordialement,\nÉquipe du support Betrader" },
             { "updatedTrends", "Tendances mises à jour !" },
             { "youWon", "Vous avez gagné {0} points sur {1} !" },
             { "sessionStartedElsewhere", "Session démarrée sur un autre appareil" },
@@ -41,6 +44,7 @@ namespace BetsTrading_Service.Locale
       },
       { "it", new Dictionary<string, string>()
         {
+            { "emailCodeSentBody", "Ciao,\n\nIl tuo codice di verifica è: {0}\n\nInserisci questo codice nell'app per completare la registrazione.\n\nSe non hai richiesto questo codice, ignora semplicemente questo messaggio.\n\nCordiali saluti,\nTeam di supporto Betrader" },
             { "updatedTrends", "Tendenze aggiornate!" },
             { "youWon", "Hai vinto {0} punti su {1}!" },
             { "sessionStartedElsewhere", "Sessione avviata su un altro dispositivo" },
@@ -51,6 +55,7 @@ namespace BetsTrading_Service.Locale
       },
       { "de", new Dictionary<string, string>()
         {
+            { "emailCodeSentBody", "Hallo,\n\nIhr Bestätigungscode lautet: {0}\n\nBitte geben Sie diesen Code in der App ein, um Ihre Registrierung abzuschließen.\n\nWenn Sie diesen Code nicht angefordert haben, ignorieren Sie bitte diese Nachricht.\n\nMit freundlichen Grüßen,\nBetrader Support Team" },
             { "updatedTrends", "Aktualisierte Trends!" },
             { "youWon", "Du hast {0} Punkte auf {1} gewonnen!" },
             { "sessionStartedElsewhere", "Sitzung auf einem anderen Gerät gestartet" },
@@ -61,6 +66,7 @@ namespace BetsTrading_Service.Locale
       },
       { "pt", new Dictionary<string, string>()
         {
+            { "emailCodeSentBody", "Olá,\n\nO seu código de verificação é: {0}\n\nInsira este código no aplicativo para concluir o seu registro.\n\nSe não solicitou este código, ignore esta mensagem.\n\nAtenciosamente,\nEquipe de suporte Betrader" },
             { "updatedTrends", "Tendências atualizadas!" },
             { "youWon", "Você ganhou {0} pontos em {1}!" },
             { "sessionStartedElsewhere", "Sessão iniciada em outro dispositivo" },

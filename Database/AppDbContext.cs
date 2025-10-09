@@ -33,11 +33,15 @@
     public DbSet<RewardTransaction> RewardTransactions{ get; set; }
     public DbSet<PaymentData> PaymentData { get; set; }
     public DbSet<WithdrawalData> WithdrawalData { get; set; }
+    public DbSet<VerificationCode> VerificationCodes { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
       // Especifica el esquema "BetsTrading" para todas las tablas del modelo
       modelBuilder.HasDefaultSchema("BetsTrading");
+
+      modelBuilder.Entity<VerificationCode>().ToTable("VerificationCodes", schema: "BetsTrading");
+
 
       modelBuilder.Entity<Bet>(entity =>
       {

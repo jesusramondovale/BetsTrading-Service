@@ -72,23 +72,100 @@ namespace BetsTrading_Service.Controllers
     }
 
 
+    [AllowAnonymous]
+    [HttpPost("SendCode")]
+    public async Task<IActionResult> SendCode([FromBody] SendCodeRequest req)
+    {
+      try
+      {
+        string email = req.Email ?? "";
+
+        if (string.IsNullOrWhiteSpace(email))
+        {
+          return BadRequest(new { success = false, message = "Email is required." });
+        }
+
+        var existingUser = await _dbContext.Users.FirstOrDefaultAsync(u => u.email == email);
+        if (existingUser != null)
+        {
+          return Conflict(new { success = false, message = "Email already exists." });
+        }
+
+        var random = new Random();
+        string code = random.Next(100000, 999999).ToString();
+        
+        var verificationCode = new VerificationCode(
+          email,
+          code,
+          DateTime.UtcNow,
+          DateTime.UtcNow.AddMinutes(10)
+        );
+        
+        var oldCodes = _dbContext.VerificationCodes.Where(c => c.Email == email && !c.Verified);
+        _dbContext.VerificationCodes.RemoveRange(oldCodes);
+        
+        await _dbContext.VerificationCodes.AddAsync(verificationCode);
+        await _dbContext.SaveChangesAsync();
+
+        string localedBodyTemplate = LocalizedTexts.GetTranslationByCountry(req.Country ?? "UK", "emailCodeSentBody");
+        string localedBody = string.Format(localedBodyTemplate, code);
+
+        await _emailService.SendEmailAsync(
+            to: req.Email ?? "",
+            subject: "Betrader code",
+            body: localedBody
+        );
+
+        _logger.Log.Debug($"[AUTH] :: Verification code sent for {email} - Code : {code}");
+
+        return Ok(new { success = true, message = "Verification code sent successfully." });
+      }
+      catch (Exception ex)
+      {
+        _logger.Log.Error($"[AUTH] :: Error sending verification code: {ex.Message}");
+        return StatusCode(500, new { success = false, message = "Internal server error." });
+      }
+    }
+
     private async Task<IActionResult> RegisterInternal(SignUpRequest signUpRequest)
     {
       var transaction = await _dbContext.Database.BeginTransactionAsync();
       {
         try
         {
+          
+          if (string.IsNullOrWhiteSpace(signUpRequest.Email) || string.IsNullOrWhiteSpace(signUpRequest.EmailCode))
+          {
+            return BadRequest(new { success = false, message = "Email and verification code are required." });
+          }
+
+          var verification = await _dbContext.VerificationCodes
+              .FirstOrDefaultAsync(v =>
+                  v.Email == signUpRequest.Email &&
+                  v.Code == signUpRequest.EmailCode &&
+                  v.Verified == false &&
+                  v.ExpiresAt > DateTime.UtcNow);
+
+          if (verification == null)
+          {
+            return BadRequest(new { success = false, message = "Invalid or expired verification code." });
+          }
+
+          
           var existingUser = await _dbContext.Users
               .FirstOrDefaultAsync(u => u.username == signUpRequest.Username || u.email == signUpRequest.Email);
 
           if (existingUser != null)
           {
-            return Conflict(new { Message = "Username, email or ID already exists" });
+            return Conflict(new { success = false, message = "Username, email or ID already exists." });
           }
 
-          string hashedPassword = (signUpRequest.Password != null ? BCrypt.Net.BCrypt.HashPassword(signUpRequest.Password) : "nullPassword");
-          var guid = signUpRequest.Token ?? Guid.NewGuid().ToString();
+          
+          string hashedPassword = (signUpRequest.Password != null
+              ? BCrypt.Net.BCrypt.HashPassword(signUpRequest.Password)
+              : "nullPassword");
 
+          var guid = signUpRequest.Token ?? Guid.NewGuid().ToString();
 
           var newUser = new User(
               guid,
@@ -111,19 +188,32 @@ namespace BetsTrading_Service.Controllers
           var jwt = GenerateLocalJwt(guid, signUpRequest.Email!, signUpRequest.FullName);
 
           _dbContext.Users.Add(newUser);
+          
+          verification.Verified = true;
+          _dbContext.VerificationCodes.Update(verification);
+
           await _dbContext.SaveChangesAsync();
           await transaction.CommitAsync();
-          _logger.Log.Information("[AUTH] :: SignIn :: Success with user ID : {userID}", newUser.id);
-          return Ok(new { Message = "Registration successful!", UserId = newUser.id, jwtToken = jwt });
+
+          _logger.Log.Information("[AUTH] :: Register :: Success with user ID : {userID}", newUser.id);
+
+          return Ok(new
+          {
+            success = true,
+            message = "Registration successful!",
+            userId = newUser.id,
+            jwtToken = jwt
+          });
         }
         catch (Exception ex)
         {
           await transaction.RollbackAsync();
-          _logger.Log.Error("[AUTH] :: SignIn :: Error : {msg}", ex.Message);
-          return StatusCode(500, new { Message = "Internal server error!", Error = ex.Message });
+          _logger.Log.Error("[AUTH] :: Register :: Error : {msg}", ex.Message);
+          return StatusCode(500, new { success = false, message = "Internal server error!", error = ex.Message });
         }
       }
     }
+
     [AllowAnonymous]
     [HttpPost("SignIn")]
     public Task<IActionResult> SignIn([FromBody] SignUpRequest req)

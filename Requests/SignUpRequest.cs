@@ -28,6 +28,9 @@ namespace BetsTrading_Service.Requests
     [EmailAddress]
     public string? Email { get; set; }
 
+    [Required]
+    public string? EmailCode { get; set; }
+
     //[Required]
     public DateTime? Birthday { get; set; }
 
@@ -39,6 +42,18 @@ namespace BetsTrading_Service.Requests
     public string? Username { get; set; }
 
     public string? ProfilePic { get; set; }
+
+  }
+
+  public class SendCodeRequest
+  {
+    [Required]
+    [EmailAddress]
+    public string? Email { get; set; }
+
+    [Required]
+    public string? Country { get; set; }
+
 
   }
 
