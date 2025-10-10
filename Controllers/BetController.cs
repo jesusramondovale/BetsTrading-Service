@@ -60,13 +60,38 @@ namespace BetsTrading_Service.Controllers
 
           if (tmpAsset == null) continue;
 
-          // vela de hace 24h
-          var prevCandle = await _dbContext.AssetCandles
+
+          var lastCandle = await _dbContext.AssetCandles
               .AsNoTracking()
               .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h")
               .OrderByDescending(c => c.DateTime)
-              .Skip(24)
               .FirstOrDefaultAsync(ct);
+
+          if (lastCandle == null) continue;
+
+          var lastDay = lastCandle.DateTime.Date;
+          AssetCandle? finalCandle;
+
+          if (tmpAsset.group == "Cryptos" || tmpAsset.group == "Forex")
+          {
+            finalCandle = await _dbContext.AssetCandles
+                .AsNoTracking()
+                .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h" && c.DateTime.Date == lastDay)
+                .OrderBy(c => c.DateTime)
+                .FirstOrDefaultAsync(ct);
+          }
+          else
+          {
+            finalCandle = lastCandle;
+          }
+          if (finalCandle == null) continue;
+
+          var prevCandle = await _dbContext.AssetCandles
+              .AsNoTracking()
+              .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h" && c.DateTime.Date < lastDay)
+              .OrderByDescending(c => c.DateTime)
+              .FirstOrDefaultAsync(ct);
+
 
           double prevClose;
           double dailyGain;
@@ -74,12 +99,12 @@ namespace BetsTrading_Service.Controllers
           if (prevCandle != null)
           {
             prevClose = (double)prevCandle.Close;
-            dailyGain = ((tmpAsset.current - prevClose) / prevClose) * 100;
+            dailyGain = prevClose == 0 ? 0 : (((double)tmpAsset.current - prevClose) / prevClose) * 100.0;
           }
           else
           {
             prevClose = tmpAsset.current * 0.95;
-            dailyGain = ((tmpAsset.current - prevClose) / prevClose) * 100;
+            dailyGain = ((tmpAsset.current - prevClose) / prevClose) * 100.0;
           }
 
           var tmpBetZone = await _dbContext.BetZones

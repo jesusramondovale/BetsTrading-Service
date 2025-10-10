@@ -238,7 +238,7 @@ namespace BetsTrading_Service.Services
 
           await transaction.CommitAsync(ct);
 
-          _logger.Log.Information("[Updater] :: Saved {Count} candles for {Symbol}", candles.Count, symbol);
+          _logger.Log.Debug("[Updater] :: Saved {Count} candles for {Symbol}", candles.Count, symbol);
         }
         catch (Exception ex)
         {
@@ -254,7 +254,9 @@ namespace BetsTrading_Service.Services
     #endregion
 
     #region Create Bets
-
+    /*TODO
+     *  Separate bets creation on different timers 
+     */
     public async Task CreateBets()
       {
         _logger.Log.Information("[Updater] :: CreateBets() called!");
@@ -266,7 +268,6 @@ namespace BetsTrading_Service.Services
 
           foreach (var asset in financialAssets)
           {
-            // Coger últimas 30 velas 1h del asset
             var candles = await _dbContext.AssetCandles
                 .Where(c => c.AssetId == asset.id && c.Interval == "1h")
                 .OrderByDescending(c => c.DateTime)
@@ -314,39 +315,94 @@ namespace BetsTrading_Service.Services
             double oddsMid = EstimateOdds(targetMid, lastClose, stdDev, trend, "mid");
             double oddsHigh = EstimateOdds(targetHigh, lastClose, stdDev, trend, "high");
 
-            // TODO: Fechas exactas según tu lógica
-            DateTime start = DateTime.UtcNow.AddHours(1);
-            DateTime end = DateTime.UtcNow.AddDays(5);
+            var now = DateTime.UtcNow;
 
-            int[] horizons = { 1, 2, 4, 24 }; // 1h, 2h, 4h, 24h
+            var start1h = now.AddHours(2);
+            var end1h = now.AddHours(7);
+            var start1h_b = now.AddHours(7);
+            var end1h_b = now.AddHours(17);
+
+            var start2h = now.AddHours(2);
+            var end2h = now.AddHours(12);
+            var start2h_b = now.AddHours(12);
+            var end2h_b = now.AddHours(32);
+
+            var start4h = now.AddHours(2);
+            var end4h = now.AddHours(22);
+            var start4h_b = now.AddHours(22);
+            var end4h_b = now.AddHours(62);
+
+            var start24h = now.AddHours(2);
+            var end24h = now.AddHours(122);
+            var start24h_b = now.AddHours(122);
+            var end24h_b = now.AddHours(362);
+
+            var horizons = new Dictionary<int, ((DateTime StartA, DateTime EndA), (DateTime StartB, DateTime EndB))>
+            {
+                { 1, ((start1h, end1h), (start1h_b, end1h_b)) },
+                { 2, ((start2h, end2h), (start2h_b, end2h_b)) },
+                { 4, ((start4h, end4h), (start4h_b, end4h_b)) },
+                { 24, ((start24h, end24h), (start24h_b, end24h_b)) }
+            };
+
             foreach (var h in horizons)
             {
               _dbContext.BetZones.Add(new BetZone(
                   asset.ticker!,
                   targetLow,
-                  Math.Round(marginLow, 2),
-                  start,
-                  end,
-                  Math.Round(oddsLow, 2),
-                  h
+                  Math.Round(marginLow, 1),
+                  h.Value.Item1.StartA,
+                  h.Value.Item1.EndA,
+                  Math.Round(oddsLow, 1),
+                  h.Key
               ));
               _dbContext.BetZones.Add(new BetZone(
                   asset.ticker!,
                   targetMid,
-                  Math.Round(marginMid, 2),
-                  start,
-                  end,
-                  Math.Round(oddsMid, 2),
-                  h
+                  Math.Round(marginMid, 1),
+                  h.Value.Item1.StartA,
+                  h.Value.Item1.EndA,
+                  Math.Round(oddsMid, 1),
+                  h.Key
               ));
               _dbContext.BetZones.Add(new BetZone(
                   asset.ticker!,
                   targetHigh,
-                  Math.Round(marginHigh, 2),
-                  start,
-                  end,
-                  Math.Round(oddsHigh, 2),
-                  h
+                  Math.Round(marginHigh, 1),
+                  h.Value.Item1.StartA,
+                  h.Value.Item1.EndA,
+                  Math.Round(oddsHigh, 1),
+                  h.Key
+              ));
+
+              //------------------------------------
+
+              _dbContext.BetZones.Add(new BetZone(
+                  asset.ticker!,
+                  targetLow,
+                  Math.Round(marginLow, 1),
+                  h.Value.Item2.StartB,
+                  h.Value.Item2.EndB,
+                  Math.Round(oddsLow * 2, 1),
+                  h.Key
+              ));
+              _dbContext.BetZones.Add(new BetZone(
+                  asset.ticker!,
+                  targetMid,
+                  Math.Round(marginMid, 1),
+                  h.Value.Item2.StartB,
+                  h.Value.Item2.EndB,
+                  Math.Round(oddsMid * 2, 1),
+                  h.Key
+              ));
+              _dbContext.BetZones.Add(new BetZone(
+                  asset.ticker!,
+                  targetHigh,
+                  Math.Round(marginHigh, 1),
+                  h.Value.Item2.StartB,
+                  h.Value.Item2.EndB,
+                  Math.Round(oddsHigh * 2, 1),
+                  h.Key
               ));
             }
           }
@@ -987,7 +1043,7 @@ namespace BetsTrading_Service.Services
       _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromMinutes(3), TimeSpan.FromHours(12));
 
       _betsTimer = new Timer(_ =>  { _ = Task.Run(async () =>  { await ExecuteCheckBets(); }); }, null, TimeSpan.FromMinutes(5), TimeSpan.FromHours(1));
-      _createNewBetsTimer = new Timer(_ => { _ = Task.Run(async () => { await ExecuteCleanAndCreateBets(); }); }, null, TimeSpan.FromMinutes(7), TimeSpan.FromHours(3));
+      _createNewBetsTimer = new Timer(_ => { _ = Task.Run(async () => { await ExecuteCleanAndCreateBets(); }); }, null, TimeSpan.FromMinutes(4), TimeSpan.FromHours(3));
       #endif
 
       return Task.CompletedTask;
