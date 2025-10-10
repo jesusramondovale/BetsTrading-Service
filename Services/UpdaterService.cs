@@ -13,13 +13,13 @@ using System.Net.Http;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using static BetsTrading_Service.Services.TwelveDataParser;
 using EFCore.BulkExtensions;
+using static BetsTrading_Service.Models.TwelveDataParser;
 
 
 namespace BetsTrading_Service.Services 
 {
-  public class Updater
+  public class UpdaterService
   {
     
     private int currentKeyIndex = 0;
@@ -28,7 +28,8 @@ namespace BetsTrading_Service.Services
     private static readonly string[] TWELVE_DATA_KEYS = Enumerable.Range(0, 11).Select(i => Environment.GetEnvironmentVariable($"TWELVE_DATA_KEY{i}", EnvironmentVariableTarget.User) ?? "").ToArray() ?? [];
     // Logos only
     private string MARKETSTACK_KEY = Environment.GetEnvironmentVariable("MARKETSTACK_API_KEY", EnvironmentVariableTarget.User) ?? "";
-    
+
+    Random random = new Random();
 
     private const int PRICE_BET_WIN_PRICE = 50000;
     private readonly FirebaseNotificationService _firebaseNotificationService;
@@ -38,7 +39,7 @@ namespace BetsTrading_Service.Services
     private static readonly HttpClient client = new HttpClient();
 
     #region Constructor
-    public Updater(AppDbContext dbContext, ICustomLogger customLogger, FirebaseNotificationService firebaseNotificationService)
+    public UpdaterService(AppDbContext dbContext, ICustomLogger customLogger, FirebaseNotificationService firebaseNotificationService)
     {
       _firebaseNotificationService = firebaseNotificationService;
       _dbContext = dbContext;
@@ -353,7 +354,7 @@ namespace BetsTrading_Service.Services
                   Math.Round(marginLow, 1),
                   h.Value.Item1.StartA,
                   h.Value.Item1.EndA,
-                  Math.Round(oddsLow, 1),
+                  RandomizeOdds(oddsLow),
                   h.Key
               ));
               _dbContext.BetZones.Add(new BetZone(
@@ -362,7 +363,7 @@ namespace BetsTrading_Service.Services
                   Math.Round(marginMid, 1),
                   h.Value.Item1.StartA,
                   h.Value.Item1.EndA,
-                  Math.Round(oddsMid, 1),
+                  RandomizeOdds(oddsMid),
                   h.Key
               ));
               _dbContext.BetZones.Add(new BetZone(
@@ -371,7 +372,7 @@ namespace BetsTrading_Service.Services
                   Math.Round(marginHigh, 1),
                   h.Value.Item1.StartA,
                   h.Value.Item1.EndA,
-                  Math.Round(oddsHigh, 1),
+                  RandomizeOdds(oddsHigh),
                   h.Key
               ));
 
@@ -383,7 +384,7 @@ namespace BetsTrading_Service.Services
                   Math.Round(marginLow, 1),
                   h.Value.Item2.StartB,
                   h.Value.Item2.EndB,
-                  Math.Round(oddsLow * 2, 1),
+                  RandomizeOdds(oddsLow*2),
                   h.Key
               ));
               _dbContext.BetZones.Add(new BetZone(
@@ -392,7 +393,7 @@ namespace BetsTrading_Service.Services
                   Math.Round(marginMid, 1),
                   h.Value.Item2.StartB,
                   h.Value.Item2.EndB,
-                  Math.Round(oddsMid * 2, 1),
+                  RandomizeOdds(oddsMid*2),
                   h.Key
               ));
               _dbContext.BetZones.Add(new BetZone(
@@ -401,7 +402,7 @@ namespace BetsTrading_Service.Services
                   Math.Round(marginHigh, 1),
                   h.Value.Item2.StartB,
                   h.Value.Item2.EndB,
-                  Math.Round(oddsHigh * 2, 1),
+                  RandomizeOdds(oddsHigh*2),
                   h.Key
               ));
             }
@@ -419,6 +420,12 @@ namespace BetsTrading_Service.Services
       }
 
       }
+
+    double RandomizeOdds(double baseOdds)
+    {
+      var factor = 1 + (random.NextDouble() * 0.10 - 0.05);
+      return Math.Round(baseOdds * factor, 1);
+    }
 
     private double CalculateLinearRegressionSlope(List<double> data)
       {
@@ -1026,6 +1033,8 @@ namespace BetsTrading_Service.Services
     private Timer? _betsTimer;
     private Timer? _createNewBetsTimer;
     private int _assetsBusy = 0;
+    
+
 
     public UpdaterHostedService(IServiceProvider serviceProvider, ICustomLogger customLogger)
 
@@ -1039,11 +1048,11 @@ namespace BetsTrading_Service.Services
 
       #if RELEASE
       //TO-DO : config times and more actions
-      _assetsTimer = new Timer(ExecuteUpdateAssets!, null, TimeSpan.FromSeconds(0), TimeSpan.FromHours(1));
-      _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromMinutes(3), TimeSpan.FromHours(12));
+      //_assetsTimer = new Timer(ExecuteUpdateAssets!, null, TimeSpan.FromSeconds(0), TimeSpan.FromHours(1));
+      //_trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromMinutes(3), TimeSpan.FromHours(12));
 
-      _betsTimer = new Timer(_ =>  { _ = Task.Run(async () =>  { await ExecuteCheckBets(); }); }, null, TimeSpan.FromMinutes(5), TimeSpan.FromHours(1));
-      _createNewBetsTimer = new Timer(_ => { _ = Task.Run(async () => { await ExecuteCleanAndCreateBets(); }); }, null, TimeSpan.FromMinutes(4), TimeSpan.FromHours(3));
+      //_betsTimer = new Timer(_ =>  { _ = Task.Run(async () =>  { await ExecuteCheckBets(); }); }, null, TimeSpan.FromMinutes(5), TimeSpan.FromHours(1));
+      //_createNewBetsTimer = new Timer(_ => { _ = Task.Run(async () => { await ExecuteCleanAndCreateBets(); }); }, null, TimeSpan.FromMinutes(0), TimeSpan.FromHours(3));
       #endif
 
       return Task.CompletedTask;
@@ -1053,7 +1062,7 @@ namespace BetsTrading_Service.Services
       using (var scope = _serviceProvider.CreateScope())
       {
         var scopedServices = scope.ServiceProvider;
-        var updaterService = scopedServices.GetRequiredService<Updater>();
+        var updaterService = scopedServices.GetRequiredService<UpdaterService>();
 
         _customLogger.Log.Information("[UpdaterHostedService] :: Executing RemoveOldBets service.");
         await updaterService.RemoveOldBets();
@@ -1065,7 +1074,7 @@ namespace BetsTrading_Service.Services
     private async Task ExecuteCheckBets()
     {
       using var scope = _serviceProvider.CreateScope();
-      var updaterService = scope.ServiceProvider.GetRequiredService<Updater>();
+      var updaterService = scope.ServiceProvider.GetRequiredService<UpdaterService>();
 
       _customLogger.Log.Information("[UpdaterHostedService] :: Executing UpdateBets service.");
 
@@ -1095,7 +1104,7 @@ namespace BetsTrading_Service.Services
       try
       {
         using var scope = _serviceProvider.CreateScope();
-        var updater = scope.ServiceProvider.GetRequiredService<Updater>();
+        var updater = scope.ServiceProvider.GetRequiredService<UpdaterService>();
         _customLogger.Log.Information("[UpdaterHostedService] :: Executing UpdateAssets service.");
         await updater.UpdateAssetsAsync(_serviceProvider.GetRequiredService<IServiceScopeFactory>());
       }
@@ -1113,7 +1122,7 @@ namespace BetsTrading_Service.Services
       using (var scope = _serviceProvider.CreateScope())
       {
         var scopedServices = scope.ServiceProvider;
-        var updaterService = scopedServices.GetRequiredService<Updater>();
+        var updaterService = scopedServices.GetRequiredService<UpdaterService>();
         _customLogger.Log.Information("[UpdaterHostedService] :: Executing TrendUpdater service.");
         updaterService.UpdateTrends();
       }
@@ -1130,66 +1139,6 @@ namespace BetsTrading_Service.Services
       _assetsTimer!.Dispose();
       _betsTimer!.Dispose();
     }
-  }
-  #endregion
-
-  #region TwelveData API parser
-  public class TwelveDataParser
-  {
-    public CustomMeta? Meta { get; set; }
-    public List<CustomValue>? Values { get; set; }
-
-    public class CustomMeta
-    {
-      public string? Symbol { get; set; }
-      public string? Interval { get; set; }
-      public string? Currency { get; set; }
-      public string? Exchange_Timezone { get; set; }
-      public string? Exchange { get; set; }
-      public string? Mic_Code { get; set; }
-      public string? Type { get; set; }
-    }
-
-    public class CustomValue
-    {
-      public string? Datetime { get; set; }
-      public string? Open { get; set; }
-      public string? High { get; set; }
-      public string? Low { get; set; }
-      public string? Close { get; set; }
-      public string? Volume { get; set; }
-    }
-
-    public sealed class TwelveDataResponse
-    {
-      public TwelveMeta? Meta { get; set; }
-      public List<TwelveBar> Values { get; set; } = new();
-      public string? Status { get; set; }  // "ok" o "error"
-                                           // Si hay error, podrían venir campos "code" y "message"
-      public object? Code { get; set; }
-      public object? Message { get; set; }
-    }
-
-    public sealed class TwelveMeta
-    {
-      public string? Symbol { get; set; }          // p.ej., "BTC/EUR"
-      public string? Interval { get; set; }        // "1day"
-      public string? Currency_Base { get; set; }   // "Bitcoin"
-      public string? Currency_Quote { get; set; }  // "Euro"
-      public string? Exchange { get; set; }        // "Coinbase Pro"
-      public string? Type { get; set; }            // "Digital Currency"
-    }
-
-    public sealed class TwelveBar
-    {
-      public string? Datetime { get; set; } // ""2025-09-21 08:00:00"
-      public string? Open { get; set; }
-      public string? High { get; set; }
-      public string? Low { get; set; }
-      public string? Close { get; set; }
-    }
-
-
   }
   #endregion
 

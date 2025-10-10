@@ -35,7 +35,7 @@ public class OddsAdjusterService : BackgroundService
             using var scope = _serviceProvider.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var firebaseNotificationService = scope.ServiceProvider.GetRequiredService<FirebaseNotificationService>();
-            var updater = new Updater(dbContext, _logger, firebaseNotificationService);
+            var updater = new UpdaterService(dbContext, _logger, firebaseNotificationService);
 
             _logger.Log.Debug("AdjustTargetOdds() execution started.");
             updater.RefreshTargetOdds();

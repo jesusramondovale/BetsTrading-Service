@@ -70,27 +70,27 @@ namespace BetsTrading_Service.Controllers
           if (lastCandle == null) continue;
 
           var lastDay = lastCandle.DateTime.Date;
-          AssetCandle? finalCandle;
+
+
+          AssetCandle? prevCandle;
 
           if (tmpAsset.group == "Cryptos" || tmpAsset.group == "Forex")
           {
-            finalCandle = await _dbContext.AssetCandles
+            prevCandle = await _dbContext.AssetCandles
                 .AsNoTracking()
-                .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h" && c.DateTime.Date == lastDay)
-                .OrderBy(c => c.DateTime)
+                .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h")
+                .OrderByDescending(c => c.DateTime)
+                .Skip(24)
                 .FirstOrDefaultAsync(ct);
           }
           else
           {
-            finalCandle = lastCandle;
+            prevCandle = await _dbContext.AssetCandles
+                .AsNoTracking()
+                .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h" && c.DateTime.Date < lastDay)
+                .OrderByDescending(c => c.DateTime)
+                .FirstOrDefaultAsync(ct);
           }
-          if (finalCandle == null) continue;
-
-          var prevCandle = await _dbContext.AssetCandles
-              .AsNoTracking()
-              .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h" && c.DateTime.Date < lastDay)
-              .OrderByDescending(c => c.DateTime)
-              .FirstOrDefaultAsync(ct);
 
 
           double prevClose;
