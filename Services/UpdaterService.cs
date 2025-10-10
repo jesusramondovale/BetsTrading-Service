@@ -1047,12 +1047,11 @@ namespace BetsTrading_Service.Services
       _customLogger.Log.Information("[UpdaterHostedService] :: Starting the Updater hosted service.");
 
       #if RELEASE
-      //TO-DO : config times and more actions
-      //_assetsTimer = new Timer(ExecuteUpdateAssets!, null, TimeSpan.FromSeconds(0), TimeSpan.FromHours(1));
-      //_trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromMinutes(3), TimeSpan.FromHours(12));
-
-      //_betsTimer = new Timer(_ =>  { _ = Task.Run(async () =>  { await ExecuteCheckBets(); }); }, null, TimeSpan.FromMinutes(5), TimeSpan.FromHours(1));
-      //_createNewBetsTimer = new Timer(_ => { _ = Task.Run(async () => { await ExecuteCleanAndCreateBets(); }); }, null, TimeSpan.FromMinutes(0), TimeSpan.FromHours(3));
+        //TO-DO : config times and more actions
+        _assetsTimer = new Timer(ExecuteUpdateAssets!, null, TimeSpan.FromSeconds(0), TimeSpan.FromHours(1));
+        _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromMinutes(3), TimeSpan.FromHours(12));
+        _betsTimer = new Timer(_ => { _ = Task.Run(async () => { await ExecuteCheckBets(); }); }, null, TimeSpan.FromMinutes(5), TimeSpan.FromHours(1));
+        _createNewBetsTimer = new Timer(_ => { _ = Task.Run(async () => { await ExecuteCleanAndCreateBets(); }); }, null, TimeSpan.FromMinutes(4), TimeSpan.FromHours(3));
       #endif
 
       return Task.CompletedTask;
