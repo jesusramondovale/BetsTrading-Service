@@ -184,11 +184,15 @@ namespace BetsTrading_Service.Controllers
           newUser.is_active = true;
           newUser.token_expiration = DateTime.UtcNow.AddDays(SESSION_EXP_DAYS);
           var jwt = GenerateLocalJwt(guid, signUpRequest.Email!, signUpRequest.FullName);
-
           _dbContext.Users.Add(newUser);
-          
+
           verification.Verified = true;
           _dbContext.VerificationCodes.Update(verification);
+
+
+          var newBTCFavorite = new Favorite(id: Guid.NewGuid().ToString(), user_id: guid, ticker: "BTC");
+          var newGOOGFavorite = new Favorite(id: Guid.NewGuid().ToString(), user_id: guid, ticker: "GOOG.NASDAQ");
+          _dbContext.Favorites.AddRange(newBTCFavorite, newGOOGFavorite);
 
           await _dbContext.SaveChangesAsync();
           await transaction.CommitAsync();
