@@ -1,18 +1,11 @@
-﻿using System;
-using System.Collections;
-using SerpApi;
-using Newtonsoft.Json.Linq;
+﻿using Newtonsoft.Json.Linq;
 using BetsTrading_Service.Database;
 using BetsTrading_Service.Interfaces;
 using BetsTrading_Service.Models;
-using BetsTrading_Service.Services;
 using Microsoft.EntityFrameworkCore;
-using System.Collections.Generic;
 using BetsTrading_Service.Locale;
-using System.Net.Http;
 using System.Globalization;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using EFCore.BulkExtensions;
 using static BetsTrading_Service.Models.TwelveDataParser;
 
@@ -59,27 +52,29 @@ namespace BetsTrading_Service.Services
     }
 
     //UpdateAssets with TwelveData key list
-    public async Task UpdateAssetsAsync(IServiceScopeFactory scopeFactory, CancellationToken ct = default)
+    public async Task UpdateAssetsAsync(IServiceScopeFactory scopeFactory, bool marketHours, CancellationToken ct = default)
     {
-      _logger.Log.Information("[Updater] :: UpdateAssetsAsync() called!");
+      _logger.Log.Information("[UpdaterService] :: UpdateAssetsAsync() called! {0}", (marketHours ? "Mode market hours" : "Continuous mode"));
 
       if (TWELVE_DATA_KEYS is null || TWELVE_DATA_KEYS.Length == 0 || TWELVE_DATA_KEYS.All(string.IsNullOrWhiteSpace))
       {
-        _logger.Log.Error("[Updater] :: TWELVE DATA KEYS not set in environment variables!");
+        _logger.Log.Error("[UpdaterService] :: TWELVE DATA KEYS not set in environment variables!");
         return;
       }
 
       using var scope = scopeFactory.CreateScope();
       var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-      var selectedAssets = await db.FinancialAssets
-          .AsNoTracking()
-          .Where(fa => fa.group == "Shares" || fa.group == "ETF" || fa.group == "Cryptos" || fa.group == "Forex")
-          .ToListAsync(ct);
+      var query = !marketHours ?
+        _dbContext.FinancialAssets.AsNoTracking().Where(a => a.group.ToLower() == "cryptos" || a.group.ToLower() == "forex")
+    :   _dbContext.FinancialAssets.AsNoTracking().Where(a => a.group.ToLower() != "cryptos" && a.group.ToLower() != "forex" && a.group.ToLower() != "commodities") ;
+
+
+      var selectedAssets = await query.ToListAsync(ct);
 
       if (selectedAssets.Count == 0)
       {
-        _logger.Log.Error("[Updater] :: ZERO assets found! CHECK DATABASE");
+        _logger.Log.Error("[UpdaterService] :: ZERO assets found! CHECK DATABASE");
         return;
       }
 
@@ -98,9 +93,9 @@ namespace BetsTrading_Service.Services
       {
         keyIndex = (keyIndex + 1) % TWELVE_DATA_KEYS.Length;
         callsWithThisKey = 0;
-        _logger.Log.Information("[Updater] :: Switching to next TwelveDataKey (index {Index})", keyIndex);
+        _logger.Log.Information("[UpdaterService] :: Switching to next TwelveDataKey (index {Index})", keyIndex);
         if (string.IsNullOrWhiteSpace(CurrentKey()))
-          _logger.Log.Error("[Updater] :: Current TwelveDataKey is EMPTY, check environment variables!");
+          _logger.Log.Error("[UpdaterService] :: Current TwelveDataKey is EMPTY, check environment variables!");
       }
 
       foreach (var asset in selectedAssets)
@@ -113,7 +108,7 @@ namespace BetsTrading_Service.Services
           NextKey();
           if (wrapped)
           {
-            _logger.Log.Information("[Updater] :: Sleeping 35 seconds to bypass rate limit");
+            _logger.Log.Information("[UpdaterService] :: Sleeping 35 seconds to bypass rate limit");
             await Task.Delay(TimeSpan.FromSeconds(35), ct);
           }
         }
@@ -121,7 +116,7 @@ namespace BetsTrading_Service.Services
         var symbol = (asset.ticker ?? string.Empty).Split('.')[0].Trim();
         if (string.IsNullOrWhiteSpace(symbol))
         {
-          _logger.Log.Warning("[Updater] :: Asset {Id} has empty ticker, skipping", asset.id);
+          _logger.Log.Warning("[UpdaterService] :: Asset {Id} has empty ticker, skipping", asset.id);
           continue;
         }
 
@@ -137,14 +132,14 @@ namespace BetsTrading_Service.Services
         }
         catch (Exception ex)
         {
-          _logger.Log.Error(ex, "[Updater] :: HTTP error fetching {Symbol}", symbol);
+          _logger.Log.Error(ex, "[UpdaterService] :: HTTP error fetching {Symbol}", symbol);
           callsWithThisKey++;
           continue;
         }
 
         if (!resp.IsSuccessStatusCode)
         {
-          _logger.Log.Error("[Updater] :: TwelveData: Failed for {Symbol}. HTTP {Code}", symbol, resp.StatusCode);
+          _logger.Log.Error("[UpdaterService] :: TwelveData: Failed for {Symbol}. HTTP {Code}", symbol, resp.StatusCode);
           continue;
         }
 
@@ -155,7 +150,7 @@ namespace BetsTrading_Service.Services
         }
         catch (Exception ex)
         {
-          _logger.Log.Error(ex, "[Updater] :: Error reading content for {Symbol}", symbol);
+          _logger.Log.Error(ex, "[UpdaterService] :: Error reading content for {Symbol}", symbol);
           continue;
         }
 
@@ -169,19 +164,19 @@ namespace BetsTrading_Service.Services
         }
         catch (Exception ex)
         {
-          _logger.Log.Error(ex, "[Updater] :: JSON parse error for {Symbol}", symbol);
+          _logger.Log.Error(ex, "[UpdaterService] :: JSON parse error for {Symbol}", symbol);
           continue;
         }
 
         if (parsed == null || parsed.Status?.Equals("error", StringComparison.OrdinalIgnoreCase) == true)
         {
-          _logger.Log.Warning("[Updater] :: API status not ok for {Symbol}. Raw: {Raw}", symbol, json);
+          _logger.Log.Warning("[UpdaterService] :: API status not ok for {Symbol}. Raw: {Raw}", symbol, json);
           continue;
         }
 
         if (parsed.Values == null || parsed.Values.Count == 0)
         {
-          _logger.Log.Warning("[Updater] :: No market data for {Symbol}", symbol);
+          _logger.Log.Warning("[UpdaterService] :: No market data for {Symbol}", symbol);
           continue;
         }
 
@@ -209,13 +204,13 @@ namespace BetsTrading_Service.Services
           }
           catch (Exception ex)
           {
-            _logger.Log.Error(ex, "[Updater] :: Parse error for {Symbol} at {Date}", symbol, v.Datetime);
+            _logger.Log.Error(ex, "[UpdaterService] :: Parse error for {Symbol} at {Date}", symbol, v.Datetime);
           }
         }
 
         if (candles.Count == 0)
         {
-          _logger.Log.Warning("[Updater] :: No valid candles for {Symbol}", symbol);
+          _logger.Log.Warning("[UpdaterService] :: No valid candles for {Symbol}", symbol);
           continue;
         }
 
@@ -239,15 +234,15 @@ namespace BetsTrading_Service.Services
 
           await transaction.CommitAsync(ct);
 
-          _logger.Log.Debug("[Updater] :: Saved {Count} candles for {Symbol}", candles.Count, symbol);
+          _logger.Log.Debug("[UpdaterService] :: Saved {Count} candles for {Symbol}", candles.Count, symbol);
         }
         catch (Exception ex)
         {
-          _logger.Log.Error(ex, "[Updater] :: Error saving candles for {Symbol}", symbol);
+          _logger.Log.Error(ex, "[UpdaterService] :: Error saving candles for {Symbol}", symbol);
         }
       }
 
-      _logger.Log.Information("[Updater] :: UpdateAssetsAsync() completed successfully!");
+      _logger.Log.Information("[UpdaterService] :: UpdateAssetsAsync() completed successfully! ({0})", (marketHours ? "Mode market hours" : "Continuous mode"));
     }
 
 
@@ -258,14 +253,19 @@ namespace BetsTrading_Service.Services
     /*TODO
      *  Separate bets creation on different timers 
      */
-    public async Task CreateBets()
-      {
-        _logger.Log.Information("[Updater] :: CreateBets() called!");
-        using (var transaction = await _dbContext.Database.BeginTransactionAsync())
+    public async Task CreateBets(bool marketHoursMode)
+    {
+      _logger.Log.Information("[UpdaterService] :: CreateBets() called with mode market-Hours = {0}", marketHoursMode.ToString());
+      using (var transaction = await _dbContext.Database.BeginTransactionAsync())
       {
         try
         {
-          var financialAssets = await _dbContext.FinancialAssets.ToListAsync();
+          var query = !marketHoursMode ?
+                 _dbContext.FinancialAssets.Where(a => a.group.ToLower() == "cryptos" || a.group.ToLower() == "forex")
+               : _dbContext.FinancialAssets.Where(a => a.group.ToLower() != "cryptos" && a.group.ToLower() != "forex");
+
+          var financialAssets = await query.ToListAsync();
+
 
           foreach (var asset in financialAssets)
           {
@@ -410,16 +410,16 @@ namespace BetsTrading_Service.Services
 
           await _dbContext.SaveChangesAsync();
           await transaction.CommitAsync();
-          _logger.Log.Information("[Updater] :: CreateBets() completed successfully with exact margins.");
+          _logger.Log.Information("[UpdaterService] :: CreateBets() completed successfully with exact margins. ({0})" , (marketHoursMode ? "Mode market hours" : "Continuous mode"));
         }
         catch (Exception ex)
         {
-          _logger.Log.Error(ex, "[Updater] :: CreateBets() error");
+          _logger.Log.Error(ex, "[UpdaterService] :: CreateBets() error");
           await transaction.RollbackAsync();
         }
       }
 
-      }
+      } 
 
     double RandomizeOdds(double baseOdds)
     {
@@ -467,14 +467,27 @@ namespace BetsTrading_Service.Services
         return Math.Max(1.01, baseOdds + relativeRisk * 0.3);
       }
 
-    public async Task RemoveOldBets()
+    public async Task RemoveOldBets(bool marketHours)
     {
-      _logger.Log.Information("[Updater] :: RemoveOldBets() called!");
+      _logger.Log.Information("[UpdaterService] :: RemoveOldBets() called! ({0})", (marketHours ? "Mode market hours" : "Continuous mode"));
 
       await using var transaction = await _dbContext.Database.BeginTransactionAsync();
       try
       {
-        var oldBetZones = await _dbContext.BetZones.ToListAsync();
+        var query = !marketHours ? 
+          _dbContext.BetZones
+          .Where(bz => _dbContext.FinancialAssets
+              .Where(a => a.group.ToLower() == "cryptos" || a.group.ToLower() == "forex")
+              .Select(a => a.ticker)
+              .Contains(bz.ticker))
+      :   _dbContext.BetZones
+          .Where(bz => _dbContext.FinancialAssets
+              .Where(a => a.group.ToLower() != "cryptos" && a.group.ToLower() != "forex" && a.group.ToLower() != "commodities")
+              .Select(a => a.ticker)
+              .Contains(bz.ticker));
+
+
+        var oldBetZones = await query.ToListAsync();
 
         foreach (var currentBz in oldBetZones)
         {
@@ -492,11 +505,11 @@ namespace BetsTrading_Service.Services
         await _dbContext.SaveChangesAsync();
         await transaction.CommitAsync();
 
-        _logger.Log.Debug("[Updater] :: RemoveOldBets() completed successfully!");
+        _logger.Log.Debug("[UpdaterService] :: RemoveOldBets() completed successfully!({0})", (marketHours ? "Mode market hours" : "Continuous mode"));
       }
       catch (Exception ex)
       {
-        _logger.Log.Error(ex, "[Updater] :: RemoveOldBets() error");
+        _logger.Log.Error(ex, "[UpdaterService] :: RemoveOldBets() error");
         await transaction.RollbackAsync();
       }
     }
@@ -507,7 +520,7 @@ namespace BetsTrading_Service.Services
     #region Update Bets
     public Task SetFinishedBets()
     {
-      _logger.Log.Information("[Updater] :: SetFinishedBets() called!");
+      _logger.Log.Information("[UpdaterService] :: SetFinishedBets() called!");
 
       var betsZonesToCheck = _dbContext.BetZones
           .Where(bz => DateTime.UtcNow >= bz.end_date.AddDays(1))
@@ -527,13 +540,13 @@ namespace BetsTrading_Service.Services
       }
 
       _dbContext.SaveChanges();
-      _logger.Log.Debug("[Updater] :: SetFinishedBets() ended succesfully!");
+      _logger.Log.Debug("[UpdaterService] :: SetFinishedBets() ended succesfully!");
       return Task.CompletedTask;
     }
 
     public Task SetInactiveBets()
     {
-      _logger.Log.Information("[Updater] :: SetInactiveBets() called!");
+      _logger.Log.Information("[UpdaterService] :: SetInactiveBets() called!");
 
       var betZonesToCheck = _dbContext.BetZones
           .Where(bz => bz.start_date <= DateTime.UtcNow)
@@ -546,13 +559,13 @@ namespace BetsTrading_Service.Services
       }
 
       _dbContext.SaveChanges();
-      _logger.Log.Debug("[Updater] :: SetInactiveBets() ended succesfully!");
+      _logger.Log.Debug("[UpdaterService] :: SetInactiveBets() ended succesfully!");
       return Task.CompletedTask;
     }
 
     public async Task CheckBets()
     {
-      _logger.Log.Information("[Updater] :: CheckBets() called!");
+      _logger.Log.Information("[UpdaterService] :: CheckBets() called!");
 
       var now = DateTime.UtcNow;
 
@@ -563,7 +576,7 @@ namespace BetsTrading_Service.Services
 
       if (betZonesToCheck.Count == 0)
       {
-        _logger.Log.Warning("[Updater] :: CheckBets() :: No bets to update!");
+        _logger.Log.Warning("[UpdaterService] :: CheckBets() :: No bets to update!");
         return;
       }
 
@@ -578,7 +591,7 @@ namespace BetsTrading_Service.Services
 
         if (currentBetZone == null)
         {
-          _logger.Log.Error("[Updater] :: CheckBets() :: Bet zone null on bet [{0}]", currentBet.id);
+          _logger.Log.Error("[UpdaterService] :: CheckBets() :: Bet zone null on bet [{0}]", currentBet.id);
           continue;
         }
 
@@ -587,7 +600,7 @@ namespace BetsTrading_Service.Services
 
         if (asset == null)
         {
-          _logger.Log.Error("[Updater] :: CheckBets() :: Asset null on bet [{0}]", currentBet.ticker);
+          _logger.Log.Error("[UpdaterService] :: CheckBets() :: Asset null on bet [{0}]", currentBet.ticker);
           continue;
         }
 
@@ -600,7 +613,7 @@ namespace BetsTrading_Service.Services
 
         if (candles.Count == 0)
         {
-          _logger.Log.Warning("[Updater] :: CheckBets() :: No candles for [{0}] zone [{1}]", asset.ticker, currentBetZone.id);
+          _logger.Log.Warning("[UpdaterService] :: CheckBets() :: No candles for [{0}] zone [{1}]", asset.ticker, currentBetZone.id);
           continue;
         }
 
@@ -618,12 +631,12 @@ namespace BetsTrading_Service.Services
       }
 
       await _dbContext.SaveChangesAsync();
-      _logger.Log.Debug("[Updater] :: CheckBets() ended successfully!");
+      _logger.Log.Debug("[UpdaterService] :: CheckBets() ended successfully!");
     }
 
     public Task PayBets()
     {
-      _logger.Log.Information("[Updater] :: PayBets() called!");
+      _logger.Log.Information("[UpdaterService] :: PayBets() called!");
 
       var betsToPay = _dbContext.Bet
           .Where(b => b.finished && !b.paid && b.target_won)
@@ -650,12 +663,12 @@ namespace BetsTrading_Service.Services
           _ = _firebaseNotificationService.SendNotificationToUser(
               winnerUser.fcm, "Betrader", msg, new() { { "type", "betting" } });
 
-          _logger.Log.Debug("[Updater] :: PayBets() paid to user {0}", winnerUser.id);
+          _logger.Log.Debug("[UpdaterService] :: PayBets() paid to user {0}", winnerUser.id);
         }
       }
 
       _dbContext.SaveChanges();
-      _logger.Log.Debug("[Updater] :: PayBets() ended succesfully!");
+      _logger.Log.Debug("[UpdaterService] :: PayBets() ended succesfully!");
       return Task.CompletedTask;
     }
 
@@ -665,7 +678,7 @@ namespace BetsTrading_Service.Services
     //Called from OddsAdjusterService.cs:41
     public void RefreshTargetOdds()
       {
-        _logger.Log.Debug("[Updater] :: RefreshTargetOdds() called!");
+        _logger.Log.Debug("[UpdaterService] :: RefreshTargetOdds() called!");
 
         using (var transaction = _dbContext.Database.BeginTransaction())
         {
@@ -705,18 +718,18 @@ namespace BetsTrading_Service.Services
                 z.Zone.target_odds = Math.Max(Math.Round(odds, 2),1.1);
                 _dbContext.BetZones.Update(z.Zone);
 
-                _logger.Log.Debug("[Updater] :: RefreshTargetOdds() :: ZONE {0} updated: volume={1}, odd={2}",
+                _logger.Log.Debug("[UpdaterService] :: RefreshTargetOdds() :: ZONE {0} updated: volume={1}, odd={2}",
                   z.Zone.id, z.Volume, odds);
               }
             }
 
             _dbContext.SaveChanges();
             transaction.Commit();
-            _logger.Log.Debug("[Updater] :: RefreshTargetOdds() completed successfully.");
+            _logger.Log.Debug("[UpdaterService] :: RefreshTargetOdds() completed successfully.");
           }
           catch (Exception ex)
           {
-            _logger.Log.Error("[Updater] :: AdjustTargetOdds() error: ", ex.ToString());
+            _logger.Log.Error("[UpdaterService] :: AdjustTargetOdds() error: ", ex.ToString());
             transaction.Rollback();
           }
         }
@@ -812,11 +825,11 @@ namespace BetsTrading_Service.Services
             );
           }
 
-          _logger.Log.Information("[Updater] :: UpdateTrends() ended successfully!");
+          _logger.Log.Information("[UpdaterService] :: UpdateTrends() ended successfully!");
         }
         catch (Exception ex)
         {
-          _logger.Log.Error($"[Updater] :: UpdateTrends() error: {ex.Message}\n{ex.StackTrace}");
+          _logger.Log.Error($"[UpdaterService] :: UpdateTrends() error: {ex.Message}\n{ex.StackTrace}");
           transaction.Rollback();
         }
       }
@@ -827,7 +840,7 @@ namespace BetsTrading_Service.Services
     #region Check Price-Bets
     public async Task CheckAndPayPriceBets()
       {
-        _logger.Log.Information("[Updater] :: CheckAndPayPriceBets() called!");
+        _logger.Log.Information("[UpdaterService] :: CheckAndPayPriceBets() called!");
         using (var transaction = await _dbContext.Database.BeginTransactionAsync())
       {
         try
@@ -873,29 +886,29 @@ namespace BetsTrading_Service.Services
                     new() { { "type", "price_bet" } }
                 );
 
-                _logger.Log.Debug("[Updater] :: CheckAndPayPriceBets :: Paid exact price bet to user {0}", user.id);
+                _logger.Log.Debug("[UpdaterService] :: CheckAndPayPriceBets :: Paid exact price bet to user {0}", user.id);
               }
               else // LOST BET
               {
                 priceBet.paid = true;
                 _dbContext.PriceBets.Update(priceBet);
 
-                _logger.Log.Debug("[Updater] :: CheckAndPayPriceBets :: User {0} lost exact price bet on {1}", user.id, priceBet.ticker);
+                _logger.Log.Debug("[UpdaterService] :: CheckAndPayPriceBets :: User {0} lost exact price bet on {1}", user.id, priceBet.ticker);
               }
             }
             else
             {
-              _logger.Log.Error("[Updater] :: CheckAndPayPriceBets :: Unexistent user or asset for PriceBet ID {0}", priceBet.id);
+              _logger.Log.Error("[UpdaterService] :: CheckAndPayPriceBets :: Unexistent user or asset for PriceBet ID {0}", priceBet.id);
             }
           }
 
           await _dbContext.SaveChangesAsync();
           await transaction.CommitAsync();
-          _logger.Log.Information("[Updater] :: CheckAndPayPriceBets ended successfully!");
+          _logger.Log.Information("[UpdaterService] :: CheckAndPayPriceBets ended successfully!");
         }
         catch (Exception ex)
         {
-          _logger.Log.Error(ex, "[Updater] :: CheckAndPayPriceBets error. Rolling back transaction");
+          _logger.Log.Error(ex, "[UpdaterService] :: CheckAndPayPriceBets error. Rolling back transaction");
           await transaction.RollbackAsync();
         }
       }
@@ -1009,13 +1022,13 @@ namespace BetsTrading_Service.Services
         }
         else
         {
-          _logger.Log.Warning($"[Updater] :: Failed to download image from {imageUrl}");
+          _logger.Log.Warning($"[UpdaterService] :: Failed to download image from {imageUrl}");
           return string.Empty;
         }
       }
       catch (Exception ex)
       {
-        _logger.Log.Error($"[Updater] :: Error converting image to Base64: {ex.Message}");
+        _logger.Log.Error($"[UpdaterService] :: Error converting image to Base64: {ex.Message}");
         return string.Empty;
       }
     }
@@ -1029,9 +1042,11 @@ namespace BetsTrading_Service.Services
     private readonly IServiceProvider _serviceProvider;
     private readonly ICustomLogger _customLogger;
     private Timer? _trendsTimer;
-    private Timer? _assetsTimer;
+    private Timer? _continuousAssetsTimer;
+    private Timer? _marketHourAssetsTimer;
     private Timer? _betsTimer;
-    private Timer? _createNewBetsTimer;
+    private Timer? _createNewContinuousBetsTimer;
+    private Timer? _createNewMarketHourBetsTimer;
     private int _assetsBusy = 0;
     
 
@@ -1044,19 +1059,54 @@ namespace BetsTrading_Service.Services
     }
     public Task StartAsync(CancellationToken cancellationToken)
     {
-      _customLogger.Log.Information("[UpdaterHostedService] :: Starting the Updater hosted service.");
+      _customLogger.Log.Information("[UpdaterHostedService] :: Service started");
+      _continuousAssetsTimer = new Timer(_ =>
+      {
+        _ = Task.Run(() => ExecuteUpdateAssets(null, false));
+      }, null, TimeSpan.Zero, TimeSpan.FromHours(1));
+      _marketHourAssetsTimer = new Timer(async _ =>
+      {
+        var now = DateTime.UtcNow;
+        var newYorkTime = TimeZoneInfo.ConvertTimeFromUtc(now, TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time"));
 
-      #if RELEASE
-        //TO-DO : config times and more actions
-        _assetsTimer = new Timer(ExecuteUpdateAssets!, null, TimeSpan.FromSeconds(0), TimeSpan.FromHours(1));
-        _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromMinutes(3), TimeSpan.FromHours(12));
-        _betsTimer = new Timer(_ => { _ = Task.Run(async () => { await ExecuteCheckBets(); }); }, null, TimeSpan.FromMinutes(5), TimeSpan.FromHours(1));
-        _createNewBetsTimer = new Timer(_ => { _ = Task.Run(async () => { await ExecuteCleanAndCreateBets(); }); }, null, TimeSpan.FromMinutes(4), TimeSpan.FromHours(3));
-      #endif
+        if (newYorkTime.DayOfWeek is >= DayOfWeek.Monday and <= DayOfWeek.Friday)
+        {
+          var open = new TimeSpan(9, 30, 0);
+          var close = new TimeSpan(16, 0, 0);
 
+          if (newYorkTime.TimeOfDay >= open && newYorkTime.TimeOfDay <= close)
+          {
+            await ExecuteUpdateAssets(null , true);
+          }
+        }
+
+      }, null, TimeSpan.FromMinutes(1), TimeSpan.FromHours(1));
+      _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromMinutes(3), TimeSpan.FromHours(12));
+      _betsTimer = new Timer(_ => { _ = Task.Run(async () => { await ExecuteCheckBets(); }); }, null, TimeSpan.FromMinutes(4), TimeSpan.FromHours(1));
+      _createNewContinuousBetsTimer = new Timer(_ => { _ = Task.Run(async () => { await ExecuteCleanAndCreateBets(false); }); }, null, TimeSpan.FromMinutes(5), TimeSpan.FromHours(1));
+      _createNewMarketHourBetsTimer = new Timer(async _ =>
+      {
+        var now = DateTime.UtcNow; 
+        var newYorkTime = TimeZoneInfo.ConvertTimeFromUtc(now, TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time"));
+
+        if (newYorkTime.DayOfWeek is >= DayOfWeek.Monday and <= DayOfWeek.Friday)
+        {
+          var open = new TimeSpan(9, 30, 0);
+          var close = new TimeSpan(16, 0, 0);
+
+          if (newYorkTime.TimeOfDay >= open && newYorkTime.TimeOfDay <= close)
+          {
+            await ExecuteCleanAndCreateBets(true);
+          }
+        }
+
+      }, null, TimeSpan.FromMinutes(6), TimeSpan.FromHours(1));
+      
       return Task.CompletedTask;
+    
     }
-    private async Task ExecuteCleanAndCreateBets()
+
+    private async Task ExecuteCleanAndCreateBets(bool marketHoursMode)
     {
       using (var scope = _serviceProvider.CreateScope())
       {
@@ -1064,10 +1114,11 @@ namespace BetsTrading_Service.Services
         var updaterService = scopedServices.GetRequiredService<UpdaterService>();
 
         _customLogger.Log.Information("[UpdaterHostedService] :: Executing RemoveOldBets service.");
-        await updaterService.RemoveOldBets();
+        await updaterService.RemoveOldBets(marketHoursMode);
 
         _customLogger.Log.Information("[UpdaterHostedService] :: Executing CreateBets service.");
-        await updaterService.CreateBets();
+        await updaterService.CreateBets(marketHoursMode);
+
       }
     }
     private async Task ExecuteCheckBets()
@@ -1092,11 +1143,11 @@ namespace BetsTrading_Service.Services
         _customLogger.Log.Error(ex, "[UpdaterHostedService] :: Error during update batch");
       }
     }
-    private async void ExecuteUpdateAssets(object? state)
+    private async Task ExecuteUpdateAssets(object? state, bool marketHours)
     {
       if (Interlocked.Exchange(ref _assetsBusy, 1) == 1)
       {
-        _customLogger.Log.Warning("[UpdaterHostedService] :: UpdateAssets ya en curso. Skip.");
+        _customLogger.Log.Warning("[UpdaterHostedService] :: UpdateAssets already executing. Skipping.");
         return;
       }
 
@@ -1104,8 +1155,8 @@ namespace BetsTrading_Service.Services
       {
         using var scope = _serviceProvider.CreateScope();
         var updater = scope.ServiceProvider.GetRequiredService<UpdaterService>();
-        _customLogger.Log.Information("[UpdaterHostedService] :: Executing UpdateAssets service.");
-        await updater.UpdateAssetsAsync(_serviceProvider.GetRequiredService<IServiceScopeFactory>());
+        _customLogger.Log.Information("[UpdaterHostedService] :: Executing UpdateAssets service : {0}", (marketHours ? "Mode market hours" : "Continuous mode"));
+        await updater.UpdateAssetsAsync(_serviceProvider.GetRequiredService<IServiceScopeFactory>(), marketHours);
       }
       catch (Exception ex)
       {
@@ -1134,9 +1185,13 @@ namespace BetsTrading_Service.Services
     }
     public void Dispose()
     {
-      _trendsTimer!.Dispose();
-      _assetsTimer!.Dispose();
-      _betsTimer!.Dispose();
+      _trendsTimer?.Dispose();
+      _continuousAssetsTimer?.Dispose();
+      _marketHourAssetsTimer?.Dispose();
+      _betsTimer?.Dispose();
+      _createNewContinuousBetsTimer?.Dispose();
+      _createNewMarketHourBetsTimer?.Dispose();
+    
     }
   }
   #endregion

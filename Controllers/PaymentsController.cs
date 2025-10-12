@@ -4,25 +4,17 @@
   using BetsTrading_Service.Interfaces;
   using BetsTrading_Service.Locale;
   using BetsTrading_Service.Models;
-  using BetsTrading_Service.Requests;
   using BetsTrading_Service.Services;
-  using Google.Apis.Auth.OAuth2.Requests;
   using Microsoft.AspNetCore.Authorization;
-  using Microsoft.AspNetCore.Identity.Data;
   using Microsoft.AspNetCore.Mvc;
   using Microsoft.EntityFrameworkCore;
   using Newtonsoft.Json;
   using Stripe;
-  using Stripe.Forwarding;
-  using Stripe.V2;
-  using System.Drawing;
   using System.IdentityModel.Tokens.Jwt;
   using System.IO;
-  using System.Runtime.CompilerServices;
   using System.Security.Claims;
   using System.Security.Cryptography;
   using System.Text;
-  using System.Text.Json;
   using System.Text.Json.Serialization;
 
 

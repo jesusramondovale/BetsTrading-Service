@@ -1,5 +1,4 @@
 ﻿using System.ComponentModel.DataAnnotations;
-using static System.Net.WebRequestMethods;
 
 namespace BetsTrading_Service.Requests
 {

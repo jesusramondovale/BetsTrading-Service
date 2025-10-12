@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-
-namespace BetsTrading_Service.Locale
+﻿namespace BetsTrading_Service.Locale
 {
   
 

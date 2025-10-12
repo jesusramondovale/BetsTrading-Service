@@ -1,8 +1,6 @@
-﻿using BetsTrading_Service.Locale;
-using FirebaseAdmin;
+﻿using FirebaseAdmin;
 using FirebaseAdmin.Messaging;
 using Google.Apis.Auth.OAuth2;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace BetsTrading_Service.Services
 {

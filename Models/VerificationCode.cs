@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace BetsTrading_Service.Models
+﻿namespace BetsTrading_Service.Models
 {
   public class VerificationCode
   {

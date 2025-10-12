@@ -1,8 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore.Storage.ValueConversion.Internal;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
-using System.ComponentModel.DataAnnotations.Schema;
-
-namespace BetsTrading_Service.Models
+﻿namespace BetsTrading_Service.Models
 {
   public class Bet
   {

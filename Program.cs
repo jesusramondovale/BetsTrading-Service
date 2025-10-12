@@ -5,8 +5,6 @@ using Microsoft.EntityFrameworkCore;
 using Serilog;
 using System.Net;
 using BetsTrading_Service.Services;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using AspNetCoreRateLimit;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -30,13 +28,11 @@ public class Program
 
     try
     {
-      customLogger.Log.Information("[PROGRAM] :: ******  ****** ****** ****** ****** ****** ****** STARTING BETSTRADING BACKEND SERVICE ****** ****** ****** ****** ****** ****** ******");
+      customLogger.Log.Information("[PROGRAM] :: ****** ******  ****** STARTING BETSTRADING BACKEND SERVICE ****** ****** ******");
 
       var builder = WebApplication.CreateBuilder(args);
       builder.Services.AddSingleton(customLogger);
-
       customLogger.Log.Information("[PROGRAM] :: Serilog service started. Logging on {pth} with interval: {itr}", logPath, loggingInterval.ToString());
-
       var googleClientId = builder.Configuration["Google:ClientId"]!;
       var localIssuer = builder.Configuration["Jwt:Issuer"] ?? "https://api.betstrading.online";
       var localAudience = builder.Configuration["Jwt:Audience"] ?? "bets-trading-api";

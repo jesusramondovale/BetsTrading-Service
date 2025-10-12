@@ -1,10 +1,8 @@
 ﻿using BetsTrading_Service.Database;
 using BetsTrading_Service.Interfaces;
-using BetsTrading_Service.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 

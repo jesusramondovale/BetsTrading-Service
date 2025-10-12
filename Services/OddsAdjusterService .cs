@@ -19,7 +19,7 @@ public class OddsAdjusterService : BackgroundService
 
   protected override async Task ExecuteAsync(CancellationToken stoppingToken)
   {
-    _logger.Log.Information("OddsAdjusterService started.");
+    _logger.Log.Information("[OddsAdjusterService] :: Service started");
 
     while (!stoppingToken.IsCancellationRequested)
     {

@@ -2,7 +2,6 @@
 using BetsTrading_Service.Interfaces;
 using BetsTrading_Service.Models;
 using BetsTrading_Service.Requests;
-using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -382,7 +381,7 @@ namespace BetsTrading_Service.Controllers
         }
         else
         {
-          _logger.Log.Information("[INFO] :: GetBets :: Bets not found for ticker: {msg}", ticker.id);
+          _logger.Log.Debug("[INFO] :: GetBets :: Bets not found for ticker: {msg}", ticker.id);
           return NotFound(new { Message = "No bets found for this ticker" });
         }
       }
