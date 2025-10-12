@@ -125,30 +125,34 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
-    private async Task<IActionResult> RegisterInternal(SignUpRequest signUpRequest)
+    private async Task<IActionResult> RegisterInternal(SignUpRequest signUpRequest, bool googleQuickMode)
     {
       var transaction = await _dbContext.Database.BeginTransactionAsync();
       {
         try
         {
           
-          if (string.IsNullOrWhiteSpace(signUpRequest.Email) || string.IsNullOrWhiteSpace(signUpRequest.EmailCode))
+          if (!googleQuickMode && (string.IsNullOrWhiteSpace(signUpRequest.Email) || string.IsNullOrWhiteSpace(signUpRequest.EmailCode)))
           {
             return BadRequest(new { success = false, message = "Email and verification code are required." });
           }
 
-          var verification = await _dbContext.VerificationCodes
+          VerificationCode? verification = null;
+
+          if (!googleQuickMode)
+          {
+            verification = await _dbContext.VerificationCodes
               .FirstOrDefaultAsync(v =>
                   v.Email == signUpRequest.Email &&
                   v.Code == signUpRequest.EmailCode &&
                   v.Verified == false &&
                   v.ExpiresAt > DateTime.UtcNow);
 
-          if (verification == null)
-          {
-            return BadRequest(new { success = false, message = "Invalid or expired verification code." });
+            if (verification == null)
+            {
+              return BadRequest(new { success = false, message = "Invalid or expired verification code." });
+            }
           }
-
           
           var existingUser = await _dbContext.Users
               .FirstOrDefaultAsync(u => u.username == signUpRequest.Username || u.email == signUpRequest.Email);
@@ -186,13 +190,17 @@ namespace BetsTrading_Service.Controllers
           var jwt = GenerateLocalJwt(guid, signUpRequest.Email!, signUpRequest.FullName);
           _dbContext.Users.Add(newUser);
 
-          verification.Verified = true;
-          _dbContext.VerificationCodes.Update(verification);
-
+          if (!googleQuickMode)
+          {
+            verification!.Verified = true;
+            _dbContext.VerificationCodes.Update(verification);
+          }
+          await _dbContext.SaveChangesAsync();
 
           var newBTCFavorite = new Favorite(id: Guid.NewGuid().ToString(), user_id: guid, ticker: "BTC");
           var newGOOGFavorite = new Favorite(id: Guid.NewGuid().ToString(), user_id: guid, ticker: "GOOG.NASDAQ");
-          _dbContext.Favorites.AddRange(newBTCFavorite, newGOOGFavorite);
+          var newNVDAFavorite = new Favorite(id: Guid.NewGuid().ToString(), user_id: guid, ticker: "NVDA.NASDAQ");
+          _dbContext.Favorites.AddRange(newBTCFavorite, newGOOGFavorite, newNVDAFavorite);
 
           await _dbContext.SaveChangesAsync();
           await transaction.CommitAsync();
@@ -220,7 +228,7 @@ namespace BetsTrading_Service.Controllers
     [HttpPost("SignIn")]
     public Task<IActionResult> SignIn([FromBody] SignUpRequest req)
     {
-      return RegisterInternal(req);
+      return RegisterInternal(req, false);
     }
 
     [AllowAnonymous]
@@ -246,7 +254,7 @@ namespace BetsTrading_Service.Controllers
       signUpRequest.ProfilePic = isGoogledRequest.photoUrl;
       signUpRequest.Birthday = isGoogledRequest.birthday;
       signUpRequest.Country = isGoogledRequest.country;
-      var signInResult = await RegisterInternal(signUpRequest);
+      var signInResult = await RegisterInternal(signUpRequest, true);
 
 
       if (signInResult is OkObjectResult)
