@@ -18,23 +18,14 @@ namespace BetsTrading_Service.Controllers
 {
   [ApiController]
   [Route("api/[controller]")]
-  public class AuthController : ControllerBase
+  public class AuthController(AppDbContext dbContext, IConfiguration config, ICustomLogger customLogger, FirebaseNotificationService firebaseNotificationService, IEmailService emailService) : ControllerBase
   {
     private const int SESSION_EXP_DAYS= 15;
-    private readonly AppDbContext _dbContext;
-    private readonly ICustomLogger _logger;
-    private readonly FirebaseNotificationService _firebaseNotificationService;
-    private readonly IConfiguration _config;
-    private readonly IEmailService _emailService;
-
-    public AuthController(AppDbContext dbContext, IConfiguration config, ICustomLogger customLogger, FirebaseNotificationService firebaseNotificationService, IEmailService emailService)
-    {
-      _dbContext = dbContext;
-      _logger = customLogger;
-      _firebaseNotificationService = firebaseNotificationService;
-      _config = config;
-      _emailService = emailService;
-    }
+    private readonly AppDbContext _dbContext = dbContext;
+    private readonly ICustomLogger _logger = customLogger;
+    private readonly FirebaseNotificationService _firebaseNotificationService = firebaseNotificationService;
+    private readonly IConfiguration _config = config;
+    private readonly IEmailService _emailService = emailService;
 
     private string GenerateLocalJwt(string userId, string email, string? name)
     {
@@ -68,7 +59,6 @@ namespace BetsTrading_Service.Controllers
 
       return new JwtSecurityTokenHandler().WriteToken(token);
     }
-
 
     [AllowAnonymous]
     [HttpPost("SendCode")]
@@ -110,7 +100,7 @@ namespace BetsTrading_Service.Controllers
 
         await _emailService.SendEmailAsync(
             to: req.Email ?? "",
-            subject: "Betrader code",
+            subject: LocalizedTexts.GetTranslationByCountry(req.Country ?? "UK", "emailSubjectCode"),
             body: localedBody
         );
 
@@ -183,10 +173,11 @@ namespace BetsTrading_Service.Controllers
               signUpRequest.CreditCard ?? "nullCreditCard",
               signUpRequest.Username ?? "ERROR",
               signUpRequest.ProfilePic ?? null!,
-              0);
-
-          newUser.is_active = true;
-          newUser.token_expiration = DateTime.UtcNow.AddDays(SESSION_EXP_DAYS);
+              0)
+          {
+            is_active = true,
+            token_expiration = DateTime.UtcNow.AddDays(SESSION_EXP_DAYS)
+          };
           var jwt = GenerateLocalJwt(guid, signUpRequest.Email!, signUpRequest.FullName);
           _dbContext.Users.Add(newUser);
 
@@ -204,6 +195,18 @@ namespace BetsTrading_Service.Controllers
 
           await _dbContext.SaveChangesAsync();
           await transaction.CommitAsync();
+
+          string localedBodyTemplate = LocalizedTexts.GetTranslationByCountry(signUpRequest.Country!, "registrationSuccessfullEmailBody");
+          string localedBody = string.Format(localedBodyTemplate, signUpRequest.FullName);
+
+          if (_emailService != null && !_emailService.ToString().IsNullOrEmpty()) {
+            await _emailService.SendEmailAsync(
+              to: signUpRequest.Email ?? "",
+              subject: LocalizedTexts.GetTranslationByCountry(signUpRequest.Country ?? "UK", "emailSubjectWelcome"),
+              body: localedBody
+            );
+          }
+          
 
           _logger.Log.Information("[AUTH] :: Register :: Success with user ID : {userID}", newUser.id);
 
@@ -237,8 +240,10 @@ namespace BetsTrading_Service.Controllers
     {
 
       Console.WriteLine("GoogleQuickRegister() called");
-      SignUpRequest signUpRequest = new SignUpRequest();
-      signUpRequest.Token = isGoogledRequest.id;
+      SignUpRequest signUpRequest = new()
+      {
+        Token = isGoogledRequest.id
+      };
       if (!string.IsNullOrEmpty(isGoogledRequest.email))
       {
         signUpRequest.Username = isGoogledRequest.email.Split('@')[0];
@@ -276,60 +281,58 @@ namespace BetsTrading_Service.Controllers
     [HttpPost("LogIn")]
     public async Task<IActionResult> LogIn([FromBody] Requests.LoginRequest loginRequest)
     {
-      using (var transaction = await _dbContext.Database.BeginTransactionAsync())
+      using var transaction = await _dbContext.Database.BeginTransactionAsync();
+      try
       {
-        try
+        string? ip = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault() ?? HttpContext.Connection.RemoteIpAddress?.ToString();
+        var geo = await GetGeoLocationFromIp(ip!);
+
+        var user = _dbContext.Users
+            .FirstOrDefault(u => u.username == loginRequest.Username || u.email == loginRequest.Username);
+
+        if (user != null)
         {
-          string? ip = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault() ?? HttpContext.Connection.RemoteIpAddress?.ToString();
-          var geo = await GetGeoLocationFromIp(ip!);
 
-          var user = _dbContext.Users
-              .FirstOrDefault(u => u.username == loginRequest.Username || u.email == loginRequest.Username);
-
-          if (user != null)
+          if (BCrypt.Net.BCrypt.Verify(loginRequest.Password, user.password))
           {
-           
-            if (BCrypt.Net.BCrypt.Verify(loginRequest.Password, user.password))
-            {
-              user.last_session = DateTime.UtcNow;
-              user.token_expiration = DateTime.UtcNow.AddDays(SESSION_EXP_DAYS);
-              user.is_active = true;
+            user.last_session = DateTime.UtcNow;
+            user.token_expiration = DateTime.UtcNow.AddDays(SESSION_EXP_DAYS);
+            user.is_active = true;
 
-              var jwt = GenerateLocalJwt(user.id, user.email, user.fullname);
-              await _dbContext.SaveChangesAsync();
-              await transaction.CommitAsync();
-              
-              
-              _logger.Log.Information("[AUTH] :: LogIn :: Success. User ID: {userId} FROM {city} , {region} , {country} , ISP: {isp}", user.id, geo!.City, geo.RegionName, geo.Country, geo.ISP);
-              return Ok(new { Message = "LogIn SUCCESS", UserId = user.id, jwtToken = jwt });
-            }
-            else
-            {
-                            
-              if (geo == null)
-              {
-                _logger.Log.Error("[AUTH] :: INCORRECT LOGIN ATTEMPT FOR USER {user} FROM IP {ip}", loginRequest.Username, ip ?? "UNKNOWN");
-              }
-              else
-              {
-                _logger.Log.Error("[AUTH] :: INCORRECT LOGIN ATTEMPT FOR USER {user} FROM IP {ip} -> {city} ,{region} ,{country} , ISP: {isp}",
-                loginRequest.Username, ip ?? "UNKNOWN", geo.City, geo.RegionName, geo.Country, geo.ISP);
-              }
-              
-              return BadRequest(new { Message = "incorrectPassword" });
-            }
+            var jwt = GenerateLocalJwt(user.id, user.email, user.fullname);
+            await _dbContext.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+
+            _logger.Log.Information("[AUTH] :: LogIn :: Success. User ID: {userId} FROM {city} , {region} , {country} , ISP: {isp}", user.id, geo!.City, geo.RegionName, geo.Country, geo.ISP);
+            return Ok(new { Message = "LogIn SUCCESS", UserId = user.id, jwtToken = jwt });
           }
           else
           {
-            return NotFound(new { Message = "userOrEmailNotFound" });
+
+            if (geo == null)
+            {
+              _logger.Log.Error("[AUTH] :: INCORRECT LOGIN ATTEMPT FOR USER {user} FROM IP {ip}", loginRequest.Username, ip ?? "UNKNOWN");
+            }
+            else
+            {
+              _logger.Log.Error("[AUTH] :: INCORRECT LOGIN ATTEMPT FOR USER {user} FROM IP {ip} -> {city} ,{region} ,{country} , ISP: {isp}",
+              loginRequest.Username, ip ?? "UNKNOWN", geo.City, geo.RegionName, geo.Country, geo.ISP);
+            }
+
+            return BadRequest(new { Message = "incorrectPassword" });
           }
         }
-        catch (Exception ex)
+        else
         {
-          await transaction.RollbackAsync();
-          _logger.Log.Error("[AUTH] :: LogIn :: Internal server error: {msg}", ex.Message);
-          return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+          return NotFound(new { Message = "userOrEmailNotFound" });
         }
+      }
+      catch (Exception ex)
+      {
+        await transaction.RollbackAsync();
+        _logger.Log.Error("[AUTH] :: LogIn :: Internal server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
     }
 
@@ -337,46 +340,44 @@ namespace BetsTrading_Service.Controllers
     [HttpPost("ResetPassword")]
     public async Task<IActionResult> ResetPassword([FromBody] idRequest request)
     {
-      using (var transaction = await _dbContext.Database.BeginTransactionAsync())
+      using var transaction = await _dbContext.Database.BeginTransactionAsync();
+      try
       {
-        try
-        {
-          if (string.IsNullOrEmpty(request.id))
-            return BadRequest(new { Message = "Email/ID required" });
-          
-          var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.email == request.id);
-          if (user == null)
-            return NotFound(new { Message = "User not found" });
-          
-          string newPassword = GenerateSecurePassword();
-          
-          string hashedPassword = BCrypt.Net.BCrypt.HashPassword(newPassword);
-          user.password = hashedPassword;
-          _dbContext.Users.Update(user);
-          await _dbContext.SaveChangesAsync();
+        if (string.IsNullOrEmpty(request.id))
+          return BadRequest(new { Message = "Email/ID required" });
 
-          string localedBodyTemplate = LocalizedTexts.GetTranslationByCountry(user.country, "resetPasswordEmailBody");
+        var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.email == request.id);
+        if (user == null)
+          return NotFound(new { Message = "User not found" });
 
-          string localedBody = string.Format(localedBodyTemplate, user.fullname, newPassword);
-          
-          await _emailService.SendEmailAsync(
-              to: user.email,
-              subject: "Betrader password",
-              body: localedBody
-          );
+        string newPassword = GenerateSecurePassword();
 
-          await transaction.CommitAsync();
+        string hashedPassword = BCrypt.Net.BCrypt.HashPassword(newPassword);
+        user.password = hashedPassword;
+        _dbContext.Users.Update(user);
+        await _dbContext.SaveChangesAsync();
 
-          _logger.Log.Information("[AUTH] :: NewPassword :: Success. User ID: {userId}", user.id);
+        string localedBodyTemplate = LocalizedTexts.GetTranslationByCountry(user.country, "resetPasswordEmailBody");
 
-          return Ok(new { Message = "New password generated and sent by email" });
-        }
-        catch (Exception ex)
-        {
-          await transaction.RollbackAsync();
-          _logger.Log.Error("[AUTH] :: NewPassword :: Internal server error: {msg}", ex.Message);
-          return StatusCode(500, new { Message = "Server error", Error = ex.Message });
-        }
+        string localedBody = string.Format(localedBodyTemplate, user.fullname, newPassword);
+
+        await _emailService.SendEmailAsync(
+            to: user.email,
+            subject: LocalizedTexts.GetTranslationByCountry(user.country ?? "UK", "emailSubjectPassword"),
+            body: localedBody
+        );
+
+        await transaction.CommitAsync();
+
+        _logger.Log.Information("[AUTH] :: NewPassword :: Success. User ID: {userId}", user.id);
+
+        return Ok(new { Message = "New password generated and sent by email" });
+      }
+      catch (Exception ex)
+      {
+        await transaction.RollbackAsync();
+        _logger.Log.Error("[AUTH] :: NewPassword :: Internal server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
     }
 
@@ -384,50 +385,48 @@ namespace BetsTrading_Service.Controllers
     public async Task<IActionResult> NewPassword([FromBody] Requests.LoginRequest newPasswordRequest)
     {
 
-      using (var transaction = await _dbContext.Database.BeginTransactionAsync())
+      using var transaction = await _dbContext.Database.BeginTransactionAsync();
+      try
       {
-        try
+        var tokenUserId =
+          User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+          User.FindFirstValue("app_sub") ??
+          User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+        if (string.IsNullOrEmpty(tokenUserId))
+          return Unauthorized(new { Message = "Invalid token" });
+
+        if (!string.IsNullOrEmpty(newPasswordRequest.Username) &&
+            !string.Equals(newPasswordRequest.Username, tokenUserId, StringComparison.Ordinal) &&
+            !User.IsInRole("admin"))
         {
-          var tokenUserId =
-            User.FindFirstValue(ClaimTypes.NameIdentifier) ??
-            User.FindFirstValue("app_sub") ??
-            User.FindFirstValue(JwtRegisteredClaimNames.Sub);
-
-          if (string.IsNullOrEmpty(tokenUserId))
-            return Unauthorized(new { Message = "Invalid token" });
-
-          if (!string.IsNullOrEmpty(newPasswordRequest.Username) &&
-              !string.Equals(newPasswordRequest.Username, tokenUserId, StringComparison.Ordinal) &&
-              !User.IsInRole("admin"))
-          {
-            // 403 FORBIDDEN : User ID doesn't match JWT
-            return Forbid();
-          }
-
-          string? ip = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault() ?? HttpContext.Connection.RemoteIpAddress?.ToString();
-          var geo = await GetGeoLocationFromIp(ip!);
-
-          var user = _dbContext.Users.FirstOrDefault(u => u.id == newPasswordRequest.Username);
-          if (user == null) return NotFound(new { Message = "User not found" });
-     
-
-          string hashedPassword = BCrypt.Net.BCrypt.HashPassword(newPasswordRequest.Password);
-          user.password = hashedPassword;
-          _dbContext.Users.Update(user);
-          await _dbContext.SaveChangesAsync();
-          await transaction.CommitAsync();
-          _logger.Log.Information("[AUTH] :: NewPassword :: Success. User ID: {userId} FROM -> {city} , {region} , {country} , ISP: {isp}", user.id, geo!.City, geo.RegionName, geo.Country, geo.ISP);
-          return Ok(new { Message = "Password created successfully" });
-
-          
-          
+          // 403 FORBIDDEN : User ID doesn't match JWT
+          return Forbid();
         }
-        catch (Exception ex)
-        {
-          await transaction.RollbackAsync();
-          _logger.Log.Error("[AUTH] :: ChangePassword :: Internal server error: {msg}", ex.Message);
-          return StatusCode(500, new { Message = "Server error", Error = ex.Message });
-        }
+
+        string? ip = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault() ?? HttpContext.Connection.RemoteIpAddress?.ToString();
+        var geo = await GetGeoLocationFromIp(ip!);
+
+        var user = _dbContext.Users.FirstOrDefault(u => u.id == newPasswordRequest.Username);
+        if (user == null) return NotFound(new { Message = "User not found" });
+
+
+        string hashedPassword = BCrypt.Net.BCrypt.HashPassword(newPasswordRequest.Password);
+        user.password = hashedPassword;
+        _dbContext.Users.Update(user);
+        await _dbContext.SaveChangesAsync();
+        await transaction.CommitAsync();
+        _logger.Log.Information("[AUTH] :: NewPassword :: Success. User ID: {userId} FROM -> {city} , {region} , {country} , ISP: {isp}", user.id, geo!.City, geo.RegionName, geo.Country, geo.ISP);
+        return Ok(new { Message = "Password created successfully" });
+
+
+
+      }
+      catch (Exception ex)
+      {
+        await transaction.RollbackAsync();
+        _logger.Log.Error("[AUTH] :: ChangePassword :: Internal server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
     }
 
@@ -436,82 +435,80 @@ namespace BetsTrading_Service.Controllers
     {
       if (changepasswordRequest.Current == changepasswordRequest.Password) return BadRequest(new { Message = "New password matches current password" });
 
-      using (var transaction = await _dbContext.Database.BeginTransactionAsync())
+      using var transaction = await _dbContext.Database.BeginTransactionAsync();
+      try
       {
-        try
+        var tokenUserId =
+          User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+          User.FindFirstValue("app_sub") ??
+          User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+        if (string.IsNullOrEmpty(tokenUserId))
+          return Unauthorized(new { Message = "Invalid token" });
+
+        if (!string.IsNullOrEmpty(changepasswordRequest.Username) &&
+            !string.Equals(changepasswordRequest.Username, tokenUserId, StringComparison.Ordinal) &&
+            !User.IsInRole("admin"))
         {
-          var tokenUserId =
-            User.FindFirstValue(ClaimTypes.NameIdentifier) ??
-            User.FindFirstValue("app_sub") ??
-            User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+          // 403 FORBIDDEN : User ID doesn't match JWT
+          return Forbid();
+        }
 
-          if (string.IsNullOrEmpty(tokenUserId))
-            return Unauthorized(new { Message = "Invalid token" });
+        string? ip = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault() ?? HttpContext.Connection.RemoteIpAddress?.ToString();
+        var geo = await GetGeoLocationFromIp(ip!);
 
-          if (!string.IsNullOrEmpty(changepasswordRequest.Username) &&
-              !string.Equals(changepasswordRequest.Username, tokenUserId, StringComparison.Ordinal) &&
-              !User.IsInRole("admin"))
+        var user = _dbContext.Users.FirstOrDefault(u => u.id == changepasswordRequest.Username);
+        if (user == null) return NotFound(new { Message = "User not found" });
+
+        if (BCrypt.Net.BCrypt.Verify(changepasswordRequest.Current, user.password))
+        {
+          if (string.IsNullOrWhiteSpace(changepasswordRequest.Password) || changepasswordRequest.Password.Length < 12)
           {
-            // 403 FORBIDDEN : User ID doesn't match JWT
-            return Forbid();
+            return BadRequest(new { Message = "Bad new password" });
           }
 
-          string? ip = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault() ?? HttpContext.Connection.RemoteIpAddress?.ToString();
-          var geo = await GetGeoLocationFromIp(ip!);
-
-          var user = _dbContext.Users.FirstOrDefault(u => u.id == changepasswordRequest.Username);
-          if (user == null) return NotFound(new { Message = "User not found" });
-
-          if (BCrypt.Net.BCrypt.Verify(changepasswordRequest.Current, user.password))
-          {            
-            if (string.IsNullOrWhiteSpace(changepasswordRequest.Password) || changepasswordRequest.Password.Length < 12)
-            {
-              return BadRequest(new { Message = "Bad new password" });
-            }
-           
-            string hashedPassword = BCrypt.Net.BCrypt.HashPassword(changepasswordRequest.Password);
-            user.password = hashedPassword;
-            _dbContext.Users.Update(user);
-            await _dbContext.SaveChangesAsync();
-            await transaction.CommitAsync();
+          string hashedPassword = BCrypt.Net.BCrypt.HashPassword(changepasswordRequest.Password);
+          user.password = hashedPassword;
+          _dbContext.Users.Update(user);
+          await _dbContext.SaveChangesAsync();
+          await transaction.CommitAsync();
 
 
-            string localedBodyTemplate = LocalizedTexts.GetTranslationByCountry(user.country, "newPasswordEmailBody");
+          string localedBodyTemplate = LocalizedTexts.GetTranslationByCountry(user.country, "newPasswordEmailBody");
 
-            string localedBody = string.Format(localedBodyTemplate, user.fullname);
+          string localedBody = string.Format(localedBodyTemplate, user.fullname);
 
-            await _emailService.SendEmailAsync(
-                to: user.email,
-                subject: "Betrader password",
-                body: localedBody
-            );
+          await _emailService.SendEmailAsync(
+              to: user.email,
+              subject: LocalizedTexts.GetTranslationByCountry(user.country ?? "UK", "emailSubjectPassword"),
+              body: localedBody
+          );
 
-            _logger.Log.Information("[AUTH] :: ChangePassword :: Success. User ID: {userId} FROM -> {city} , {region} , {country} , ISP: {isp}", user.id, geo!.City, geo.RegionName, geo.Country, geo.ISP);
-            return Ok(new { Message = "Password updated successfully" });
+          _logger.Log.Information("[AUTH] :: ChangePassword :: Success. User ID: {userId} FROM -> {city} , {region} , {country} , ISP: {isp}", user.id, geo!.City, geo.RegionName, geo.Country, geo.ISP);
+          return Ok(new { Message = "Password updated successfully" });
 
+        }
+        else
+        {
+
+          if (geo == null)
+          {
+            _logger.Log.Error("[AUTH] :: INCORRECT CHANGE PASSWORD ATTEMPT FOR USER {user} FROM IP {ip}", changepasswordRequest.Username, ip ?? "UNKNOWN");
           }
           else
           {
-
-            if (geo == null)
-            {
-              _logger.Log.Error("[AUTH] :: INCORRECT CHANGE PASSWORD ATTEMPT FOR USER {user} FROM IP {ip}", changepasswordRequest.Username, ip ?? "UNKNOWN");
-            }
-            else
-            {
-              _logger.Log.Error("[AUTH] :: INCORRECT CHANGE PASSWORD ATTEMPT FOR USER {user} FROM IP {ip} -> {city} ,{region} ,{country} , ISP: {isp}",
-               changepasswordRequest.Username, ip ?? "UNKNOWN", geo.City, geo.RegionName, geo.Country, geo.ISP);
-            }
-
-            return BadRequest(new { Message = "incorrectPassword" });
+            _logger.Log.Error("[AUTH] :: INCORRECT CHANGE PASSWORD ATTEMPT FOR USER {user} FROM IP {ip} -> {city} ,{region} ,{country} , ISP: {isp}",
+             changepasswordRequest.Username, ip ?? "UNKNOWN", geo.City, geo.RegionName, geo.Country, geo.ISP);
           }
+
+          return BadRequest(new { Message = "incorrectPassword" });
         }
-        catch (Exception ex)
-        {
-          await transaction.RollbackAsync();
-          _logger.Log.Error("[AUTH] :: ChangePassword :: Internal server error: {msg}", ex.Message);
-          return StatusCode(500, new { Message = "Server error", Error = ex.Message });
-        }
+      }
+      catch (Exception ex)
+      {
+        await transaction.RollbackAsync();
+        _logger.Log.Error("[AUTH] :: ChangePassword :: Internal server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
     }
 
@@ -552,49 +549,47 @@ namespace BetsTrading_Service.Controllers
     [HttpPost("LogOut")]
     public async Task<IActionResult> LogOut([FromBody] idRequest logOutRequest)
     {
-      using (var transaction = await _dbContext.Database.BeginTransactionAsync())
+      using var transaction = await _dbContext.Database.BeginTransactionAsync();
+      try
       {
-        try
+        var tokenUserId =
+          User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+          User.FindFirstValue("app_sub") ??
+          User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+        if (string.IsNullOrEmpty(tokenUserId))
+          return Unauthorized(new { Message = "Invalid token" });
+
+        if (!string.IsNullOrEmpty(logOutRequest.id) &&
+            !string.Equals(logOutRequest.id, tokenUserId, StringComparison.Ordinal) &&
+            !User.IsInRole("admin"))
         {
-          var tokenUserId =
-            User.FindFirstValue(ClaimTypes.NameIdentifier) ??
-            User.FindFirstValue("app_sub") ??
-            User.FindFirstValue(JwtRegisteredClaimNames.Sub);
-
-          if (string.IsNullOrEmpty(tokenUserId))
-            return Unauthorized(new { Message = "Invalid token" });
-
-          if (!string.IsNullOrEmpty(logOutRequest.id) &&
-              !string.Equals(logOutRequest.id, tokenUserId, StringComparison.Ordinal) &&
-              !User.IsInRole("admin"))
-          {
-            // 403 FORBIDDEN : User ID doesn't match JWT
-            return Forbid();
-          }
-
-          var user = _dbContext.Users.FirstOrDefault(u => u.id == logOutRequest.id);
-
-          if (user != null)
-          {
-            user.last_session = DateTime.UtcNow;
-            user.is_active = false;
-            await _dbContext.SaveChangesAsync();
-            await transaction.CommitAsync();
-
-            _logger.Log.Debug("[AUTH] :: LogOut :: Success on user {username}", user.username);
-            return Ok(new { Message = "LogOut SUCCESS", UserId = user.id });
-          }
-          else
-          {
-            return NotFound(new { Message = "User or email not found" });
-          }
+          // 403 FORBIDDEN : User ID doesn't match JWT
+          return Forbid();
         }
-        catch (Exception ex)
+
+        var user = _dbContext.Users.FirstOrDefault(u => u.id == logOutRequest.id);
+
+        if (user != null)
         {
-          await transaction.RollbackAsync();
-          _logger.Log.Error("[AUTH] :: LogOut :: Error: {msg}", ex.Message);
-          return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+          user.last_session = DateTime.UtcNow;
+          user.is_active = false;
+          await _dbContext.SaveChangesAsync();
+          await transaction.CommitAsync();
+
+          _logger.Log.Debug("[AUTH] :: LogOut :: Success on user {username}", user.username);
+          return Ok(new { Message = "LogOut SUCCESS", UserId = user.id });
         }
+        else
+        {
+          return NotFound(new { Message = "User or email not found" });
+        }
+      }
+      catch (Exception ex)
+      {
+        await transaction.RollbackAsync();
+        _logger.Log.Error("[AUTH] :: LogOut :: Error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
     }
 
@@ -642,71 +637,68 @@ namespace BetsTrading_Service.Controllers
     [HttpPost("RefreshFCM")]
     public async Task<IActionResult> RefreshFCM([FromBody] tokenRequest tokenRequest)
     {
-      using (var transaction = await _dbContext.Database.BeginTransactionAsync())
+      using var transaction = await _dbContext.Database.BeginTransactionAsync();
+      try
       {
-        try
+        var tokenUserId =
+          User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+          User.FindFirstValue("app_sub") ??
+          User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+        if (string.IsNullOrEmpty(tokenUserId))
+          return Unauthorized(new { Message = "Invalid token" });
+
+        if (!string.IsNullOrEmpty(tokenRequest.user_id) &&
+            !string.Equals(tokenRequest.user_id, tokenUserId, StringComparison.Ordinal) &&
+            !User.IsInRole("admin"))
         {
-          var tokenUserId =
-            User.FindFirstValue(ClaimTypes.NameIdentifier) ??
-            User.FindFirstValue("app_sub") ??
-            User.FindFirstValue(JwtRegisteredClaimNames.Sub);
-
-          if (string.IsNullOrEmpty(tokenUserId))
-            return Unauthorized(new { Message = "Invalid token" });
-
-          if (!string.IsNullOrEmpty(tokenRequest.user_id) &&
-              !string.Equals(tokenRequest.user_id, tokenUserId, StringComparison.Ordinal) &&
-              !User.IsInRole("admin"))
-          {
-            // 403 FORBIDDEN : User ID doesn't match JWT
-            return Forbid();
-          }
-
-          string? ip = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault() ?? HttpContext.Connection.RemoteIpAddress?.ToString();
-          var geo = await GetGeoLocationFromIp(ip!);
-          var user = _dbContext.Users.FirstOrDefault(u => u.id == tokenRequest.user_id);
-
-          if (user != null)
-          {
-
-            var oldFcm = user.fcm;
-            string sessionStartedElsewhere = LocalizedTexts.GetTranslationByCountry(user.country, "sessionStartedElsewhere");
-
-
-            if (!string.IsNullOrEmpty(oldFcm) && oldFcm != tokenRequest.token)
-            {
-              if (geo != null)
-              {
-                _ = _firebaseNotificationService.SendNotificationToUser(oldFcm, "Betrader", sessionStartedElsewhere, new() { { "type", "LOGOUT" }, { "city", geo.City! }, { "country", geo.Country! } });
-              }
-              else
-              {
-                _ = _firebaseNotificationService.SendNotificationToUser(oldFcm, "Betrader", sessionStartedElsewhere, new() { { "type", "LOGOUT" } });
-              }
-              _logger.Log.Information("[AUTH] :: RefreshFCM :: LogOut for FCM {fcm} of user {user}", oldFcm, user.username);
-            }
-
-            user.fcm = tokenRequest.token!;
-            await _dbContext.SaveChangesAsync();
-            await transaction.CommitAsync();
-
-            _logger.Log.Debug("[AUTH] :: RefreshFCM :: Success with User ID {id}", tokenRequest.user_id);
-            return Ok(new { Message = "FCM token updated successfully", UserId = user.id });
-          }
-          else
-          {
-            return NotFound(new { Message = "User not found" });
-          }
+          // 403 FORBIDDEN : User ID doesn't match JWT
+          return Forbid();
         }
-        catch (Exception ex)
+
+        string? ip = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault() ?? HttpContext.Connection.RemoteIpAddress?.ToString();
+        var geo = await GetGeoLocationFromIp(ip!);
+        var user = _dbContext.Users.FirstOrDefault(u => u.id == tokenRequest.user_id);
+
+        if (user != null)
         {
-          await transaction.RollbackAsync();
-          _logger.Log.Error("[AUTH] :: RefreshFCM :: Internal Server Error: {msg}", ex.Message);
-          return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+
+          var oldFcm = user.fcm;
+          string sessionStartedElsewhere = LocalizedTexts.GetTranslationByCountry(user.country, "sessionStartedElsewhere");
+
+
+          if (!string.IsNullOrEmpty(oldFcm) && oldFcm != tokenRequest.token)
+          {
+            if (geo != null)
+            {
+              _ = _firebaseNotificationService.SendNotificationToUser(oldFcm, "Betrader", sessionStartedElsewhere, new() { { "type", "LOGOUT" }, { "city", geo.City! }, { "country", geo.Country! } });
+            }
+            else
+            {
+              _ = _firebaseNotificationService.SendNotificationToUser(oldFcm, "Betrader", sessionStartedElsewhere, new() { { "type", "LOGOUT" } });
+            }
+            _logger.Log.Information("[AUTH] :: RefreshFCM :: LogOut for FCM {fcm} of user {user}", oldFcm, user.username);
+          }
+
+          user.fcm = tokenRequest.token!;
+          await _dbContext.SaveChangesAsync();
+          await transaction.CommitAsync();
+
+          _logger.Log.Debug("[AUTH] :: RefreshFCM :: Success with User ID {id}", tokenRequest.user_id);
+          return Ok(new { Message = "FCM token updated successfully", UserId = user.id });
+        }
+        else
+        {
+          return NotFound(new { Message = "User not found" });
         }
       }
+      catch (Exception ex)
+      {
+        await transaction.RollbackAsync();
+        _logger.Log.Error("[AUTH] :: RefreshFCM :: Internal Server Error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
     }
-
 
     public static async Task<IpGeoResponse?> GetGeoLocationFromIp(string ip)
     {
@@ -727,7 +719,7 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
-    private string GenerateSecurePassword(int length = 12)
+    private static string GenerateSecurePassword(int length = 12)
     {
       const string lower = "abcdefghijklmnopqrstuvwxyz";
       const string upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";

@@ -25,7 +25,7 @@ public class OddsAdjusterService : BackgroundService
     {
       if (!_isRunning)
       {
-        _ = Task.Run(async () =>
+        _ = Task.Run(() =>
         {
           _isRunning = true;
           var stopwatch = Stopwatch.StartNew();

@@ -4,10 +4,17 @@
 
   public class LocalizedTexts
   {
-    public static Dictionary<string, Dictionary<string, string>> Translations = new Dictionary<string, Dictionary<string, string>>()
+    private static readonly Dictionary<string, Dictionary<string, string>> localizedTextsDictionary = new()
     {
       { "en", new Dictionary<string, string>()
         {
+            { "emailSubjectUserVerified", "Account verified" },
+            { "userVerifiedEmailBody", "Hello {0},\n\nYour account has been successfully verified.\n\nYou now have full access to Betrader features and can start enjoying the platform without restrictions.\n\nIf you did not complete this verification, please contact our support team immediately.\n\nBest regards,\nBetrader Support Team" },
+            { "emailSubjectCode", "Betrader code" },
+            { "emailSubjectWelcome", "Welcome to Betrader" },
+            { "emailSubjectPassword", "Betrader password" },
+            { "emailSubjectPayment", "Betrader payment" },
+            { "registrationSuccessfullEmailBody", "Hello {0},\n\nWelcome to Betrader!\n\nYour registration has been successfully completed and your account is now active.\n\nWe’re excited to have you on board. Explore the markets, follow your favorite assets, and start trading smarter today.\n\nIf you didn’t create this account, please contact our support team immediately.\n\nBest regards,\nBetrader Support Team" },
             { "emailCodeSentBody", "Hello ,\n\nYour verification code is: {0}\n\nPlease enter this code in the app to complete your registration.\n\nIf you did not request this, please ignore this message.\n\nBest regards,\nBetrader Support Team" },
             { "updatedTrends", "Updated trends!" },
             { "youWon", "You've won {0} points on {1}!" },
@@ -18,7 +25,14 @@
         }
       },
       { "es", new Dictionary<string, string>()
-        {      
+        {
+            { "emailSubjectUserVerified", "Cuenta verificada" },
+            { "userVerifiedEmailBody", "Hola {0},\n\nTu cuenta ha sido verificada correctamente.\n\nAhora tienes acceso completo a todas las funciones de Betrader y puedes disfrutar de la plataforma sin restricciones.\n\nSi no has completado esta verificación, contacta con el soporte de Betrader inmediatamente.\n\nUn saludo,\nEquipo de soporte de Betrader" },
+            { "emailSubjectCode", "Código de Betrader" },
+            { "emailSubjectWelcome", "Bienvenido a Betrader" },
+            { "emailSubjectPassword", "Contraseña de Betrader" },
+            { "emailSubjectPayment", "Pago de Betrader" },
+            { "registrationSuccessfullEmailBody", "Hola {0},\n\n¡Bienvenido a Betrader!\n\nTu registro se ha completado correctamente y tu cuenta ya está activa.\n\nNos alegra tenerte con nosotros. Explora los mercados, sigue tus activos favoritos y empieza a operar de forma más inteligente hoy mismo.\n\nSi no has creado esta cuenta, contacta con el soporte de Betrader inmediatamente.\n\nUn saludo,\nEquipo de soporte de Betrader" },
             { "emailCodeSentBody", "Hola,\n\nTu código de verificación es: {0}\n\nIntroduce este código en la aplicación para completar tu registro.\n\nSi no has solicitado este código, simplemente ignora este mensaje.\n\nAtentamente,\nEquipo de soporte de Betrader" },
             { "updatedTrends", "Tendencias actualizadas!" },
             { "youWon", "¡Has ganado {0} puntos en {1}!" },
@@ -30,6 +44,13 @@
       },
       { "fr", new Dictionary<string, string>()
         {
+            { "emailSubjectUserVerified", "Compte vérifié" },
+            { "userVerifiedEmailBody", "Bonjour {0},\n\nVotre compte a été vérifié avec succès.\n\nVous avez désormais un accès complet à toutes les fonctionnalités de Betrader et pouvez profiter de la plateforme sans restrictions.\n\nSi vous n’êtes pas à l’origine de cette vérification, veuillez contacter immédiatement notre service d’assistance.\n\nCordialement,\nÉquipe de support Betrader" },
+            { "emailSubjectCode", "Code Betrader" },
+            { "emailSubjectWelcome", "Bienvenue chez Betrader" },
+            { "emailSubjectPassword", "Mot de passe Betrader" },
+            { "emailSubjectPayment", "Paiement Betrader" },
+            { "registrationSuccessfullEmailBody", "Bonjour {0},\n\nBienvenue chez Betrader !\n\nVotre inscription a été complétée avec succès et votre compte est désormais actif.\n\nNous sommes ravis de vous compter parmi nous. Explorez les marchés, suivez vos actifs préférés et commencez à trader plus intelligemment dès aujourd’hui.\n\nSi vous n’avez pas créé ce compte, veuillez contacter immédiatement notre service d’assistance.\n\nCordialement,\nÉquipe de support Betrader" },
             { "emailCodeSentBody", "Bonjour,\n\nVotre code de vérification est : {0}\n\nVeuillez saisir ce code dans l'application pour finaliser votre inscription.\n\nSi vous n'avez pas demandé ce code, ignorez simplement ce message.\n\nCordialement,\nÉquipe du support Betrader" },
             { "updatedTrends", "Tendances mises à jour !" },
             { "youWon", "Vous avez gagné {0} points sur {1} !" },
@@ -41,6 +62,13 @@
       },
       { "it", new Dictionary<string, string>()
         {
+            { "emailSubjectUserVerified", "Account verificato" },
+            { "userVerifiedEmailBody", "Ciao {0},\n\nIl tuo account è stato verificato con successo.\n\nOra hai pieno accesso a tutte le funzionalità di Betrader e puoi utilizzare la piattaforma senza restrizioni.\n\nSe non hai effettuato tu questa verifica, contatta immediatamente il supporto di Betrader.\n\nCordiali saluti,\nTeam di supporto Betrader" },
+            { "emailSubjectCode", "Codice Betrader" },
+            { "emailSubjectWelcome", "Benvenuto su Betrader" },
+            { "emailSubjectPassword", "Password Betrader" },
+            { "emailSubjectPayment", "Pagamento Betrader" },
+            { "registrationSuccessfullEmailBody", "Ciao {0},\n\nBenvenuto su Betrader!\n\nLa tua registrazione è stata completata con successo e il tuo account è ora attivo.\n\nSiamo felici di averti con noi. Esplora i mercati, segui i tuoi asset preferiti e inizia a fare trading in modo più intelligente da oggi.\n\nSe non hai creato questo account, contatta immediatamente il supporto Betrader.\n\nCordiali saluti,\nTeam di supporto Betrader" },
             { "emailCodeSentBody", "Ciao,\n\nIl tuo codice di verifica è: {0}\n\nInserisci questo codice nell'app per completare la registrazione.\n\nSe non hai richiesto questo codice, ignora semplicemente questo messaggio.\n\nCordiali saluti,\nTeam di supporto Betrader" },
             { "updatedTrends", "Tendenze aggiornate!" },
             { "youWon", "Hai vinto {0} punti su {1}!" },
@@ -52,6 +80,13 @@
       },
       { "de", new Dictionary<string, string>()
         {
+            { "emailSubjectUserVerified", "Konto verifiziert" },
+            { "userVerifiedEmailBody", "Hallo {0},\n\nIhr Konto wurde erfolgreich verifiziert.\n\nSie haben nun vollen Zugriff auf alle Funktionen von Betrader und können die Plattform uneingeschränkt nutzen.\n\nWenn Sie diese Verifizierung nicht selbst vorgenommen haben, wenden Sie sich bitte umgehend an den Betrader-Support.\n\nMit freundlichen Grüßen,\nBetrader Support Team" },
+            { "emailSubjectCode", "Betrader-Code" },
+            { "emailSubjectWelcome", "Willkommen bei Betrader" },
+            { "emailSubjectPassword", "Betrader-Passwort" },
+            { "emailSubjectPayment", "Betrader-Zahlung" },
+            { "registrationSuccessfullEmailBody", "Hallo {0},\n\nWillkommen bei Betrader!\n\nIhre Registrierung wurde erfolgreich abgeschlossen und Ihr Konto ist jetzt aktiv.\n\nWir freuen uns, Sie an Bord zu haben. Entdecken Sie die Märkte, verfolgen Sie Ihre Lieblingswerte und handeln Sie ab heute klüger.\n\nWenn Sie dieses Konto nicht erstellt haben, wenden Sie sich bitte umgehend an den Betrader-Support.\n\nMit freundlichen Grüßen,\nBetrader Support Team" },
             { "emailCodeSentBody", "Hallo,\n\nIhr Bestätigungscode lautet: {0}\n\nBitte geben Sie diesen Code in der App ein, um Ihre Registrierung abzuschließen.\n\nWenn Sie diesen Code nicht angefordert haben, ignorieren Sie bitte diese Nachricht.\n\nMit freundlichen Grüßen,\nBetrader Support Team" },
             { "updatedTrends", "Aktualisierte Trends!" },
             { "youWon", "Du hast {0} Punkte auf {1} gewonnen!" },
@@ -63,6 +98,13 @@
       },
       { "pt", new Dictionary<string, string>()
         {
+            { "emailSubjectUserVerified", "Conta verificada" },
+            { "userVerifiedEmailBody", "Olá {0},\n\nSua conta foi verificada com sucesso.\n\nAgora você tem acesso total a todos os recursos do Betrader e pode aproveitar a plataforma sem restrições.\n\nSe você não realizou esta verificação, entre em contato imediatamente com o suporte da Betrader.\n\nAtenciosamente,\nEquipe de suporte Betrader" },
+            { "emailSubjectCode", "Código Betrader" },
+            { "emailSubjectWelcome", "Bem-vindo ao Betrader" },
+            { "emailSubjectPassword", "Senha Betrader" },
+            { "emailSubjectPayment", "Pagamento Betrader" },
+            { "registrationSuccessfullEmailBody", "Olá {0},\n\nBem-vindo ao Betrader!\n\nSeu registro foi concluído com sucesso e sua conta já está ativa.\n\nEstamos felizes em tê-lo conosco. Explore os mercados, acompanhe seus ativos favoritos e comece a negociar de forma mais inteligente hoje mesmo.\n\nSe você não criou esta conta, entre em contato imediatamente com o suporte da Betrader.\n\nAtenciosamente,\nEquipe de suporte Betrader" },
             { "emailCodeSentBody", "Olá,\n\nO seu código de verificação é: {0}\n\nInsira este código no aplicativo para concluir o seu registro.\n\nSe não solicitou este código, ignore esta mensagem.\n\nAtenciosamente,\nEquipe de suporte Betrader" },
             { "updatedTrends", "Tendências atualizadas!" },
             { "youWon", "Você ganhou {0} pontos em {1}!" },
@@ -76,32 +118,33 @@
 
 
     };
+    public static Dictionary<string, Dictionary<string, string>> Translations = localizedTextsDictionary;
 
     public static string GetTranslationByCountry(string countryCode, string key)
     {
      
-      Dictionary<string, string> countryToLanguageMap = new Dictionary<string, string>()
-    {
-        { "US", "en" },
-        { "UK", "en" },
-        { "ES", "es" },
-        { "IT", "it" },
-        { "DE", "de" },
-        { "FR", "fr" },
-        { "PT", "pt" },
-        { "BR", "pt" },
-    };
+      Dictionary<string, string> countryToLanguageMap = new()
+      {
+          { "US", "en" },
+          { "UK", "en" },
+          { "ES", "es" },
+          { "IT", "it" },
+          { "DE", "de" },
+          { "FR", "fr" },
+          { "PT", "pt" },
+          { "BR", "pt" },
+      };
 
       countryCode = countryCode.ToUpper();
-      string languageCode = countryToLanguageMap.ContainsKey(countryCode) ? countryToLanguageMap[countryCode] : "en";
+      string languageCode = countryToLanguageMap.TryGetValue(countryCode, out string? value) ? value : "en";
       return GetTranslation(languageCode, key);
     }
 
     public static string GetTranslation(string languageCode, string key)
     {
-      if (Translations.ContainsKey(languageCode) && Translations[languageCode].ContainsKey(key))
+      if (Translations.TryGetValue(languageCode, out Dictionary<string, string>? value) && value.ContainsKey(key))
       {
-        return Translations[languageCode][key];
+        return value[key];
       }
       return key;
     }

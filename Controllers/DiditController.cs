@@ -1,5 +1,7 @@
 ﻿using BetsTrading_Service.Database;
 using BetsTrading_Service.Interfaces;
+using BetsTrading_Service.Locale;
+using BetsTrading_Service.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -15,12 +17,14 @@ namespace BetsTrading_Service.Controllers
     private readonly AppDbContext _dbContext;
     private readonly ICustomLogger _logger;
     private readonly IConfiguration _config;
+    private readonly IEmailService _emailService;
 
-    public DiditController(AppDbContext dbContext, ICustomLogger customLogger, IConfiguration config)
+    public DiditController(AppDbContext dbContext, ICustomLogger customLogger, IConfiguration config, IEmailService emailService)
     {
       _dbContext = dbContext;
       _logger = customLogger;
       _config = config;
+      _emailService = emailService;
     }
 
     [HttpPost("CreateSession")]
@@ -139,7 +143,6 @@ namespace BetsTrading_Service.Controllers
               http.DefaultRequestHeaders.Add("x-api-key",
                   Environment.GetEnvironmentVariable("DIDIT_API_KEY", EnvironmentVariableTarget.User) ?? "");
 
-              //TODO
               var response = await http.GetAsync($"https://verification.didit.me/v2/session/{user.didit_session_id}/decision");
               if (response.IsSuccessStatusCode)
               {
@@ -194,6 +197,16 @@ namespace BetsTrading_Service.Controllers
                   if (status == "Approved")
                   {
                     user.is_verified = true;
+
+                    string localedBodyTemplate = LocalizedTexts.GetTranslationByCountry(user.country ?? "UK", "userVerifiedEmailBody");
+                    string localedBody = string.Format(localedBodyTemplate, user.fullname);
+
+                    await _emailService.SendEmailAsync(
+                        to: user.email,
+                        subject: LocalizedTexts.GetTranslationByCountry(user.country ?? "UK", "emailSubjectUserVerified"),
+                        body: localedBody
+                    );
+
                     _logger.Log.Information("[DIDIT] :: User {id} verified", user.id);
                   }
                   else
@@ -205,8 +218,7 @@ namespace BetsTrading_Service.Controllers
               }
               else
               {
-                _logger.Log.Warning("[DIDIT] :: Failed to fetch session {sid}, status {status}",
-                    user.didit_session_id, response.StatusCode);
+                _logger.Log.Warning("[DIDIT] :: Failed to fetch session {sid}, status {status}", user.didit_session_id, response.StatusCode);
               }
             }
           }

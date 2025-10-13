@@ -4,6 +4,7 @@
   using BetsTrading_Service.Interfaces;
   using BetsTrading_Service.Locale;
   using BetsTrading_Service.Models;
+  using BetsTrading_Service.Requests;
   using BetsTrading_Service.Services;
   using Microsoft.AspNetCore.Authorization;
   using Microsoft.AspNetCore.Mvc;
@@ -258,141 +259,126 @@
     [HttpPost("RetireBalance")]
     public async Task<IActionResult> RetireBalance([FromBody] RetireBalanceRequest req)
     {
-      using (var transaction = await _dbContext.Database.BeginTransactionAsync())
+      using var transaction = await _dbContext.Database.BeginTransactionAsync();
+      try
       {
-        try
+        var tokenUserId =
+          User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+          User.FindFirstValue("app_sub") ??
+          User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+        if (string.IsNullOrEmpty(tokenUserId))
+          return Unauthorized(new { Message = "Invalid token" });
+
+        if (!string.IsNullOrEmpty(req.UserId) &&
+            !string.Equals(req.UserId, tokenUserId, StringComparison.Ordinal) &&
+            !User.IsInRole("admin"))
         {
-          var tokenUserId =
-            User.FindFirstValue(ClaimTypes.NameIdentifier) ??
-            User.FindFirstValue("app_sub") ??
-            User.FindFirstValue(JwtRegisteredClaimNames.Sub);
-
-          if (string.IsNullOrEmpty(tokenUserId))
-            return Unauthorized(new { Message = "Invalid token" });
-
-          if (!string.IsNullOrEmpty(req.UserId) &&
-              !string.Equals(req.UserId, tokenUserId, StringComparison.Ordinal) &&
-              !User.IsInRole("admin"))
-          {
-            // 403 FORBIDDEN : User ID doesn't match JWT
-            return Forbid();
-          }
-
-          string? ip = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault() ?? HttpContext.Connection.RemoteIpAddress?.ToString();
-          var geo = await AuthController.GetGeoLocationFromIp(ip!);
-
-          var user = _dbContext.Users.FirstOrDefault(u => u.fcm == req.fcm && u.id == req.UserId);
-          if (user != null)
-          {
-            if (!BCrypt.Net.BCrypt.Verify(req.Password, user.password))
-            {
-              if (geo == null)
-              {
-                _logger.Log.Error("[PAYMENTS] :: INCORRECT RETIRE ATTEMPT FOR USER {user} FROM IP {ip}", req.UserId, ip ?? "UNKNOWN");
-              }
-              else
-              {
-                _logger.Log.Error("[PAYMENTS] :: INCORRECT RETIRE ATTEMPT OF {coins} coins FOR USER {user} FROM IP {ip} -> {city} ,{region} ,{country} , ISP: {isp}",
-                    req.Coins, req.UserId, ip ?? "UNKNOWN", geo.City, geo.RegionName, geo.Country, geo.ISP);
-              }
-              return BadRequest(new { Message = "Incorrect password" });
-            }
-            var path = Path.Combine(Directory.GetCurrentDirectory(), $"exchange_options_{req.Currency}.json");
-            var optionsJson = await System.IO.File.ReadAllTextAsync(path);
-            var options = System.Text.Json.JsonSerializer.Deserialize<List<ExchangeOption>>(optionsJson);
-
-            if (!options!.Any(o => o.Type == "exchange" && o.Coins == req.Coins && o.Euros == req.CurrencyAmount))
-            {
-              _logger.Log.Warning("[PAYMENTS] :: RetireBalance :: Invalid coins/amount combination: {coins} - {euros}", req.Coins, req.CurrencyAmount);
-              return BadRequest(new { Message = "Invalid coins/amount combination." });
-            }
-
-            user.pending_balance += req.CurrencyAmount;
-            user.points -= req.Coins;
-            
-            var withdrawalHistory = new WithdrawalData(
-              Guid.NewGuid(),
-              req.UserId!,
-              req.Coins,
-              req.Currency!,
-              req.CurrencyAmount,
-              DateTime.UtcNow,
-              false,
-              req.method!);
-
-            _dbContext.WithdrawalData.Add(withdrawalHistory);
-
-            await _dbContext.SaveChangesAsync();
-            await transaction.CommitAsync();
-            
-            var parts = req.method!.Split('#');
-            string methodType = parts[0];       // ej: withdrawMethodPaypal
-            string methodId = parts.Length > 1 ? parts[1] : string.Empty;
-            
-            var method = await _dbContext.WithdrawalMethods
-                .FirstOrDefaultAsync(m => m.Id.ToString() == methodId);
-
-            string methodDetails = methodType; // fallback
-
-            if (method != null)
-            {
-              string json = method.Data.RootElement.GetRawText();
-
-              dynamic data = JsonConvert.DeserializeObject(json);
-
-              switch (method.Type.ToLower()) // si tienes una columna 'type'
-              {
-                case "bank":
-                  methodDetails =
-                      $"Bank transfer\n" +
-                      $"Holder: {data!.holder}\n" +
-                      $"IBAN: {data!.iban}\n" +
-                      (data.bic != null ? $"BIC: {data.bic}\n" : "");
-                  break;
-
-                case "paypal":
-                  methodDetails = $"PayPal account: {data!.email}";
-                  break;
-
-                case "crypto":
-                  methodDetails =
-                      $"Crypto\n" +
-                      $"Address: {data!.address}\n" +
-                      $"Network: {data!.network}";
-                  break;
-
-                default:
-                  methodDetails = method.Type;
-                  break;
-              }
-            }
-            
-            string localedBodyTemplate = LocalizedTexts.GetTranslationByCountry(user.country, "withdrawalEmailBody");
-
-            string localedBody = geo != null
-                ? string.Format(localedBodyTemplate, user.fullname, req.CurrencyAmount, req.Currency!.ToUpper(), methodDetails, geo.City, geo.RegionName, geo.Country)
-                : string.Format(localedBodyTemplate, user.fullname, req.CurrencyAmount, req.Currency!.ToUpper(), methodDetails, "?", "", "");
-
-            await _emailService.SendEmailAsync(
-                to: user.email,
-                subject: "Betrader payment",
-                body: localedBody
-            );
-
-            _logger.Log.Information("[PAYMENTS] :: RetireBalance :: Success with User ID {id}", req.UserId);
-            return Ok(new { Message = $"Retired {req.CurrencyAmount}€ ({req.Coins} coins) of user {req.UserId} successfully" });
-          }
-          else
-          {
-            return NotFound(new { Message = "User not found or session expired" });
-          }
+          // 403 FORBIDDEN : User ID doesn't match JWT
+          return Forbid();
         }
-        catch (Exception ex)
+
+        string? ip = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault() ?? HttpContext.Connection.RemoteIpAddress?.ToString();
+        var geo = await AuthController.GetGeoLocationFromIp(ip!);
+
+        var user = _dbContext.Users.FirstOrDefault(u => u.fcm == req.Fcm && u.id == req.UserId);
+        if (user != null)
         {
-          await transaction.RollbackAsync();
-          _logger.Log.Error("[PAYMENTS] :: RetireBalance :: Internal Server Error: {msg}", ex.Message);
-          return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+          if (!BCrypt.Net.BCrypt.Verify(req.Password, user.password))
+          {
+            if (geo == null)
+            {
+              _logger.Log.Error("[PAYMENTS] :: INCORRECT RETIRE ATTEMPT FOR USER {user} FROM IP {ip}", req.UserId, ip ?? "UNKNOWN");
+            }
+            else
+            {
+              _logger.Log.Error("[PAYMENTS] :: INCORRECT RETIRE ATTEMPT OF {coins} coins FOR USER {user} FROM IP {ip} -> {city} ,{region} ,{country} , ISP: {isp}",
+                  req.Coins, req.UserId, ip ?? "UNKNOWN", geo.City, geo.RegionName, geo.Country, geo.ISP);
+            }
+            return BadRequest(new { Message = "Incorrect password" });
+          }
+          var path = Path.Combine(Directory.GetCurrentDirectory(), $"exchange_options_{req.Currency}.json");
+          var optionsJson = await System.IO.File.ReadAllTextAsync(path);
+          var options = System.Text.Json.JsonSerializer.Deserialize<List<ExchangeOption>>(optionsJson);
+
+          if (!options!.Any(o => o.Type == "exchange" && o.Coins == req.Coins && o.Euros == req.CurrencyAmount))
+          {
+            _logger.Log.Warning("[PAYMENTS] :: RetireBalance :: Invalid coins/amount combination: {coins} - {euros}", req.Coins, req.CurrencyAmount);
+            return BadRequest(new { Message = "Invalid coins/amount combination." });
+          }
+
+          user.pending_balance += req.CurrencyAmount;
+          user.points -= req.Coins;
+
+          var withdrawalHistory = new WithdrawalData(
+            Guid.NewGuid(),
+            req.UserId!,
+            req.Coins,
+            req.Currency!,
+            req.CurrencyAmount,
+            DateTime.UtcNow,
+            false,
+            req.Method!);
+
+          _dbContext.WithdrawalData.Add(withdrawalHistory);
+
+          await _dbContext.SaveChangesAsync();
+          await transaction.CommitAsync();
+
+          var parts = req.Method!.Split('#');
+          string methodType = parts[0];       // ej: withdrawMethodPaypal
+          string methodId = parts.Length > 1 ? parts[1] : string.Empty;
+
+          var method = await _dbContext.WithdrawalMethods
+              .FirstOrDefaultAsync(m => m.Id.ToString() == methodId);
+
+          string methodDetails = methodType; // fallback
+
+          if (method != null)
+          {
+            string? json = method.Data.RootElement.GetRawText();
+
+            dynamic? data = JsonConvert.DeserializeObject(json);
+
+            methodDetails = method.Type.ToLower() switch // si tienes una columna 'type'
+            {
+              "bank" => $"Bank transfer\n" +
+                                    $"Holder: {data!.holder}\n" +
+                                    $"IBAN: {data!.iban}\n" +
+                                    (data.bic != null ? $"BIC: {data.bic}\n" : ""),
+              "paypal" => $"PayPal account: {data!.email}",
+              "crypto" => $"Crypto\n" +
+                                    $"Address: {data!.address}\n" +
+                                    $"Network: {data!.network}",
+              _ => method.Type,
+            };
+          }
+
+          string localedBodyTemplate = LocalizedTexts.GetTranslationByCountry(user.country, "withdrawalEmailBody");
+
+          string localedBody = geo != null
+              ? string.Format(localedBodyTemplate, user.fullname, req.CurrencyAmount, req.Currency!.ToUpper(), methodDetails, geo.City, geo.RegionName, geo.Country)
+              : string.Format(localedBodyTemplate, user.fullname, req.CurrencyAmount, req.Currency!.ToUpper(), methodDetails, "?", "", "");
+
+          await _emailService.SendEmailAsync(
+          to: user.email,
+              subject: LocalizedTexts.GetTranslationByCountry(user.country ?? "UK", "emailSubjectPayment"),
+              body: localedBody
+          );
+
+          _logger.Log.Information("[PAYMENTS] :: RetireBalance :: Success with User ID {id}", req.UserId);
+          return Ok(new { Message = $"Retired {req.CurrencyAmount}€ ({req.Coins} coins) of user {req.UserId} successfully" });
         }
+        else
+        {
+          return NotFound(new { Message = "User not found or session expired" });
+        }
+      }
+      catch (Exception ex)
+      {
+        await transaction.RollbackAsync();
+        _logger.Log.Error("[PAYMENTS] :: RetireBalance :: Internal Server Error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
     }
 
@@ -414,7 +400,7 @@
       var query = raw.TrimStart('?');
       var iSig = query.IndexOf("signature=", StringComparison.Ordinal);
       if (iSig < 0) return Ok();
-      var toVerify = query.Substring(0, iSig - 1);
+      var toVerify = query[..(iSig - 1)];
       var data = Encoding.UTF8.GetBytes(toVerify);
 
       // PEM by keyId
@@ -495,12 +481,12 @@
   public class RetireBalanceRequest
   {
     public string? UserId { get; set; }
-    public string? fcm{ get; set; }
+    public string? Fcm{ get; set; }
     public string? Password { get; set; }
     public double CurrencyAmount { get; set; }
     public string? Currency { get; set; }
     public double Coins { get; set; }
-    public string? method{ get; set; }
+    public string? Method{ get; set; }
   }
 
   public class CreatePaymentIntentRequest
