@@ -745,9 +745,9 @@ namespace BetsTrading_Service.Services
         {
 
           var lastCandles = _dbContext.AssetCandles
-    .Where(ac => ac.Interval == "1h")
-    .AsNoTracking()
-    .ToList();
+              .Where(ac => ac.Interval == "1h")
+              .AsNoTracking()
+              .ToList();
 
           var dailyCloses = lastCandles
               .GroupBy(c => new { c.AssetId, Day = c.DateTime.Date })
@@ -813,17 +813,6 @@ namespace BetsTrading_Service.Services
           _dbContext.Trends.AddRange(newTrends);
           _dbContext.SaveChanges();
           transaction.Commit();
-          
-
-          foreach (User user in _dbContext.Users.Where(u => u.is_active).ToList())
-          {
-            _ = _firebaseNotificationService.SendNotificationToUser(
-                user.fcm,
-                "Betrader",
-                LocalizedTexts.GetTranslationByCountry(user.country, "updatedTrends"),
-                new() { { "type", "trends" } }
-            );
-          }
 
           _logger.Log.Information("[UpdaterService] :: UpdateTrends() ended successfully!");
         }
@@ -1081,7 +1070,7 @@ namespace BetsTrading_Service.Services
         }
 
       }, null, TimeSpan.FromMinutes(1), TimeSpan.FromHours(1));
-      _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromMinutes(3), TimeSpan.FromHours(12));
+      _trendsTimer = new Timer(ExecuteUpdateTrends!, null, TimeSpan.FromMinutes(3), TimeSpan.FromHours(1));
       _betsTimer = new Timer(_ => { _ = Task.Run(async () => { await ExecuteCheckBets(); }); }, null, TimeSpan.FromMinutes(4), TimeSpan.FromHours(1));
       _createNewContinuousBetsTimer = new Timer(_ => { _ = Task.Run(async () => { await ExecuteCleanAndCreateBets(false); }); }, null, TimeSpan.FromMinutes(5), TimeSpan.FromHours(1));
       _createNewMarketHourBetsTimer = new Timer(async _ =>
