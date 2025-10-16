@@ -55,14 +55,14 @@ namespace BetsTrading_Service.Controllers
         {
           var tmpAsset = await _dbContext.FinancialAssets
               .AsNoTracking()
-              .FirstOrDefaultAsync(a => a.Ticker == bet.ticker, ct);
+              .FirstOrDefaultAsync(a => a.ticker == bet.ticker, ct);
 
           if (tmpAsset == null) continue;
 
 
           var lastCandle = await _dbContext.AssetCandles
               .AsNoTracking()
-              .Where(c => c.AssetId == tmpAsset.Id && c.Interval == "1h")
+              .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h")
               .OrderByDescending(c => c.DateTime)
               .FirstOrDefaultAsync(ct);
 
@@ -73,11 +73,11 @@ namespace BetsTrading_Service.Controllers
 
           AssetCandle? prevCandle;
 
-          if (tmpAsset.Group == "Cryptos" || tmpAsset.Group == "Forex")
+          if (tmpAsset.group == "Cryptos" || tmpAsset.group == "Forex")
           {
             prevCandle = await _dbContext.AssetCandles
                 .AsNoTracking()
-                .Where(c => c.AssetId == tmpAsset.Id && c.Interval == "1h")
+                .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h")
                 .OrderByDescending(c => c.DateTime)
                 .Skip(24)
                 .FirstOrDefaultAsync(ct);
@@ -86,7 +86,7 @@ namespace BetsTrading_Service.Controllers
           {
             prevCandle = await _dbContext.AssetCandles
                 .AsNoTracking()
-                .Where(c => c.AssetId == tmpAsset.Id && c.Interval == "1h" && c.DateTime.Date < lastDay)
+                .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h" && c.DateTime.Date < lastDay)
                 .OrderByDescending(c => c.DateTime)
                 .FirstOrDefaultAsync(ct);
           }
@@ -98,12 +98,12 @@ namespace BetsTrading_Service.Controllers
           if (prevCandle != null)
           {
             prevClose = (double)prevCandle.Close;
-            dailyGain = prevClose == 0 ? 0 : (((double)tmpAsset.Current - prevClose) / prevClose) * 100.0;
+            dailyGain = prevClose == 0 ? 0 : (((double)tmpAsset.current - prevClose) / prevClose) * 100.0;
           }
           else
           {
-            prevClose = tmpAsset.Current * 0.95;
-            dailyGain = ((tmpAsset.Current - prevClose) / prevClose) * 100.0;
+            prevClose = tmpAsset.current * 0.95;
+            dailyGain = ((tmpAsset.current - prevClose) / prevClose) * 100.0;
           }
 
           var tmpBetZone = await _dbContext.BetZones
@@ -118,18 +118,18 @@ namespace BetsTrading_Service.Controllers
               id: bet.id,
               user_id: userInfoRequest.id!,
               ticker: bet.ticker,
-              name: tmpAsset.Name,
+              name: tmpAsset.name,
               bet_amount: bet.bet_amount,
               daily_gain: dailyGain,
               origin_value: bet.origin_value,
-              current_value: tmpAsset.Current,
+              current_value: tmpAsset.current,
               target_value: tmpBetZone.target_value,
               target_margin: tmpBetZone.bet_margin,
               target_date: tmpBetZone.start_date,
               end_date: tmpBetZone.end_date,
               target_odds: bet.origin_odds,
               target_won: bet.target_won,
-              icon_path: tmpAsset.Icon ?? "noIcon",
+              icon_path: tmpAsset.icon ?? "noIcon",
               type: tmpBetZone.type,
               date_margin: timeMargin.Days,
               bet_zone: bet.bet_zone
@@ -176,13 +176,13 @@ namespace BetsTrading_Service.Controllers
         {
           var tmpAsset = await _dbContext.FinancialAssets
               .AsNoTracking()
-              .FirstOrDefaultAsync(asset => asset.Ticker == priceBet.ticker, ct);
+              .FirstOrDefaultAsync(asset => asset.ticker == priceBet.ticker, ct);
 
           if (tmpAsset == null) continue;
 
           priceBetDTOs.Add(new PriceBetDTO(
               id: priceBet.id,
-              name: tmpAsset.Name,
+              name: tmpAsset.name,
               ticker: priceBet.ticker,
               price_bet: priceBet.price_bet,
               paid: priceBet.paid,
@@ -190,7 +190,7 @@ namespace BetsTrading_Service.Controllers
               user_id: priceBet.user_id,
               bet_date: priceBet.bet_date,
               end_date: priceBet.end_date,
-              icon_path: tmpAsset.Icon ?? "noIcon"
+              icon_path: tmpAsset.icon ?? "noIcon"
           ));
         }
 
