@@ -12,20 +12,11 @@ namespace BetsTrading_Service.Controllers
 {
   [ApiController]
   [Route("api/[controller]")]
-  public class DiditController : ControllerBase
+  public class DiditController(AppDbContext dbContext, ICustomLogger customLogger, IEmailService emailService) : ControllerBase
   {
-    private readonly AppDbContext _dbContext;
-    private readonly ICustomLogger _logger;
-    private readonly IConfiguration _config;
-    private readonly IEmailService _emailService;
-
-    public DiditController(AppDbContext dbContext, ICustomLogger customLogger, IConfiguration config, IEmailService emailService)
-    {
-      _dbContext = dbContext;
-      _logger = customLogger;
-      _config = config;
-      _emailService = emailService;
-    }
+    private readonly AppDbContext _dbContext = dbContext;
+    private readonly ICustomLogger _logger = customLogger;
+    private readonly IEmailService _emailService = emailService;
 
     [HttpPost("CreateSession")]
     public async Task<IActionResult> CreateSession([FromBody] IdRequest req)
@@ -239,8 +230,8 @@ namespace BetsTrading_Service.Controllers
 
     public static List<Dictionary<string, string>> GetTopCountries()
     {
-      return new List<Dictionary<string, string>>
-            {
+      return
+            [
                 new() { ["name"] = "Afghanistan", ["code"] = "AF" },
                 new() { ["name"] = "Albania", ["code"] = "AL" },
                 new() { ["name"] = "Algeria", ["code"] = "DZ" },
@@ -482,7 +473,7 @@ namespace BetsTrading_Service.Controllers
                 new() { ["name"] = "Zambia", ["code"] = "ZM" },
                 new() { ["name"] = "Zimbabwe", ["code"] = "ZW" },
                 new() { ["name"] = "Åland Islands", ["code"] = "AX" },
-            };
+            ];
     }
 
     public static string GetCountryCodeByName(string name)

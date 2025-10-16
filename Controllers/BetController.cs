@@ -9,22 +9,16 @@ namespace BetsTrading_Service.Controllers
 {
   [ApiController]
   [Route("api/[controller]")]
-  public class BetController : ControllerBase 
+  public class BetController(AppDbContext dbContext, ICustomLogger customLogger) : ControllerBase 
   {
-    private readonly AppDbContext _dbContext;
-    private readonly ICustomLogger _logger;
-    private int PRICE_BET_COST_0_MARGIN = 200;
-    private int PRICE_BET_COST_1_MARGIN = 350;
-    private int PRICE_BET_COST_5_MARGIN = 500;
-    private int PRICE_BET_COST_7_MARGIN = 800;
-    private int PRICE_BET_COST_10_MARGIN = 1500;
-    private int PRICE_BET_DAYS_MARGIN = 2;
-
-    public BetController(AppDbContext dbContext, ICustomLogger customLogger)
-    {
-      _dbContext = dbContext;
-      _logger = customLogger;
-    }
+    private readonly AppDbContext _dbContext = dbContext;
+    private readonly ICustomLogger _logger = customLogger;
+    private readonly int PRICE_BET_COST_0_MARGIN = 200;
+    private readonly int PRICE_BET_COST_1_MARGIN = 350;
+    private readonly int PRICE_BET_COST_5_MARGIN = 500;
+    private readonly int PRICE_BET_COST_7_MARGIN = 800;
+    private readonly int PRICE_BET_COST_10_MARGIN = 1500;
+    private readonly int PRICE_BET_DAYS_MARGIN = 2;
 
     [HttpPost("UserBets")]
     public async Task<IActionResult> UserBets([FromBody] idRequest userInfoRequest, CancellationToken ct)
@@ -43,7 +37,7 @@ namespace BetsTrading_Service.Controllers
             .Where(bet => bet.user_id == userInfoRequest.id)
             .ToListAsync(ct);
 
-        if (!bets.Any())
+        if (bets.Count == 0)
         {
           _logger.Log.Debug("[INFO] :: UserBets :: Empty list of bets on userID: {msg}", userInfoRequest.id);
           return NotFound(new { Message = "User has no bets!" });
@@ -92,27 +86,34 @@ namespace BetsTrading_Service.Controllers
           }
 
 
-          double prevClose;
-          double dailyGain;
-
-          if (prevCandle != null)
-          {
-            prevClose = (double)prevCandle.Close;
-            dailyGain = prevClose == 0 ? 0 : (((double)tmpAsset.current - prevClose) / prevClose) * 100.0;
-          }
-          else
-          {
-            prevClose = tmpAsset.current * 0.95;
-            dailyGain = ((tmpAsset.current - prevClose) / prevClose) * 100.0;
-          }
+         
+          double necessaryGain;
 
           var tmpBetZone = await _dbContext.BetZones
               .AsNoTracking()
               .FirstOrDefaultAsync(bz => bz.id == bet.bet_zone, ct);
 
+          necessaryGain = (tmpBetZone != null) ? ((tmpBetZone.target_value-tmpAsset.current) / tmpAsset.current) : 0;
+
           if (tmpBetZone == null) continue;
 
-          TimeSpan timeMargin = tmpBetZone.end_date - tmpBetZone.start_date;
+          double topLimit = tmpBetZone.target_value + (tmpBetZone.target_value * tmpBetZone.bet_margin/200.0);
+          double bottomLimit = tmpBetZone.target_value - (tmpBetZone.target_value * tmpBetZone.bet_margin/200.0);
+
+          if (tmpAsset.current < bottomLimit) {
+            necessaryGain = (tmpBetZone != null) ? ((bottomLimit - tmpAsset.current) / tmpAsset.current) : 0;
+          }
+          if (tmpAsset.current > topLimit)
+          {
+            necessaryGain = (tmpBetZone != null) ? ((topLimit - tmpAsset.current) / tmpAsset.current) : 0;
+          }
+          else if (tmpAsset.current >= bottomLimit && tmpAsset.current <= topLimit) {
+            necessaryGain = 0.0;
+          }
+
+
+
+          TimeSpan timeMargin = tmpBetZone!.end_date - tmpBetZone.start_date;
 
           betDTOs.Add(new BetDTO(
               id: bet.id,
@@ -120,7 +121,7 @@ namespace BetsTrading_Service.Controllers
               ticker: bet.ticker,
               name: tmpAsset.name,
               bet_amount: bet.bet_amount,
-              daily_gain: dailyGain,
+              necessary_gain: necessaryGain*100,
               origin_value: bet.origin_value,
               current_value: tmpAsset.current,
               target_value: tmpBetZone.target_value,
@@ -164,7 +165,7 @@ namespace BetsTrading_Service.Controllers
             .Where(bet => bet.user_id == userInfoRequest.id)
             .ToListAsync(ct);
 
-        if (!priceBets.Any())
+        if (priceBets.Count == 0)
         {
           _logger.Log.Debug("[INFO] :: UserPriceBets :: Empty list of price bets on userID: {msg}", userInfoRequest.id);
           return NotFound(new { Message = "User has no bets!" });
@@ -208,42 +209,40 @@ namespace BetsTrading_Service.Controllers
     [HttpPost("NewBet")]
     public async Task<IActionResult> NewBet([FromBody] newBetRequest betRequest)
     {
-      using (var transaction = await _dbContext.Database.BeginTransactionAsync())
+      using var transaction = await _dbContext.Database.BeginTransactionAsync();
+      try
       {
-        try
+        var betZone = await _dbContext.BetZones.FirstOrDefaultAsync(bz => bz.id == betRequest.bet_zone);
+        var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.fcm == betRequest.fcm && u.id == betRequest.user_id);
+
+        if (betZone == null)
+          throw new Exception("Unexistent bet zone");
+        if (user == null)
+          throw new Exception("Unexistent user");
+        if (betRequest.bet_amount > user.points)
+          throw new Exception("Not enough points");
+
+        var newBet = new Bet(user_id: betRequest.user_id!, ticker: betRequest.ticker!, bet_amount: betRequest.bet_amount,
+                             origin_value: betRequest.origin_value, origin_odds: betZone.target_odds, target_value: betZone!.target_value,
+                             target_margin: betZone.bet_margin, target_won: false, finished: false, paid: false, bet_zone: betRequest.bet_zone);
+
+        if (newBet != null)
         {
-          var betZone = await _dbContext.BetZones.FirstOrDefaultAsync(bz => bz.id == betRequest.bet_zone);
-          var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.fcm == betRequest.fcm && u.id == betRequest.user_id);
-
-          if (betZone == null) 
-            throw new Exception("Unexistent bet zone");
-          if (user == null)
-            throw new Exception("Unexistent user");
-          if (betRequest.bet_amount > user.points)
-            throw new Exception("Not enough points");
-
-          var newBet = new Bet(user_id: betRequest.user_id!, ticker: betRequest.ticker!, bet_amount: betRequest.bet_amount, 
-                               origin_value: betRequest.origin_value, origin_odds: betZone.target_odds, target_value: betZone!.target_value, 
-                               target_margin: betZone.bet_margin, target_won: false, finished: false, paid: false, bet_zone: betRequest.bet_zone);
-
-          if (newBet != null)
-          {
-            _dbContext.Bet.Add(newBet);
-            user.points = user.points - Math.Abs(betRequest.bet_amount);
-            await _dbContext.SaveChangesAsync();
-            await transaction.CommitAsync();
-            _logger.Log.Information("[INFO] :: NewBet :: Bet created successfully for user: {msg}", betRequest.user_id);
-            return Ok(new { });
-          }
-
-          throw new Exception("Unknown error");
+          _dbContext.Bet.Add(newBet);
+          user.points -= Math.Abs(betRequest.bet_amount);
+          await _dbContext.SaveChangesAsync();
+          await transaction.CommitAsync();
+          _logger.Log.Information("[INFO] :: NewBet :: Bet created successfully for user: {msg}", betRequest.user_id);
+          return Ok(new { });
         }
-        catch (Exception ex)
-        {
-          await transaction.RollbackAsync();
-          _logger.Log.Error("[INFO] :: NewBet :: Internal server error: {msg}", ex.Message);
-          return StatusCode(500, new { Message = "Server error", Error = ex.Message });
-        }
+
+        throw new Exception("Unknown error");
+      }
+      catch (Exception ex)
+      {
+        await transaction.RollbackAsync();
+        _logger.Log.Error("[INFO] :: NewBet :: Internal server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
     }
 
@@ -255,7 +254,7 @@ namespace BetsTrading_Service.Controllers
       {
         var priceBets = await _dbContext.PriceBets.Where(pb => pb.user_id == userInfoRequest.id && pb.paid == false).ToListAsync();
 
-        if (!priceBets.Any())
+        if (priceBets.Count == 0)
         {
           _logger.Log.Warning("[INFO] :: CurrentPriceBets :: Empty list of price bets on userID: {msg}", userInfoRequest.id);
           return NotFound(new { Message = "User has no current price bets!" });
@@ -277,7 +276,7 @@ namespace BetsTrading_Service.Controllers
       {
         var priceBets = await _dbContext.PriceBets.Where(pb => pb.user_id == userInfoRequest.id && pb.paid == true).ToListAsync();
 
-        if (!priceBets.Any())
+        if (priceBets.Count == 0)
         {
           _logger.Log.Warning("[INFO] :: HistoricPriceBets :: Empty list of price bets on userID: {msg}", userInfoRequest.id);
           return NotFound(new { Message = "User has no historic price bets!" });
@@ -295,74 +294,72 @@ namespace BetsTrading_Service.Controllers
     [HttpPost("NewPriceBet")]
     public async Task<IActionResult> NewPriceBet([FromBody] newPriceBetRequest priceBetRequest)
     {
-      using (var transaction = await _dbContext.Database.BeginTransactionAsync())
+      using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction = await _dbContext.Database.BeginTransactionAsync();
+      try
       {
-        try
+        var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.fcm == priceBetRequest.fcm && u.id == priceBetRequest.user_id);
+        var existingBet = await _dbContext.PriceBets.FirstOrDefaultAsync(pb => pb.ticker == priceBetRequest.ticker && pb.end_date == priceBetRequest.end_date);
+        int betCost = GetBetCostFromMargin(priceBetRequest.margin);
+
+        if (user == null) throw new Exception("Unexistent user or session expired!");
+        if (user.points < betCost) throw new BetException("NO POINTS");
+        if (existingBet != null) throw new BetException("EXISTING BET");
+        if (priceBetRequest.end_date < DateTime.UtcNow.AddDays(PRICE_BET_DAYS_MARGIN)) throw new BetException("NO TIME");
+
+        var newPriceBet = new PriceBet(user_id: priceBetRequest.user_id!, ticker: priceBetRequest.ticker!,
+                                price_bet: priceBetRequest.price_bet, margin: priceBetRequest.margin, end_date: priceBetRequest.end_date);
+
+        if (newPriceBet != null)
         {
-          var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.fcm == priceBetRequest.fcm && u.id == priceBetRequest.user_id);
-          var existingBet = await _dbContext.PriceBets.FirstOrDefaultAsync(pb => pb.ticker == priceBetRequest.ticker && pb.end_date == priceBetRequest.end_date);
-          int betCost = GetBetCostFromMargin(priceBetRequest.margin);
-
-          if (user == null) throw new Exception("Unexistent user or session expired!");
-          if (user.points < betCost) throw new BetException( "NO POINTS");
-          if (existingBet != null) throw new BetException("EXISTING BET");
-          if (priceBetRequest.end_date < DateTime.UtcNow.AddDays(PRICE_BET_DAYS_MARGIN)) throw new BetException("NO TIME");
-
-          var newPriceBet = new PriceBet(user_id: priceBetRequest.user_id!, ticker: priceBetRequest.ticker!, 
-                                  price_bet: priceBetRequest.price_bet, margin: priceBetRequest.margin, end_date: priceBetRequest.end_date);  
-
-          if (newPriceBet != null)
-          {
-            _dbContext.PriceBets.Add(newPriceBet);
-            user.points -= betCost;
-            await _dbContext.SaveChangesAsync();
-            await transaction.CommitAsync();
-            _logger.Log.Information("[INFO] :: NewPriceBet :: Exact-price bet created successfully for user {0} on ticker {1}", priceBetRequest.user_id, priceBetRequest.ticker);
-            return Ok(new { });
-          }
-
-          throw new Exception("Unknown error");
+          _dbContext.PriceBets.Add(newPriceBet);
+          user.points -= betCost;
+          await _dbContext.SaveChangesAsync();
+          await transaction.CommitAsync();
+          _logger.Log.Information("[INFO] :: NewPriceBet :: Exact-price bet created successfully for user {0} on ticker {1}", priceBetRequest.user_id, priceBetRequest.ticker);
+          return Ok(new { });
         }
-        catch (BetException ex)
-        {
-          if (ex.Message == "NO TIME")
-          {
-            await transaction.RollbackAsync();
-            _logger.Log.Warning("[WARN] :: NewPriceBet :: Not enough time for price bet: {0}", ex.Message);
-            return StatusCode(410, new { Message = "Not enough time", Error = ex.Message });
 
-          }
-
-          if (ex.Message == "NO POINTS")
-          {
-            await transaction.RollbackAsync();
-            _logger.Log.Warning("[WARN] :: NewPriceBet :: Not enough points for price bet: {0}", ex.Message);
-            return StatusCode(420, new { Message = "Not enough points", Error = ex.Message });
-
-          }
-
-          if (ex.Message == "EXISTING BET")
-          {
-            await transaction.RollbackAsync();
-            _logger.Log.Warning("[WARN] :: NewPriceBet :: Already-existing exact same price bet: {0}", ex.Message);
-            return StatusCode(430, new { Message = "Already existing bet", Error = ex.Message });
-
-          }
-          else
-          {
-            await transaction.RollbackAsync();
-            _logger.Log.Error("[ERR] :: NewPriceBet :: Unknown exception: ", ex.Message);
-            return StatusCode(400, new { Message = "Unknown exception", Error = ex.Message });
-
-          }
-
-        }
-        catch (Exception ex)
+        throw new Exception("Unknown error");
+      }
+      catch (BetException ex)
+      {
+        if (ex.Message == "NO TIME")
         {
           await transaction.RollbackAsync();
-          _logger.Log.Error("[INFO] :: NewPriceBet :: Internal server error: {msg}", ex.Message);
-          return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+          _logger.Log.Warning("[WARN] :: NewPriceBet :: Not enough time for price bet: {0}", ex.Message);
+          return StatusCode(410, new { Message = "Not enough time", Error = ex.Message });
+
         }
+
+        if (ex.Message == "NO POINTS")
+        {
+          await transaction.RollbackAsync();
+          _logger.Log.Warning("[WARN] :: NewPriceBet :: Not enough points for price bet: {0}", ex.Message);
+          return StatusCode(420, new { Message = "Not enough points", Error = ex.Message });
+
+        }
+
+        if (ex.Message == "EXISTING BET")
+        {
+          await transaction.RollbackAsync();
+          _logger.Log.Warning("[WARN] :: NewPriceBet :: Already-existing exact same price bet: {0}", ex.Message);
+          return StatusCode(430, new { Message = "Already existing bet", Error = ex.Message });
+
+        }
+        else
+        {
+          await transaction.RollbackAsync();
+          _logger.Log.Error("[ERR] :: NewPriceBet :: Unknown exception: ", ex.Message);
+          return StatusCode(400, new { Message = "Unknown exception", Error = ex.Message });
+
+        }
+
+      }
+      catch (Exception ex)
+      {
+        await transaction.RollbackAsync();
+        _logger.Log.Error("[INFO] :: NewPriceBet :: Internal server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
     }
 
@@ -374,7 +371,7 @@ namespace BetsTrading_Service.Controllers
       {
         var betZones = await _dbContext.BetZones.Where(bz => bz.ticker == ticker.id && bz.timeframe == ticker.timeframe && bz.active == true).ToListAsync();
 
-        if (betZones.Any())
+        if (betZones.Count != 0)
         {
           _logger.Log.Debug("[INFO] :: GetBets :: Success on ticker: {msg}", ticker.id);
           return Ok(new { bets = betZones });
@@ -412,7 +409,7 @@ namespace BetsTrading_Service.Controllers
           if (null != betZone)
           {
             _logger.Log.Debug("[INFO] :: GetBetZone :: Success on bet ID: {msg}", betID.id);
-            return Ok(new { bets = new List<BetZone> { new BetZone(betZone.ticker, betZone.target_value, betZone.bet_margin,
+            return Ok(new { bets = new List<BetZone> { new(betZone.ticker, betZone.target_value, betZone.bet_margin,
                                                             betZone.start_date, betZone.end_date, origin_odds, betZone.timeframe) } });
           }
           else
@@ -438,33 +435,31 @@ namespace BetsTrading_Service.Controllers
     [HttpPost("DeleteRecentBet")]
     public async Task<IActionResult> DeleteRecentBet([FromBody] idRequest betIdRequest)
     {
-      using (var transaction = await _dbContext.Database.BeginTransactionAsync())
+      using var transaction = await _dbContext.Database.BeginTransactionAsync();
+      try
       {
-        try
-        {
-          var bet = await _dbContext.Bet.FirstOrDefaultAsync(u => u.id.ToString() == betIdRequest.id);
+        var bet = await _dbContext.Bet.FirstOrDefaultAsync(u => u.id.ToString() == betIdRequest.id);
 
-          if (bet != null)
-          {
-            _dbContext.Bet.Remove(bet);
-            await _dbContext.SaveChangesAsync();
-            await transaction.CommitAsync();
-            _logger.Log.Debug("[INFO] :: DeleteRecentBet :: Bet removed successfully with ID: {msg}", betIdRequest.id);
-            return Ok(new { });
-          }
-          else
-          {
-            await transaction.RollbackAsync();
-            _logger.Log.Warning("[INFO] :: DeleteRecentBet :: Bet not found for ID: {msg}", betIdRequest.id);
-            return NotFound(new { Message = "Bet not found" });
-          }
+        if (bet != null)
+        {
+          _dbContext.Bet.Remove(bet);
+          await _dbContext.SaveChangesAsync();
+          await transaction.CommitAsync();
+          _logger.Log.Debug("[INFO] :: DeleteRecentBet :: Bet removed successfully with ID: {msg}", betIdRequest.id);
+          return Ok(new { });
         }
-        catch (Exception ex)
+        else
         {
           await transaction.RollbackAsync();
-          _logger.Log.Error("[INFO] :: DeleteRecentBet :: Server error: {msg}", ex.Message);
-          return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+          _logger.Log.Warning("[INFO] :: DeleteRecentBet :: Bet not found for ID: {msg}", betIdRequest.id);
+          return NotFound(new { Message = "Bet not found" });
         }
+      }
+      catch (Exception ex)
+      {
+        await transaction.RollbackAsync();
+        _logger.Log.Error("[INFO] :: DeleteRecentBet :: Server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
     }
 
@@ -517,30 +512,23 @@ namespace BetsTrading_Service.Controllers
     #region Private Methods
     private int GetBetCostFromMargin(double margin)
     {
-      switch(margin)
+      return margin switch
       {
-        case 0.0:
-          return PRICE_BET_COST_0_MARGIN;
-        case 0.01:
-          return PRICE_BET_COST_1_MARGIN;
-        case 0.05:
-          return PRICE_BET_COST_5_MARGIN;
-        case 0.075:
-          return PRICE_BET_COST_7_MARGIN;
-        case 0.1:
-          return PRICE_BET_COST_10_MARGIN;
-        default: 
-          return PRICE_BET_COST_0_MARGIN;
-      }
+        0.0 => PRICE_BET_COST_0_MARGIN,
+        0.01 => PRICE_BET_COST_1_MARGIN,
+        0.05 => PRICE_BET_COST_5_MARGIN,
+        0.075 => PRICE_BET_COST_7_MARGIN,
+        0.1 => PRICE_BET_COST_10_MARGIN,
+        _ => PRICE_BET_COST_0_MARGIN,
+      };
     }
 
     #endregion
 
   }
 
-  public class BetException : Exception
+  public class BetException(string msg) : Exception(msg)
   {
-    public BetException(string msg) : base(msg) { }
   }
 
 }

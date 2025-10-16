@@ -8,16 +8,9 @@ namespace BetsTrading_Service.Controllers
 {
   [ApiController]
   [Route("api/[controller]")]
-  public class RewardsController : ControllerBase
+  public class RewardsController(AppDbContext db) : ControllerBase
   {
-    private readonly AppDbContext _db;
-    private readonly ILogger<RewardsController> _log;
-
-    public RewardsController(AppDbContext db, ILogger<RewardsController> log)
-    {
-      _db = db;
-      _log = log;
-    }
+    private readonly AppDbContext _db = db;
 
     static string NewBase64UrlNonce(int bytes = 32)
     {

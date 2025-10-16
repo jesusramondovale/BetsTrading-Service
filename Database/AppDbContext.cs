@@ -4,7 +4,7 @@
   using Microsoft.EntityFrameworkCore;
   using Serilog;
 
-  public class AppDbContext : DbContext
+  public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
   {
     private static readonly ILoggerFactory _loggerFactory = LoggerFactory.Create(builder =>
     {
@@ -14,10 +14,6 @@
           .CreateLogger();
       builder.AddSerilog();
     });
-
-    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
-    {
-    }
 
     // Especifica el esquema "BetsTrading" al definir el DbSet
     public DbSet<User> Users { get; set; }

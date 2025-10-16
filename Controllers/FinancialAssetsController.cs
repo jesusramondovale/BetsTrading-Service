@@ -10,16 +10,10 @@ namespace BetsTrading_Service.Controllers
 {
   [ApiController]
   [Route("api/[controller]")]
-  public class FinancialAssetsController : ControllerBase
+  public class FinancialAssetsController(AppDbContext context, ICustomLogger customLogger) : ControllerBase
   {
-    private readonly AppDbContext _context;
-    private readonly ICustomLogger _logger;
-
-    public FinancialAssetsController(AppDbContext context, ICustomLogger customLogger)
-    {
-      _context = context;
-      _logger = customLogger;
-    }
+    private readonly AppDbContext _context = context;
+    private readonly ICustomLogger _logger = customLogger;
 
     // GET: api/FinancialAssets (all)
     [HttpGet]
