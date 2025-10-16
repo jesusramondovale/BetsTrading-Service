@@ -13,19 +13,11 @@ namespace BetsTrading_Service.Controllers
 {
   [ApiController]
   [Route("api/[controller]")]
-  public class InfoController : ControllerBase
+  public class InfoController(IWebHostEnvironment env, AppDbContext dbContext, ICustomLogger customLogger) : ControllerBase
   {
-    private readonly AppDbContext _dbContext;
-    private readonly ICustomLogger _logger;
-    private readonly IWebHostEnvironment _env;
-
-    public InfoController(IWebHostEnvironment env, AppDbContext dbContext, ICustomLogger customLogger)
-    {
-      _env = env;
-      _dbContext = dbContext;
-      _logger = customLogger;
-
-    }
+    private readonly AppDbContext _dbContext = dbContext;
+    private readonly ICustomLogger _logger = customLogger;
+    private readonly IWebHostEnvironment _env = env;
 
     [AllowAnonymous]
     [HttpGet("AddAps")]
@@ -138,13 +130,13 @@ namespace BetsTrading_Service.Controllers
         {
           var tmpAsset = await _dbContext.FinancialAssets
               .AsNoTracking()
-              .FirstOrDefaultAsync(fa => fa.ticker == fav.ticker, ct);
+              .FirstOrDefaultAsync(fa => fa.Ticker == fav.ticker, ct);
 
           if (tmpAsset == null) continue;
 
           var lastCandle = await _dbContext.AssetCandles
               .AsNoTracking()
-              .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h")
+              .Where(c => c.AssetId == tmpAsset.Id && c.Interval == "1h")
               .OrderByDescending(c => c.DateTime)
               .FirstOrDefaultAsync(ct);
 
@@ -154,11 +146,11 @@ namespace BetsTrading_Service.Controllers
 
           AssetCandle? prevCandle;
 
-          if (tmpAsset.group == "Cryptos" || tmpAsset.group == "Forex")
+          if (tmpAsset.Group == "Cryptos" || tmpAsset.Group == "Forex")
           {
             prevCandle = await _dbContext.AssetCandles
                 .AsNoTracking()
-                .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h")
+                .Where(c => c.AssetId == tmpAsset.Id && c.Interval == "1h")
                 .OrderByDescending(c => c.DateTime)
                 .Skip(24)
                 .FirstOrDefaultAsync(ct);
@@ -167,7 +159,7 @@ namespace BetsTrading_Service.Controllers
           {
             prevCandle = await _dbContext.AssetCandles
                 .AsNoTracking()
-                .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h" && c.DateTime.Date < lastDay)
+                .Where(c => c.AssetId == tmpAsset.Id && c.Interval == "1h" && c.DateTime.Date < lastDay)
                 .OrderByDescending(c => c.DateTime)
                 .FirstOrDefaultAsync(ct);
           }
@@ -178,18 +170,18 @@ namespace BetsTrading_Service.Controllers
           if (prevCandle != null)
           {
             prevClose = (double)prevCandle.Close;
-            dailyGain = prevClose == 0 ? 0 : (((double)tmpAsset.current - prevClose) / prevClose) * 100.0;
+            dailyGain = prevClose == 0 ? 0 : (((double)tmpAsset.Current - prevClose) / prevClose) * 100.0;
           }
           else
           {
-            prevClose = tmpAsset.current * 0.95;
-            dailyGain = ((tmpAsset.current - prevClose) / prevClose) * 100.0;
+            prevClose = tmpAsset.Current * 0.95;
+            dailyGain = ((tmpAsset.Current - prevClose) / prevClose) * 100.0;
           }
 
           favsDTO.Add(new FavoriteDTO(
               id: fav.id,
-              name: tmpAsset.name,
-              icon: tmpAsset.icon ?? "noIcon",
+              name: tmpAsset.Name,
+              icon: tmpAsset.Icon ?? "noIcon",
               daily_gain: dailyGain,
               close: prevClose,
               current: (double)lastCandle.Close,
@@ -241,35 +233,33 @@ namespace BetsTrading_Service.Controllers
         _logger.Log.Error("[INFO] :: NewFavorite :: Internal server error: {msg}", ex.Message);
         return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
-      using (var transaction = await _dbContext.Database.BeginTransactionAsync())
+      using var transaction = await _dbContext.Database.BeginTransactionAsync();
+      try
       {
-        try
+        var assetts = _dbContext.FinancialAssets.ToList();
+        var trends = _dbContext.Trends.ToList();
+        var fav = _dbContext.Favorites.FirstOrDefault(fav => fav.user_id == newFavRequest.user_id && fav.ticker == newFavRequest.ticker);
+
+        if (null != fav)
         {
-          var assetts = _dbContext.FinancialAssets.ToList();
-          var trends = _dbContext.Trends.ToList();
-          var fav = _dbContext.Favorites.FirstOrDefault(fav => fav.user_id == newFavRequest.user_id && fav.ticker == newFavRequest.ticker);
-
-          if (null != fav)
-          {
-            _dbContext.Favorites.Remove(fav);
-            await _dbContext.SaveChangesAsync();
-            await transaction.CommitAsync();
-            return Ok(new { });
-          }
-
-          var newFavorite = new Favorite(id: Guid.NewGuid().ToString(), user_id: newFavRequest.user_id!, ticker: newFavRequest.ticker!);
-          _dbContext.Favorites.Add(newFavorite);
+          _dbContext.Favorites.Remove(fav);
           await _dbContext.SaveChangesAsync();
           await transaction.CommitAsync();
-
           return Ok(new { });
         }
-        catch (Exception ex)
-        {
-          await transaction.RollbackAsync();
-          _logger.Log.Error("[INFO] :: NewFavorite :: Internal server error: {msg}", ex.Message);
-          return StatusCode(500, new { Message = "Server error", Error = ex.Message });
-        }
+
+        var newFavorite = new Favorite(id: Guid.NewGuid().ToString(), user_id: newFavRequest.user_id!, ticker: newFavRequest.ticker!);
+        _dbContext.Favorites.Add(newFavorite);
+        await _dbContext.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        return Ok(new { });
+      }
+      catch (Exception ex)
+      {
+        await transaction.RollbackAsync();
+        _logger.Log.Error("[INFO] :: NewFavorite :: Internal server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
     }
 
@@ -297,7 +287,7 @@ namespace BetsTrading_Service.Controllers
             .AsNoTracking()
             .ToListAsync(ct);
 
-        if (!trends.Any())
+        if (trends.Count == 0)
         {
           _logger.Log.Warning("[INFO] :: Trends :: Empty list of trends to ID: {msg}", userInfoRequest.id);
           return NotFound(new { Message = "ERROR :: No trends!" });
@@ -312,27 +302,27 @@ namespace BetsTrading_Service.Controllers
 
           var tmpAsset = await _dbContext.FinancialAssets
               .AsNoTracking()
-              .FirstOrDefaultAsync(a => a.ticker == trend.ticker, ct);
+              .FirstOrDefaultAsync(a => a.Ticker == trend.ticker, ct);
                    
 
           var lastCandle = await _dbContext.AssetCandles
               .AsNoTracking()
-              .Where(c => c.AssetId == tmpAsset!.id && c.Interval == "1h")
+              .Where(c => c.AssetId == tmpAsset!.Id && c.Interval == "1h")
               .OrderByDescending(c => c.DateTime)
               .FirstOrDefaultAsync(ct);
                     
 
           if (lastCandle == null)
           {
-            prevClose = tmpAsset!.current / ((100.0+trend.daily_gain)/100.0);
+            prevClose = tmpAsset!.Current / ((100.0+trend.daily_gain)/100.0);
             
             trendDTOs.Add(new TrendDTO(
              id: trend.id,
-             name: tmpAsset.name,
-             icon: tmpAsset.icon ?? "noIcon",
+             name: tmpAsset.Name,
+             icon: tmpAsset.Icon ?? "noIcon",
              daily_gain: trend.daily_gain,
              close: prevClose,
-             current: tmpAsset.current,
+             current: tmpAsset.Current,
              ticker: trend.ticker));
             continue;
           }
@@ -341,11 +331,11 @@ namespace BetsTrading_Service.Controllers
           AssetCandle? finalCandle;
           
 
-          if (tmpAsset!.group == "Cryptos" || tmpAsset.group == "Forex")
+          if (tmpAsset!.Group == "Cryptos" || tmpAsset.Group == "Forex")
           {
             finalCandle = await _dbContext.AssetCandles
                 .AsNoTracking()
-                .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h" && c.DateTime.Date == lastDay)
+                .Where(c => c.AssetId == tmpAsset.Id && c.Interval == "1h" && c.DateTime.Date == lastDay)
                 .OrderBy(c => c.DateTime)
                 .FirstOrDefaultAsync(ct);
           }
@@ -356,12 +346,12 @@ namespace BetsTrading_Service.Controllers
 
           if (finalCandle == null)
           {
-            prevClose = tmpAsset.current * 0.95;
-            dailyGain = ((tmpAsset.current - prevClose) / prevClose) * 100.0;
+            prevClose = tmpAsset.Current * 0.95;
+            dailyGain = ((tmpAsset.Current - prevClose) / prevClose) * 100.0;
             trendDTOs.Add(new TrendDTO(
              id: trend.id,
-             name: tmpAsset.name,
-             icon: tmpAsset.icon ?? "noIcon",
+             name: tmpAsset.Name,
+             icon: tmpAsset.Icon ?? "noIcon",
              daily_gain: dailyGain,
              close: prevClose,
              current: (double)finalCandle!.Close,
@@ -372,7 +362,7 @@ namespace BetsTrading_Service.Controllers
 
           var prevCandle = await _dbContext.AssetCandles
               .AsNoTracking()
-              .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h" && c.DateTime.Date < lastDay)
+              .Where(c => c.AssetId == tmpAsset.Id && c.Interval == "1h" && c.DateTime.Date < lastDay)
               .OrderByDescending(c => c.DateTime)
               .FirstOrDefaultAsync(ct);
 
@@ -385,14 +375,14 @@ namespace BetsTrading_Service.Controllers
           }
           else
           {
-            prevClose = tmpAsset.current * 0.95;
-            dailyGain = ((tmpAsset.current - prevClose) / prevClose) * 100.0;
+            prevClose = tmpAsset.Current * 0.95;
+            dailyGain = ((tmpAsset.Current - prevClose) / prevClose) * 100.0;
           }
 
           trendDTOs.Add(new TrendDTO(
               id: trend.id,
-              name: tmpAsset.name,
-              icon: tmpAsset.icon ?? "noIcon",
+              name: tmpAsset.Name,
+              icon: tmpAsset.Icon ?? "noIcon",
               daily_gain: dailyGain,
               close: prevClose,
               current: (double)finalCandle.Close,
@@ -439,7 +429,7 @@ namespace BetsTrading_Service.Controllers
 
         var topUsers = _dbContext.Users.OrderByDescending(u => u.points).Take(50).ToList();
 
-        if (topUsers.Any())
+        if (!(topUsers.Count == 0))
         {
           _logger.Log.Debug("[INFO] :: TopUsers :: success with user ID: {msg}", userInfoRequest.id);
           return Ok(new
@@ -468,7 +458,7 @@ namespace BetsTrading_Service.Controllers
       {
         var topUsersByCountry = _dbContext.Users.Where(u => u.country == countryCode.id).OrderByDescending(u => u.points).Take(50).ToList();
 
-        if (topUsersByCountry.Any())
+        if (!(topUsersByCountry.Count == 0))
         {
           _logger.Log.Debug("[INFO] :: TopUsersByCountry :: success with country code: {msg}", countryCode.id);
           return Ok(new
@@ -519,41 +509,39 @@ namespace BetsTrading_Service.Controllers
       }
 
 
-      using (var transaction = await _dbContext.Database.BeginTransactionAsync())
+      using var transaction = await _dbContext.Database.BeginTransactionAsync();
+      try
       {
-        try
+        var user = _dbContext.Users.FirstOrDefault(u => u.id == uploadPicImageRequest.id);
+
+        if (user != null && uploadPicImageRequest.Profilepic != "")
         {
-          var user = _dbContext.Users.FirstOrDefault(u => u.id == uploadPicImageRequest.id);
-
-          if (user != null && uploadPicImageRequest.Profilepic != "")
+          if (user.is_active && user.token_expiration > DateTime.UtcNow)
           {
-            if (user.is_active && user.token_expiration > DateTime.UtcNow)
-            {
-              user.profile_pic = uploadPicImageRequest.Profilepic;
-              await _dbContext.SaveChangesAsync();
-              await transaction.CommitAsync();
+            user.profile_pic = uploadPicImageRequest.Profilepic;
+            await _dbContext.SaveChangesAsync();
+            await transaction.CommitAsync();
 
-              _logger.Log.Debug("[INFO] :: UploadPic :: Success on profile pic updating for ID: {msg}", uploadPicImageRequest.id);
-              return Ok(new { Message = "Profile pic successfully updated!", UserId = user.id });
-            }
-            else
-            {
-              _logger.Log.Warning("[INFO] :: UploadPic :: No active session or session expired for ID: {msg}", uploadPicImageRequest.id);
-              return BadRequest(new { Message = "No active session or session expired" });
-            }
+            _logger.Log.Debug("[INFO] :: UploadPic :: Success on profile pic updating for ID: {msg}", uploadPicImageRequest.id);
+            return Ok(new { Message = "Profile pic successfully updated!", UserId = user.id });
           }
           else
           {
-            _logger.Log.Error("[INFO] :: UploadPic :: User token not found: {msg}", uploadPicImageRequest.id);
-            return NotFound(new { Message = "User token not found" });
+            _logger.Log.Warning("[INFO] :: UploadPic :: No active session or session expired for ID: {msg}", uploadPicImageRequest.id);
+            return BadRequest(new { Message = "No active session or session expired" });
           }
         }
-        catch (Exception ex)
+        else
         {
-          await transaction.RollbackAsync();
-          _logger.Log.Error("[INFO] :: UploadPic :: Internal server error: {msg}", ex.Message);
-          return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+          _logger.Log.Error("[INFO] :: UploadPic :: User token not found: {msg}", uploadPicImageRequest.id);
+          return NotFound(new { Message = "User token not found" });
         }
+      }
+      catch (Exception ex)
+      {
+        await transaction.RollbackAsync();
+        _logger.Log.Error("[INFO] :: UploadPic :: Internal server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
     }
 
@@ -707,7 +695,7 @@ namespace BetsTrading_Service.Controllers
         var filtered = parsed?
             .Where(item => item.ContainsKey("type") &&
                            item["type"]?.ToString()?.Equals(currencyandTypeRequest.type, StringComparison.OrdinalIgnoreCase) == true)
-            .ToList() ?? new();
+            .ToList() ?? [];
 
         return Ok(filtered);
       }

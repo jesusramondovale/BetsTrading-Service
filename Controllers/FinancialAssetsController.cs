@@ -35,7 +35,7 @@ namespace BetsTrading_Service.Controllers
     {
 
       var financialAssets = await _context.FinancialAssets
-        .Where(fa => fa.group == group.id).OrderByDescending(fa => fa.current)
+        .Where(fa => fa.Group == group.id).OrderByDescending(fa => fa.Current)
         .ToListAsync();
 
       if (financialAssets == null)
@@ -52,7 +52,7 @@ namespace BetsTrading_Service.Controllers
     public async Task<ActionResult<IEnumerable<FinancialAsset>>> GetFinancialAssetsByCountry([FromBody] idRequest country)
     {
       var financialAssets = await _context.FinancialAssets
-        .Where(fa => fa.country == country.id)
+        .Where(fa => fa.Country == country.id)
         .ToListAsync();
 
       if (financialAssets == null)
@@ -73,14 +73,14 @@ namespace BetsTrading_Service.Controllers
 
       var financialAsset = await _context.FinancialAssets
           .AsNoTracking()
-          .FirstOrDefaultAsync(fa => fa.ticker == symbol.id, ct);
+          .FirstOrDefaultAsync(fa => fa.Ticker == symbol.id, ct);
 
       if (financialAsset == null)
         return NotFound();
 
       var candles = await _context.AssetCandles
           .AsNoTracking()
-          .Where(c => c.AssetId == financialAsset.id && c.Interval == "1h")
+          .Where(c => c.AssetId == financialAsset.Id && c.Interval == "1h")
           .OrderByDescending(c => c.DateTime) 
           .ToListAsync(ct);
 
