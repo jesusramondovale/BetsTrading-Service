@@ -4,20 +4,20 @@
   {
     public VerificationCode() { }
 
-    public VerificationCode(string email, string code, DateTime createdAt, DateTime expiresAt)
+    public VerificationCode(string anEmail, string aCode, DateTime aCreatedAt, DateTime anExpiresAt)
     {
-      Email = email;
-      Code = code;
-      CreatedAt = createdAt;
-      ExpiresAt = expiresAt;
-      Verified = false;
+      email = anEmail;
+      code = aCode;
+      createdAt = aCreatedAt;
+      expiresAt = anExpiresAt;
+      verified = false;
     }
 
-    public int Id { get; private set; }
-    public string Email { get; set; } = string.Empty;
-    public string Code { get; set; } = string.Empty;
-    public DateTime CreatedAt { get; private set; }
-    public DateTime ExpiresAt { get; private set; }
-    public bool Verified { get; set; }
+    public int id { get; private set; }
+    public string email { get; set; } = string.Empty;
+    public string code { get; set; } = string.Empty;
+    public DateTime createdAt { get; private set; }
+    public DateTime expiresAt { get; private set; }
+    public bool verified { get; set; }
   }
 }

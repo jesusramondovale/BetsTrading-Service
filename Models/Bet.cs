@@ -45,7 +45,7 @@
   public class BetDTO(int id, string user_id, string ticker, string name,
                     double bet_amount, double necessary_gain, double origin_value, double current_value,
                     double target_value, double target_margin, DateTime target_date, DateTime end_date,
-                    double target_odds, bool target_won, string icon_path, int type, int date_margin, int bet_zone)
+                    double target_odds, bool target_won, bool finished, string icon_path, int type, int date_margin, int bet_zone)
   {
     public int id { get; set; } = id;
     public string user_id { get; set; } = user_id;
@@ -61,6 +61,7 @@
     public DateTime? final_date { get; set; } = end_date;
     public double target_odds { get; set; } = target_odds;
     public bool target_won { get; set; } = target_won;
+    public bool finished { get; set; } = finished;
     public string icon_path { get; set; } = icon_path;
     public int type { get; set; } = type;
     public int date_margin { get; set; } = date_margin;

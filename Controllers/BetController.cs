@@ -130,6 +130,7 @@ namespace BetsTrading_Service.Controllers
               end_date: tmpBetZone.end_date,
               target_odds: bet.origin_odds,
               target_won: bet.target_won,
+              finished: bet.finished,
               icon_path: tmpAsset.icon ?? "noIcon",
               type: tmpBetZone.type,
               date_margin: timeMargin.Days,
@@ -462,6 +463,39 @@ namespace BetsTrading_Service.Controllers
         return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
     }
+
+
+    [HttpPost("DeleteRecentPriceBet")]
+    public async Task<IActionResult> DeleteRecentPriceBet([FromBody] idRequest betIdRequest)
+    {
+      using var transaction = await _dbContext.Database.BeginTransactionAsync();
+      try
+      {
+        var priceBet = await _dbContext.PriceBets.FirstOrDefaultAsync(u => u.id.ToString() == betIdRequest.id);
+
+        if (priceBet != null)
+        {
+          _dbContext.PriceBets.Remove(priceBet);
+          await _dbContext.SaveChangesAsync();
+          await transaction.CommitAsync();
+          _logger.Log.Debug("[INFO] :: DeleteRecentPriceBet :: Bet removed successfully with ID: {msg}", betIdRequest.id);
+          return Ok(new { });
+        }
+        else
+        {
+          await transaction.RollbackAsync();
+          _logger.Log.Warning("[INFO] :: DeleteRecentPriceBet :: Bet not found for ID: {msg}", betIdRequest.id);
+          return NotFound(new { Message = "Bet not found" });
+        }
+      }
+      catch (Exception ex)
+      {
+        await transaction.RollbackAsync();
+        _logger.Log.Error("[INFO] :: DeleteRecentPriceBet :: Server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+    }
+
 
     [HttpPost("DeleteHistoricBet")]
     public async Task<IActionResult> DeleteHistoricBet([FromBody] idRequest userInfoRequestId)

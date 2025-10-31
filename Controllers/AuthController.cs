@@ -89,7 +89,7 @@ namespace BetsTrading_Service.Controllers
           DateTime.UtcNow.AddMinutes(10)
         );
         
-        var oldCodes = _dbContext.VerificationCodes.Where(c => c.Email == email && !c.Verified);
+        var oldCodes = _dbContext.VerificationCodes.Where(c => c.email == email && !c.verified);
         _dbContext.VerificationCodes.RemoveRange(oldCodes);
         
         await _dbContext.VerificationCodes.AddAsync(verificationCode);
@@ -133,10 +133,10 @@ namespace BetsTrading_Service.Controllers
           {
             verification = await _dbContext.VerificationCodes
               .FirstOrDefaultAsync(v =>
-                  v.Email == signUpRequest.Email &&
-                  v.Code == signUpRequest.EmailCode &&
-                  v.Verified == false &&
-                  v.ExpiresAt > DateTime.UtcNow);
+                  v.email == signUpRequest.Email &&
+                  v.code == signUpRequest.EmailCode &&
+                  v.verified == false &&
+                  v.expiresAt > DateTime.UtcNow);
 
             if (verification == null)
             {
@@ -183,7 +183,7 @@ namespace BetsTrading_Service.Controllers
 
           if (!googleQuickMode)
           {
-            verification!.Verified = true;
+            verification!.verified = true;
             _dbContext.VerificationCodes.Update(verification);
           }
           await _dbContext.SaveChangesAsync();
