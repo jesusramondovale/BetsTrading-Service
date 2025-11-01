@@ -239,9 +239,7 @@ namespace BetsTrading_Service.Services
     #endregion
 
     #region Create Bets
-    /*TODO
-     *  Separate bets creation on different timers 
-     */
+
     public async Task CreateBets(bool marketHoursMode)
     {
       _logger.Log.Information("[UpdaterService] :: CreateBets() called with mode market-Hours = {0}", marketHoursMode.ToString());
@@ -255,54 +253,8 @@ namespace BetsTrading_Service.Services
         var financialAssets = await query.ToListAsync();
 
 
-        foreach (var asset in financialAssets)
+        foreach (var currentAsset in financialAssets)
         {
-          var candles = await _dbContext.AssetCandles
-              .Where(c => c.AssetId == asset.id && c.Interval == "1h")
-              .OrderByDescending(c => c.DateTime)
-              .Take(30)
-              .ToListAsync();
-
-          if (candles.Count < 30)
-            continue;
-
-          var closes = candles.Select(c => (double)c.Close).ToList();
-          var highs = candles.Select(c => (double)c.High).ToList();
-          var lows = candles.Select(c => (double)c.Low).ToList();
-
-          double lastClose = closes.First();
-          double avgClose = closes.Average();
-          double stdDev = Math.Sqrt(closes.Average(c => Math.Pow(c - avgClose, 2)));
-          double maxHigh = highs.Max();
-          double minLow = lows.Min();
-          double priceRange = maxHigh - minLow;
-
-          double slope = CalculateLinearRegressionSlope(closes);
-          string trend = slope > stdDev * 0.02 ? "uptrend" :
-                         slope < -stdDev * 0.02 ? "downtrend" : "sideways";
-
-          double zoneHeight = priceRange / 3.0;
-
-          double lowLow = minLow;
-          double lowHigh = lowLow + zoneHeight;
-
-          double midLow = lowHigh;
-          double midHigh = midLow + zoneHeight;
-
-          double highLow = midHigh;
-          double highHigh = maxHigh;
-
-          double targetLow = (lowLow + lowHigh) / 2.0;
-          double targetMid = (midLow + midHigh) / 2.0;
-          double targetHigh = (highLow + highHigh) / 2.0;
-
-          double marginLow = (lowHigh - lowLow) / targetLow * 100.0;
-          double marginMid = (midHigh - midLow) / targetMid * 100.0;
-          double marginHigh = (highHigh - highLow) / targetHigh * 100.0;
-
-          double oddsLow = EstimateOdds(targetLow, lastClose, stdDev, trend, "low");
-          double oddsMid = EstimateOdds(targetMid, lastClose, stdDev, trend, "mid");
-          double oddsHigh = EstimateOdds(targetHigh, lastClose, stdDev, trend, "high");
 
           var now = DateTime.UtcNow;
 
@@ -327,17 +279,57 @@ namespace BetsTrading_Service.Services
           var end24h_b = now.AddHours(362);
 
           var horizons = new Dictionary<int, ((DateTime StartA, DateTime EndA), (DateTime StartB, DateTime EndB))>
-            {
+          {
                 { 1, ((start1h, end1h), (start1h_b, end1h_b)) },
                 { 2, ((start2h, end2h), (start2h_b, end2h_b)) },
                 { 4, ((start4h, end4h), (start4h_b, end4h_b)) },
                 { 24, ((start24h, end24h), (start24h_b, end24h_b)) }
-            };
+          };
 
           foreach (var h in horizons)
           {
+            // Existent active Bet zones for current asset ticker and timeframe
+            if (_dbContext.BetZones.Where(bz => bz.active && bz.timeframe == h.Key && bz.ticker == currentAsset.ticker).Any()) continue;
+
+            var candles = await _dbContext.AssetCandles
+                .Where(c => c.AssetId == currentAsset.id && c.Interval == "1h")
+                .OrderByDescending(c => c.DateTime)
+                .Take(30)
+                .ToListAsync();
+
+            if (candles.Count < 30) continue;
+
+            var closes = candles.Select(c => (double)c.Close).ToList();
+            var highs = candles.Select(c => (double)c.High).ToList();
+            var lows = candles.Select(c => (double)c.Low).ToList();
+            double lastClose = closes.First();
+            double avgClose = closes.Average();
+            double stdDev = Math.Sqrt(closes.Average(c => Math.Pow(c - avgClose, 2)));
+            double maxHigh = highs.Max();
+            double minLow = lows.Min();
+            double priceRange = maxHigh - minLow;
+            double slope = CalculateLinearRegressionSlope(closes);
+            string trend = slope > stdDev * 0.02 ? "uptrend" : slope < -stdDev * 0.02 ? "downtrend" : "sideways";
+            double zoneHeight = priceRange / 3.0;
+            double lowLow = minLow;
+            double lowHigh = lowLow + zoneHeight;
+            double midLow = lowHigh;
+            double midHigh = midLow + zoneHeight;
+            double highLow = midHigh;
+            double highHigh = maxHigh;
+            double targetLow = (lowLow + lowHigh) / 2.0;
+            double targetMid = (midLow + midHigh) / 2.0;
+            double targetHigh = (highLow + highHigh) / 2.0;
+            double marginLow = (lowHigh - lowLow) / targetLow * 100.0;
+            double marginMid = (midHigh - midLow) / targetMid * 100.0;
+            double marginHigh = (highHigh - highLow) / targetHigh * 100.0;
+            double oddsLow = EstimateOdds(targetLow, lastClose, stdDev, trend, "low");
+            double oddsMid = EstimateOdds(targetMid, lastClose, stdDev, trend, "mid");
+            double oddsHigh = EstimateOdds(targetHigh, lastClose, stdDev, trend, "high");
+
+
             _dbContext.BetZones.Add(new BetZone(
-                asset.ticker!,
+                currentAsset.ticker!,
                 targetLow,
                 Math.Round(marginLow, 1),
                 h.Value.Item1.StartA,
@@ -346,7 +338,7 @@ namespace BetsTrading_Service.Services
                 h.Key
             ));
             _dbContext.BetZones.Add(new BetZone(
-                asset.ticker!,
+                currentAsset.ticker!,
                 targetMid,
                 Math.Round(marginMid, 1),
                 h.Value.Item1.StartA,
@@ -355,7 +347,7 @@ namespace BetsTrading_Service.Services
                 h.Key
             ));
             _dbContext.BetZones.Add(new BetZone(
-                asset.ticker!,
+                currentAsset.ticker!,
                 targetHigh,
                 Math.Round(marginHigh, 1),
                 h.Value.Item1.StartA,
@@ -364,10 +356,10 @@ namespace BetsTrading_Service.Services
                 h.Key
             ));
 
-            //------------------------------------
+            //-------------- DOUBLE LONGS ----------------------
 
             _dbContext.BetZones.Add(new BetZone(
-                asset.ticker!,
+                currentAsset.ticker!,
                 targetLow,
                 Math.Round(marginLow, 1),
                 h.Value.Item2.StartB,
@@ -376,7 +368,7 @@ namespace BetsTrading_Service.Services
                 h.Key
             ));
             _dbContext.BetZones.Add(new BetZone(
-                asset.ticker!,
+                currentAsset.ticker!,
                 targetMid,
                 Math.Round(marginMid, 1),
                 h.Value.Item2.StartB,
@@ -385,7 +377,7 @@ namespace BetsTrading_Service.Services
                 h.Key
             ));
             _dbContext.BetZones.Add(new BetZone(
-                asset.ticker!,
+                currentAsset.ticker!,
                 targetHigh,
                 Math.Round(marginHigh, 1),
                 h.Value.Item2.StartB,
@@ -394,6 +386,7 @@ namespace BetsTrading_Service.Services
                 h.Key
             ));
           }
+
         }
 
         await _dbContext.SaveChangesAsync();
@@ -454,76 +447,38 @@ namespace BetsTrading_Service.Services
         return Math.Max(1.01, baseOdds + relativeRisk * 0.3);
       }
 
-    public async Task RemoveOldBets(bool marketHours)
-    {
-      _logger.Log.Information("[UpdaterService] :: RemoveOldBets() called! ({0})", (marketHours ? "Mode market hours" : "Continuous mode"));
-
-      await using var transaction = await _dbContext.Database.BeginTransactionAsync();
-      try
-      {
-        var query = !marketHours ? 
-          _dbContext.BetZones
-          .Where(bz => _dbContext.FinancialAssets
-              .Where(a => a.group.ToLower() == "cryptos"|| a.group.ToLower() == "forex")
-              .Select(a => a.ticker)
-              .Contains(bz.ticker))
-      :   _dbContext.BetZones
-          .Where(bz => _dbContext.FinancialAssets
-              .Select(a => a.ticker)
-              .Contains(bz.ticker));
-
-
-        var oldBetZones = await query.ToListAsync();
-
-        foreach (var currentBz in oldBetZones)
-        {
-          var betsToRemove = await _dbContext.Bet
-              .Where(b => b.bet_zone == currentBz.id)
-              .ToListAsync();
-
-          if (betsToRemove.Count != 0)
-          {
-            _dbContext.Bet.RemoveRange(betsToRemove);
-          }
-        }
-
-        _dbContext.BetZones.RemoveRange(oldBetZones);
-        await _dbContext.SaveChangesAsync();
-        await transaction.CommitAsync();
-
-        _logger.Log.Debug("[UpdaterService] :: RemoveOldBets() completed successfully!({0})", (marketHours ? "Mode market hours" : "Continuous mode"));
-      }
-      catch (Exception ex)
-      {
-        _logger.Log.Error(ex, "[UpdaterService] :: RemoveOldBets() error");
-        await transaction.RollbackAsync();
-      }
-    }
 
 
     #endregion
 
     #region Update Bets
-    public async Task SetFinishedBets(bool marketHours)
+    public async Task SetInactiveBetZones()
     {
-      _logger.Log.Information("[UpdaterService] :: SetFinishedBets() called with market hours mode = {0}", marketHours);
+      _logger.Log.Information("[UpdaterService] :: SetInactiveBets() called");
 
-      var betsZonesToCheck = (marketHours)? 
-        await _dbContext.BetZones
-          .Where(bz => DateTime.UtcNow >= bz.end_date.AddDays(1))
-          .Select(bz => bz.id)
-          .ToListAsync()
-    : 
-        await _dbContext.BetZones
-          .Where(bz =>
-              _dbContext.FinancialAssets
-                  .Where(a => a.group.ToLower() == "cryptos" || a.group.ToLower() == "forex")
-                  .Select(a => a.ticker)
-                  .Contains(bz.ticker)
-              && DateTime.UtcNow >= bz.end_date.AddDays(1))
-          .Select(bz => bz.id)
+      var betZonesToCheck = await _dbContext.BetZones
+          .Where(bz => DateTime.UtcNow >= bz.start_date)
           .ToListAsync();
 
+      foreach (var currentBetZone in betZonesToCheck)
+      {
+        currentBetZone.active = false;
+        _dbContext.BetZones.Update(currentBetZone);
+      }
+
+      _dbContext.SaveChanges();
+      _logger.Log.Debug("[UpdaterService] :: SetInactiveBets() ended succesfully!");
+    }
+
+    public async Task SetFinishedBets()
+    {
+      _logger.Log.Information("[UpdaterService] :: SetFinishedBets() called");
+
+      var betsZonesToCheck = await _dbContext.BetZones
+          .Where(bz => DateTime.UtcNow >= bz.end_date)
+          .Select(bz => bz.id)
+          .ToListAsync();
+   
       if (betsZonesToCheck.Count != 0)
       {
         var betsToMark = _dbContext.Bet
@@ -545,35 +500,7 @@ namespace BetsTrading_Service.Services
       }
       
     }
-
-    public async Task SetInactiveBets(bool marketHours)
-    {
-      _logger.Log.Information("[UpdaterService] :: SetInactiveBets() called with market hours mode = {0}", marketHours);
-
-      var betZonesToCheck = (marketHours)? 
-        await _dbContext.BetZones
-          .Where(bz => bz.start_date <= DateTime.UtcNow)
-          .ToListAsync()
-    : 
-        await _dbContext.BetZones
-          .Where(bz =>
-              _dbContext.FinancialAssets
-                  .Where(a => a.group.ToLower() == "cryptos" || a.group.ToLower() == "forex")
-                  .Select(a => a.ticker)
-                  .Contains(bz.ticker)
-              && bz.start_date <= DateTime.UtcNow)
-          .ToListAsync();
-
-      foreach (var currentBetZone in betZonesToCheck)
-      {
-        currentBetZone.active = false;
-        _dbContext.BetZones.Update(currentBetZone);
-      }
-
-      _dbContext.SaveChanges();
-      _logger.Log.Debug("[UpdaterService] :: SetInactiveBets() ended succesfully!");
-    }
-
+    
     public async Task CheckBets(bool marketHours)
     {
       _logger.Log.Information("[UpdaterService] :: CheckBets() called with market hours mode = {0}", marketHours);
@@ -630,7 +557,7 @@ namespace BetsTrading_Service.Services
             .Where(c => c.AssetId == asset.id &&
                         c.Interval == "1h" &&
                         c.DateTime >= currentBetZone.start_date &&
-                        c.DateTime <= currentBetZone.end_date)
+                        c.DateTime < currentBetZone.end_date)
             .ToListAsync();
 
         if (candles.Count == 0)
@@ -642,13 +569,13 @@ namespace BetsTrading_Service.Services
         double upperBound = currentBetZone.target_value + (currentBetZone.target_value * currentBetZone.bet_margin / 200);
         double lowerBound = currentBetZone.target_value - (currentBetZone.target_value * currentBetZone.bet_margin / 200);
 
-        bool hasCrossedZone = candles.Any(c =>
-            (double)c.High >= lowerBound &&
-            (double)c.Low <= upperBound);
+        bool hasExitedZone = candles.Any(c =>
+            (double)c.High > upperBound 
+            ||
+            (double)c.Low < lowerBound);
 
-        currentBet.target_won = hasCrossedZone;
-        currentBet.finished = true;
-
+        currentBet.target_won = !hasExitedZone;
+        if (hasExitedZone) currentBet.finished = true;
         _dbContext.Bet.Update(currentBet);
       }
 
@@ -862,8 +789,6 @@ namespace BetsTrading_Service.Services
         transaction.Rollback();
       }
     }
-
-
 
     #endregion
 
@@ -1104,7 +1029,7 @@ namespace BetsTrading_Service.Services
           await ExecuteUpdateAssets(marketOpen);
           ExecuteUpdateTrends(marketOpen);
           await ExecuteCheckBets(marketOpen);
-          await ExecuteCleanAndCreateBets(marketOpen);
+          await ExecuteCreateBets(marketOpen);
         }
         catch (Exception ex)
         {
@@ -1115,12 +1040,11 @@ namespace BetsTrading_Service.Services
       }
     }
 
-    private async Task ExecuteCleanAndCreateBets(bool marketHoursMode)
+    private async Task ExecuteCreateBets(bool marketHoursMode)
     {
       using var scope = _serviceProvider.CreateScope();
       var updaterService = scope.ServiceProvider.GetRequiredService<UpdaterService>();
-      _customLogger.Log.Information("[UpdaterHostedService] :: Executing RemoveOldBets and CreateBets");
-      await updaterService.RemoveOldBets(marketHoursMode);
+      _customLogger.Log.Information("[UpdaterHostedService] :: Executing CreateBets with mode {0}", (marketHoursMode ? "Market Hours" : "continue mode"));
       await updaterService.CreateBets(marketHoursMode);
     }
 
@@ -1128,10 +1052,10 @@ namespace BetsTrading_Service.Services
     {
       using var scope = _serviceProvider.CreateScope();
       var updaterService = scope.ServiceProvider.GetRequiredService<UpdaterService>();
-      _customLogger.Log.Information("[UpdaterHostedService] :: Executing UpdateBets service with market hours mode: {0}", marketHoursMode.ToString());
+      _customLogger.Log.Information("[UpdaterHostedService] :: Executing Check bets service with market hours mode: {0}", marketHoursMode.ToString());
+      await updaterService.SetInactiveBetZones();
       await updaterService.CheckBets(marketHoursMode);
-      await updaterService.SetInactiveBets(marketHoursMode);
-      await updaterService.SetFinishedBets(marketHoursMode);
+      await updaterService.SetFinishedBets();
       await updaterService.PayBets(marketHoursMode);
       await updaterService.CheckAndPayPriceBets(marketHoursMode);
     }

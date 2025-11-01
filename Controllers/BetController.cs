@@ -13,6 +13,7 @@ namespace BetsTrading_Service.Controllers
   {
     private readonly AppDbContext _dbContext = dbContext;
     private readonly ICustomLogger _logger = customLogger;
+    //TODO
     private readonly int PRICE_BET_COST_0_MARGIN = 200;
     private readonly int PRICE_BET_COST_1_MARGIN = 350;
     private readonly int PRICE_BET_COST_5_MARGIN = 500;
@@ -464,7 +465,6 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
-
     [HttpPost("DeleteRecentPriceBet")]
     public async Task<IActionResult> DeleteRecentPriceBet([FromBody] idRequest betIdRequest)
     {
@@ -495,7 +495,6 @@ namespace BetsTrading_Service.Controllers
         return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
     }
-
 
     [HttpPost("DeleteHistoricBet")]
     public async Task<IActionResult> DeleteHistoricBet([FromBody] idRequest userInfoRequestId)

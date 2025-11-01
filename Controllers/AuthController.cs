@@ -425,7 +425,7 @@ namespace BetsTrading_Service.Controllers
       catch (Exception ex)
       {
         await transaction.RollbackAsync();
-        _logger.Log.Error("[AUTH] :: ChangePassword :: Internal server error: {msg}", ex.Message);
+        _logger.Log.Error("[AUTH] :: NewPassword :: Internal server error: {msg}", ex.Message);
         return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
     }
