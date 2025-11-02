@@ -25,6 +25,8 @@
       this.finished = finished;
       this.paid = paid;
       this.bet_zone = bet_zone;
+      this.archived = false;
+
     }
         
 
@@ -38,6 +40,7 @@
     public bool finished { get; set; }
     public bool paid { get; set; }
     public int bet_zone{ get; set; }
+    public bool archived { get; set; }
 
 
   }
@@ -66,6 +69,7 @@
     public int type { get; set; } = type;
     public int date_margin { get; set; } = date_margin;
     public int bet_zone { get; set; } = bet_zone;
+    public bool archived { get; set; } = false;
 
   }
 
@@ -83,6 +87,7 @@
     public DateTime bet_date { get; set; } = bet_date;
     public DateTime end_date { get; set; } = end_date;
     public String icon_path { get; set; } = icon_path;
+    public bool archived { get; set; } = false;
 
   }
 

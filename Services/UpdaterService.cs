@@ -447,8 +447,6 @@ namespace BetsTrading_Service.Services
         return Math.Max(1.01, baseOdds + relativeRisk * 0.3);
       }
 
-
-
     #endregion
 
     #region Update Bets
@@ -602,12 +600,11 @@ namespace BetsTrading_Service.Services
 
       foreach (var currentBet in betsToPay)
       {
-        var currentBetZone = _dbContext.BetZones.FirstOrDefault(bz => bz.id == currentBet.bet_zone);
         var winnerUser = _dbContext.Users.FirstOrDefault(u => u.id == currentBet.user_id);
 
-        if (winnerUser != null && currentBetZone != null)
+        if (winnerUser != null)
         {
-          winnerUser.points += currentBet.bet_amount * currentBetZone.target_odds;
+          winnerUser.points += currentBet.bet_amount * currentBet.origin_odds;
           currentBet.paid = true;
 
           _dbContext.Bet.Update(currentBet);
@@ -615,7 +612,7 @@ namespace BetsTrading_Service.Services
 
           string youWonMessageTemplate = LocalizedTexts.GetTranslationByCountry(winnerUser.country, "youWon");
           string msg = string.Format(youWonMessageTemplate,
-              (currentBet.bet_amount * currentBetZone.target_odds).ToString("N2"),
+              (currentBet.bet_amount * currentBet.origin_odds).ToString("N2"),
               currentBet.ticker);
 
           _ = _firebaseNotificationService.SendNotificationToUser(

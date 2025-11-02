@@ -10,6 +10,7 @@
     public bool paid { get; set; } = false;
     public DateTime bet_date { get; set; } = DateTime.Now.ToUniversalTime();
     public DateTime end_date { get; set; } = end_date;
+    public bool archived { get; set; } = false;
 
   }
 }

@@ -35,7 +35,7 @@ namespace BetsTrading_Service.Controllers
 
         var bets = await _dbContext.Bet
             .AsNoTracking()
-            .Where(bet => bet.user_id == userInfoRequest.id)
+            .Where(bet => bet.user_id == userInfoRequest.id && !bet.archived)
             .ToListAsync(ct);
 
         if (bets.Count == 0)
@@ -150,8 +150,139 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
-    [HttpPost("UserPriceBets")]
-    public async Task<IActionResult> UserPriceBets([FromBody] idRequest userInfoRequest, CancellationToken ct)
+    [HttpPost("HistoricUserBets")]
+    public async Task<IActionResult> HistoricUserBets([FromBody] idRequest userInfoRequest, CancellationToken ct)
+    {
+      try
+      {
+        bool userExists = await _dbContext.Users.AnyAsync(u => u.id == userInfoRequest.id, ct);
+        if (!userExists)
+        {
+          _logger.Log.Warning("[INFO] :: HistoricUserBets :: User doesn't exist. ID: {msg}", userInfoRequest.id);
+          return NotFound(new { Message = "Unexistent user" });
+        }
+
+        var bets = await _dbContext.Bet
+            .AsNoTracking()
+            .Where(bet => bet.user_id == userInfoRequest.id && bet.archived)
+            .ToListAsync(ct);
+
+        if (bets.Count == 0)
+        {
+          _logger.Log.Debug("[INFO] :: HistoricUserBets :: Empty list of archived bets on userID: {msg}", userInfoRequest.id);
+          return NotFound(new { Message = "User has no bets!" });
+        }
+
+        var betDTOs = new List<BetDTO>();
+
+        foreach (var bet in bets)
+        {
+          var tmpAsset = await _dbContext.FinancialAssets
+              .AsNoTracking()
+              .FirstOrDefaultAsync(a => a.ticker == bet.ticker, ct);
+
+          if (tmpAsset == null) continue;
+
+
+          var lastCandle = await _dbContext.AssetCandles
+              .AsNoTracking()
+              .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h")
+              .OrderByDescending(c => c.DateTime)
+              .FirstOrDefaultAsync(ct);
+
+          if (lastCandle == null) continue;
+
+          var lastDay = lastCandle.DateTime.Date;
+
+
+          AssetCandle? prevCandle;
+
+          if (tmpAsset.group == "Cryptos" || tmpAsset.group == "Forex")
+          {
+            prevCandle = await _dbContext.AssetCandles
+                .AsNoTracking()
+                .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h")
+                .OrderByDescending(c => c.DateTime)
+                .Skip(24)
+                .FirstOrDefaultAsync(ct);
+          }
+          else
+          {
+            prevCandle = await _dbContext.AssetCandles
+                .AsNoTracking()
+                .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h" && c.DateTime.Date < lastDay)
+                .OrderByDescending(c => c.DateTime)
+                .FirstOrDefaultAsync(ct);
+          }
+
+
+
+          double necessaryGain;
+
+          var tmpBetZone = await _dbContext.BetZones
+              .AsNoTracking()
+              .FirstOrDefaultAsync(bz => bz.id == bet.bet_zone, ct);
+
+          necessaryGain = (tmpBetZone != null) ? ((tmpBetZone.target_value - tmpAsset.current) / tmpAsset.current) : 0;
+
+          if (tmpBetZone == null) continue;
+
+          double topLimit = tmpBetZone.target_value + (tmpBetZone.target_value * tmpBetZone.bet_margin / 200.0);
+          double bottomLimit = tmpBetZone.target_value - (tmpBetZone.target_value * tmpBetZone.bet_margin / 200.0);
+
+          if (tmpAsset.current < bottomLimit)
+          {
+            necessaryGain = (tmpBetZone != null) ? ((bottomLimit - tmpAsset.current) / tmpAsset.current) : 0;
+          }
+          if (tmpAsset.current > topLimit)
+          {
+            necessaryGain = (tmpBetZone != null) ? ((topLimit - tmpAsset.current) / tmpAsset.current) : 0;
+          }
+          else if (tmpAsset.current >= bottomLimit && tmpAsset.current <= topLimit)
+          {
+            necessaryGain = 0.0;
+          }
+
+
+
+          TimeSpan timeMargin = tmpBetZone!.end_date - tmpBetZone.start_date;
+
+          betDTOs.Add(new BetDTO(
+              id: bet.id,
+              user_id: userInfoRequest.id!,
+              ticker: bet.ticker,
+              name: tmpAsset.name,
+              bet_amount: bet.bet_amount,
+              necessary_gain: necessaryGain * 100,
+              origin_value: bet.origin_value,
+              current_value: tmpAsset.current,
+              target_value: tmpBetZone.target_value,
+              target_margin: tmpBetZone.bet_margin,
+              target_date: tmpBetZone.start_date,
+              end_date: tmpBetZone.end_date,
+              target_odds: bet.origin_odds,
+              target_won: bet.target_won,
+              finished: bet.finished,
+              icon_path: tmpAsset.icon ?? "noIcon",
+              type: tmpBetZone.type,
+              date_margin: timeMargin.Days,
+              bet_zone: bet.bet_zone
+          ));
+        }
+
+        _logger.Log.Debug("[INFO] :: HistoricUserBets :: success with ID: {msg}", userInfoRequest.id);
+
+        return Ok(new { Message = "HistoricUserBets SUCCESS", Bets = betDTOs });
+      }
+      catch (Exception ex)
+      {
+        _logger.Log.Error(ex, "[INFO] :: HistoricUserBets :: Internal server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+    }
+
+    [HttpPost("PriceBets")]
+    public async Task<IActionResult> PriceBets([FromBody] idRequest userInfoRequest, CancellationToken ct)
     {
       try
       {
@@ -164,7 +295,7 @@ namespace BetsTrading_Service.Controllers
 
         var priceBets = await _dbContext.PriceBets
             .AsNoTracking()
-            .Where(bet => bet.user_id == userInfoRequest.id)
+            .Where(priceBet => priceBet.user_id == userInfoRequest.id && !priceBet.archived)
             .ToListAsync(ct);
 
         if (priceBets.Count == 0)
@@ -208,6 +339,64 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
+    [HttpPost("HistoricPriceBets")]
+    public async Task<IActionResult> HistoricPriceBets([FromBody] idRequest userInfoRequest, CancellationToken ct)
+    {
+      try
+      {
+        bool userExists = await _dbContext.Users.AnyAsync(u => u.id == userInfoRequest.id, ct);
+        if (!userExists)
+        {
+          _logger.Log.Warning("[INFO] :: HistoricPriceBets :: User doesn't exist. ID: {msg}", userInfoRequest.id);
+          return NotFound(new { Message = "Unexistent user" });
+        }
+
+        var archivedPriceBets = await _dbContext.PriceBets
+            .AsNoTracking()
+            .Where(priceBet => priceBet.user_id == userInfoRequest.id && priceBet.archived)
+            .ToListAsync(ct);
+
+        if (archivedPriceBets.Count == 0)
+        {
+          _logger.Log.Debug("[INFO] :: HistoricPriceBets :: Empty list of archived price bets on userID: {msg}", userInfoRequest.id);
+          return NotFound(new { Message = "User has no archived price bets!" });
+        }
+
+        var priceBetDTOs = new List<PriceBetDTO>();
+
+        foreach (var priceBet in archivedPriceBets)
+        {
+          var tmpAsset = await _dbContext.FinancialAssets
+              .AsNoTracking()
+              .FirstOrDefaultAsync(asset => asset.ticker == priceBet.ticker, ct);
+
+          if (tmpAsset == null) continue;
+
+          priceBetDTOs.Add(new PriceBetDTO(
+              id: priceBet.id,
+              name: tmpAsset.name,
+              ticker: priceBet.ticker,
+              price_bet: priceBet.price_bet,
+              paid: priceBet.paid,
+              margin: priceBet.margin,
+              user_id: priceBet.user_id,
+              bet_date: priceBet.bet_date,
+              end_date: priceBet.end_date,
+              icon_path: tmpAsset.icon ?? "noIcon"
+          ));
+        }
+
+        _logger.Log.Debug("[INFO] :: HistoricPriceBets :: success with ID: {msg}", userInfoRequest.id);
+
+        return Ok(new { Message = "HistoricPriceBets SUCCESS", Bets = priceBetDTOs });
+      }
+      catch (Exception ex)
+      {
+        _logger.Log.Error(ex, "[INFO] :: HistoricPriceBets :: Internal server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+    }
+
     [HttpPost("NewBet")]
     public async Task<IActionResult> NewBet([FromBody] newBetRequest betRequest)
     {
@@ -244,51 +433,6 @@ namespace BetsTrading_Service.Controllers
       {
         await transaction.RollbackAsync();
         _logger.Log.Error("[INFO] :: NewBet :: Internal server error: {msg}", ex.Message);
-        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
-      }
-    }
-
-    [HttpPost("CurrentPriceBets")]
-    public async Task<IActionResult> PriceBets([FromBody] idRequest userInfoRequest)
-    {
-
-      try
-      {
-        var priceBets = await _dbContext.PriceBets.Where(pb => pb.user_id == userInfoRequest.id && pb.paid == false).ToListAsync();
-
-        if (priceBets.Count == 0)
-        {
-          _logger.Log.Warning("[INFO] :: CurrentPriceBets :: Empty list of price bets on userID: {msg}", userInfoRequest.id);
-          return NotFound(new { Message = "User has no current price bets!" });
-        }
-        _logger.Log.Debug("[INFO] :: CurrentPriceBets :: success with ID: {msg}", userInfoRequest.id);
-        return Ok(new { Message = "CurrentPriceBets SUCCESS", PriceBets = priceBets });
-      }
-      catch (Exception ex)
-      {
-        _logger.Log.Error("[INFO] :: CurrentPriceBets :: Internal server error: {msg}", ex.Message);
-        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
-      }
-    }
-
-    [HttpPost("HistoricPriceBets")]
-    public async Task<IActionResult> HistoricPriceBets([FromBody] idRequest userInfoRequest)
-    {
-      try
-      {
-        var priceBets = await _dbContext.PriceBets.Where(pb => pb.user_id == userInfoRequest.id && pb.paid == true).ToListAsync();
-
-        if (priceBets.Count == 0)
-        {
-          _logger.Log.Warning("[INFO] :: HistoricPriceBets :: Empty list of price bets on userID: {msg}", userInfoRequest.id);
-          return NotFound(new { Message = "User has no historic price bets!" });
-        }
-        _logger.Log.Debug("[INFO] :: HistoricPriceBets :: success with ID: {msg}", userInfoRequest.id);
-        return Ok(new { Message = "HistoricPriceBets SUCCESS", PriceBets = priceBets });
-      }
-      catch (Exception ex)
-      {
-        _logger.Log.Error("[INFO] :: HistoricPriceBets :: Internal server error: {msg}", ex.Message);
         return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
     }
@@ -444,10 +588,11 @@ namespace BetsTrading_Service.Controllers
 
         if (bet != null)
         {
-          _dbContext.Bet.Remove(bet);
+          bet.archived = true;
+          _dbContext.Bet.Update(bet);
           await _dbContext.SaveChangesAsync();
           await transaction.CommitAsync();
-          _logger.Log.Debug("[INFO] :: DeleteRecentBet :: Bet removed successfully with ID: {msg}", betIdRequest.id);
+          _logger.Log.Debug("[INFO] :: DeleteRecentBet :: Bet archived successfully with ID: {msg}", betIdRequest.id);
           return Ok(new { });
         }
         else
@@ -475,17 +620,18 @@ namespace BetsTrading_Service.Controllers
 
         if (priceBet != null)
         {
-          _dbContext.PriceBets.Remove(priceBet);
+          priceBet.archived = true;
+          _dbContext.PriceBets.Update(priceBet);
           await _dbContext.SaveChangesAsync();
           await transaction.CommitAsync();
-          _logger.Log.Debug("[INFO] :: DeleteRecentPriceBet :: Bet removed successfully with ID: {msg}", betIdRequest.id);
+          _logger.Log.Debug("[INFO] :: DeleteRecentPriceBet :: Price bet archived successfully with ID: {msg}", betIdRequest.id);
           return Ok(new { });
         }
         else
         {
           await transaction.RollbackAsync();
-          _logger.Log.Warning("[INFO] :: DeleteRecentPriceBet :: Bet not found for ID: {msg}", betIdRequest.id);
-          return NotFound(new { Message = "Bet not found" });
+          _logger.Log.Warning("[INFO] :: DeleteRecentPriceBet :: Price bet not found for ID: {msg}", betIdRequest.id);
+          return NotFound(new { Message = "Price bet not found" });
         }
       }
       catch (Exception ex)
