@@ -1,6 +1,6 @@
 ﻿namespace BetsTrading_Service.Models
 {
-  public class PriceBet(string user_id, string ticker, double price_bet, double margin, DateTime end_date)
+  public class PriceBet(string user_id, string ticker, double price_bet, int prize, double margin, DateTime end_date)
   {
     public int id { get; set; }
     public string user_id { get; set; } = user_id;
@@ -11,6 +11,7 @@
     public DateTime bet_date { get; set; } = DateTime.Now.ToUniversalTime();
     public DateTime end_date { get; set; } = end_date;
     public bool archived { get; set; } = false;
+    public int prize { get; set; } = prize;
 
   }
 }

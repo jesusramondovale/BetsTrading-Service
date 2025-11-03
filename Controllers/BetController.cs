@@ -13,13 +13,16 @@ namespace BetsTrading_Service.Controllers
   {
     private readonly AppDbContext _dbContext = dbContext;
     private readonly ICustomLogger _logger = customLogger;
-    //TODO
-    private readonly int PRICE_BET_COST_0_MARGIN = 200;
-    private readonly int PRICE_BET_COST_1_MARGIN = 350;
-    private readonly int PRICE_BET_COST_5_MARGIN = 500;
-    private readonly int PRICE_BET_COST_7_MARGIN = 800;
-    private readonly int PRICE_BET_COST_10_MARGIN = 1500;
+
+    //TODO -> get this values from JSON config file
+    private readonly int PRICE_BET_PRIZE = 100000;
+    private readonly int PRICE_BET_COST_0_MARGIN = 50;
+    private readonly int PRICE_BET_COST_1_MARGIN = 200;
+    private readonly int PRICE_BET_COST_5_MARGIN = 1000;
+    private readonly int PRICE_BET_COST_7_MARGIN = 1500;
+    private readonly int PRICE_BET_COST_10_MARGIN = 5000;
     private readonly int PRICE_BET_DAYS_MARGIN = 2;
+
 
     [HttpPost("UserBets")]
     public async Task<IActionResult> UserBets([FromBody] idRequest userInfoRequest, CancellationToken ct)
@@ -321,6 +324,7 @@ namespace BetsTrading_Service.Controllers
               price_bet: priceBet.price_bet,
               paid: priceBet.paid,
               margin: priceBet.margin,
+              prize: priceBet.prize,
               user_id: priceBet.user_id,
               bet_date: priceBet.bet_date,
               end_date: priceBet.end_date,
@@ -378,6 +382,7 @@ namespace BetsTrading_Service.Controllers
               ticker: priceBet.ticker,
               price_bet: priceBet.price_bet,
               paid: priceBet.paid,
+              prize: priceBet.prize,
               margin: priceBet.margin,
               user_id: priceBet.user_id,
               bet_date: priceBet.bet_date,
@@ -453,7 +458,7 @@ namespace BetsTrading_Service.Controllers
         if (priceBetRequest.end_date < DateTime.UtcNow.AddDays(PRICE_BET_DAYS_MARGIN)) throw new BetException("NO TIME");
 
         var newPriceBet = new PriceBet(user_id: priceBetRequest.user_id!, ticker: priceBetRequest.ticker!,
-                                price_bet: priceBetRequest.price_bet, margin: priceBetRequest.margin, end_date: priceBetRequest.end_date);
+                                price_bet: priceBetRequest.price_bet, prize: PRICE_BET_PRIZE, margin: priceBetRequest.margin, end_date: priceBetRequest.end_date);
 
         if (newPriceBet != null)
         {

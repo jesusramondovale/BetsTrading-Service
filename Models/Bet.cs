@@ -74,7 +74,7 @@
   }
 
   public class PriceBetDTO(int id, string name, string ticker, double price_bet,
-              bool paid, double margin, string user_id,
+              bool paid, double margin, int prize, string user_id,
               DateTime bet_date, DateTime end_date, string icon_path)
   {
     public int id { get; set; } = id;
@@ -82,6 +82,7 @@
     public string ticker { get; set; } = ticker;
     public double price_bet { get; set; } = price_bet;
     public bool paid { get; set; } = paid;
+    public int prize { get; set; } = prize;
     public double margin { get; set; } = margin;
     public string user_id { get; set; } = user_id;
     public DateTime bet_date { get; set; } = bet_date;
