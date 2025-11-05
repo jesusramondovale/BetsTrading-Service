@@ -1005,7 +1005,7 @@ namespace BetsTrading_Service.Controllers
       catch (Exception ex)
       {
         _logger.Log.Error("[INFO] :: RaffleItems :: Internal server error: {msg}", ex.Message);
-        return Problem(title: "Internal Server Error", detail: ex.Message, statusCode: 500);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
     }
   }
