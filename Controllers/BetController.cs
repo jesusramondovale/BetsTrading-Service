@@ -36,7 +36,7 @@ namespace BetsTrading_Service.Controllers
           return NotFound(new { Message = "Unexistent user" });
         }
 
-        var bets = await _dbContext.Bet
+        var bets = await _dbContext.Bets
             .AsNoTracking()
             .Where(bet => bet.user_id == userInfoRequest.id && !bet.archived)
             .ToListAsync(ct);
@@ -165,7 +165,7 @@ namespace BetsTrading_Service.Controllers
           return NotFound(new { Message = "Unexistent user" });
         }
 
-        var bets = await _dbContext.Bet
+        var bets = await _dbContext.Bets
             .AsNoTracking()
             .Where(bet => bet.user_id == userInfoRequest.id && bet.archived)
             .ToListAsync(ct);
@@ -424,7 +424,7 @@ namespace BetsTrading_Service.Controllers
 
         if (newBet != null)
         {
-          _dbContext.Bet.Add(newBet);
+          _dbContext.Bets.Add(newBet);
           user.points -= Math.Abs(betRequest.bet_amount);
           await _dbContext.SaveChangesAsync();
           await transaction.CommitAsync();
@@ -548,11 +548,11 @@ namespace BetsTrading_Service.Controllers
       try
       {
         double origin_odds = 1.1;
-        var bet = await _dbContext.Bet.FirstOrDefaultAsync(b => b.id == betID.id);
+        var bet = await _dbContext.Bets.FirstOrDefaultAsync(b => b.id == betID.id);
         if (bet != null)
         {
           var betZone = await _dbContext.BetZones.FirstOrDefaultAsync(bz => bz.id == bet.bet_zone);
-          var origin_bet = await _dbContext.Bet.FirstOrDefaultAsync(b => b.bet_zone == betID.id);
+          var origin_bet = await _dbContext.Bets.FirstOrDefaultAsync(b => b.bet_zone == betID.id);
           if (origin_bet == null)
           {
             origin_odds = bet.origin_odds;
@@ -589,12 +589,12 @@ namespace BetsTrading_Service.Controllers
       using var transaction = await _dbContext.Database.BeginTransactionAsync();
       try
       {
-        var bet = await _dbContext.Bet.FirstOrDefaultAsync(u => u.id.ToString() == betIdRequest.id);
+        var bet = await _dbContext.Bets.FirstOrDefaultAsync(u => u.id.ToString() == betIdRequest.id);
 
         if (bet != null)
         {
           bet.archived = true;
-          _dbContext.Bet.Update(bet);
+          _dbContext.Bets.Update(bet);
           await _dbContext.SaveChangesAsync();
           await transaction.CommitAsync();
           _logger.Log.Debug("[INFO] :: DeleteRecentBet :: Bet archived successfully with ID: {msg}", betIdRequest.id);
@@ -653,7 +653,7 @@ namespace BetsTrading_Service.Controllers
       await using var transaction = await _dbContext.Database.BeginTransactionAsync();
       try
       {
-        var bets = await _dbContext.Bet
+        var bets = await _dbContext.Bets
             .Where(b => b.user_id == userInfoRequestId.id &&
                         _dbContext.BetZones.Any(bz => bz.id == b.bet_zone && bz.end_date < DateTime.UtcNow))
             .ToListAsync();
@@ -670,7 +670,7 @@ namespace BetsTrading_Service.Controllers
 
         if (bets != null && bets.Count > 0)
         {
-          _dbContext.Bet.RemoveRange(bets);
+          _dbContext.Bets.RemoveRange(bets);
           _logger.Log.Debug("[INFO] :: DeleteHistoricBet :: Bets removed successfully for user: {msg}", userInfoRequestId.id);
         }
 

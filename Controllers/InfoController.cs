@@ -971,5 +971,42 @@ namespace BetsTrading_Service.Controllers
         return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
     }
+
+    [HttpPost("RaffleItems")]
+    public async Task<IActionResult> RaffleItems([FromBody] idRequest request, CancellationToken ct)
+    {
+      try
+      {
+        if (request is null || string.IsNullOrWhiteSpace(request.id))
+          return BadRequest(new { Error = "Missing or invalid user id" });
+
+        var userExists = await _dbContext.Users.AsNoTracking().AnyAsync(u => u.id == request.id, ct);
+
+        if (!userExists)
+        {
+          _logger.Log.Warning("[INFO] :: RaffleItems :: User not found. ID: {msg}", request.id);
+          return NotFound(new { Error = "User not found" });
+        }
+
+        var raffleItems = await _dbContext.RaffleItems
+          .AsNoTracking()
+          .OrderBy(r => r.coins)
+          .ToListAsync(ct);
+
+        if (raffleItems.Count == 0)
+        {
+          _logger.Log.Warning("[INFO] :: RaffleItems :: No raffle items in DB.");
+          return NoContent();
+        }
+
+        _logger.Log.Debug("[INFO] :: RaffleItems :: Returning {count} items.", raffleItems.Count);
+        return Ok(raffleItems);
+      }
+      catch (Exception ex)
+      {
+        _logger.Log.Error("[INFO] :: RaffleItems :: Internal server error: {msg}", ex.Message);
+        return Problem(title: "Internal Server Error", detail: ex.Message, statusCode: 500);
+      }
+    }
   }
 }

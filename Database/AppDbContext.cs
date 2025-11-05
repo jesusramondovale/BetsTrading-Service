@@ -17,13 +17,15 @@
 
     // Especifica el esquema "BetsTrading" al definir el DbSet
     public DbSet<User> Users { get; set; }
-    public DbSet<Bet> Bet{ get; set; }
+    public DbSet<Bet> Bets{ get; set; }
     public DbSet<FinancialAsset> FinancialAssets { get; set; }
     public DbSet<AssetCandle> AssetCandles { get; set; }
     public DbSet<Trend> Trends { get; set; }
     public DbSet<Favorite> Favorites { get; set; }
     public DbSet<BetZone> BetZones { get; set; }
     public DbSet<PriceBet> PriceBets { get; set; }
+    public DbSet<Raffle> Raffles { get; set; }
+    public DbSet<RaffleItem> RaffleItems { get; set; }
     public DbSet<WithdrawalMethod> WithdrawalMethods{ get; set; }
     public DbSet<RewardNonce> RewardNonces{ get; set; }
     public DbSet<RewardTransaction> RewardTransactions{ get; set; }

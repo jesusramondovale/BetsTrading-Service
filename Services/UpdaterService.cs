@@ -479,14 +479,14 @@ namespace BetsTrading_Service.Services
    
       if (betsZonesToCheck.Count != 0)
       {
-        var betsToMark = _dbContext.Bet
+        var betsToMark = _dbContext.Bets
           .Where(b => betsZonesToCheck.Contains(b.bet_zone) && !b.finished)
           .ToList();
 
         foreach (var currentBet in betsToMark)
         {
           currentBet.finished = true;
-          _dbContext.Bet.Update(currentBet);
+          _dbContext.Bets.Update(currentBet);
         }
 
         _dbContext.SaveChanges();
@@ -527,7 +527,7 @@ namespace BetsTrading_Service.Services
         return;
       }
 
-      var betsToUpdate = await _dbContext.Bet
+      var betsToUpdate = await _dbContext.Bets
           .Where(b => betZonesToCheck.Contains(b.bet_zone) && !b.finished)
           .ToListAsync();
 
@@ -574,7 +574,7 @@ namespace BetsTrading_Service.Services
 
         currentBet.target_won = !hasExitedZone;
         if (hasExitedZone) currentBet.finished = true;
-        _dbContext.Bet.Update(currentBet);
+        _dbContext.Bets.Update(currentBet);
       }
 
       await _dbContext.SaveChangesAsync();
@@ -586,11 +586,11 @@ namespace BetsTrading_Service.Services
       _logger.Log.Information("[UpdaterService] :: PayBets() called with mode market hours = {0}", marketHours);
 
       var betsToPay = (marketHours) ? 
-        await _dbContext.Bet
+        await _dbContext.Bets
           .Where(b => b.finished && !b.paid && b.target_won)
           .ToListAsync()
     : 
-        await _dbContext.Bet
+        await _dbContext.Bets
           .Where(b => b.finished && !b.paid && b.target_won &&
               _dbContext.FinancialAssets
                   .Where(a => a.group.ToLower() == "cryptos" || a.group.ToLower() == "forex")
@@ -607,7 +607,7 @@ namespace BetsTrading_Service.Services
           winnerUser.points += currentBet.bet_amount * currentBet.origin_odds;
           currentBet.paid = true;
 
-          _dbContext.Bet.Update(currentBet);
+          _dbContext.Bets.Update(currentBet);
           _dbContext.Users.Update(winnerUser);
 
           string youWonMessageTemplate = LocalizedTexts.GetTranslationByCountry(winnerUser.country, "youWon");
@@ -652,7 +652,7 @@ namespace BetsTrading_Service.Services
           var zoneVolumes = zones.Select(zone => new
           {
             Zone = zone,
-            Volume = _dbContext.Bet.Where(b => b.bet_zone == zone.id).Sum(b => b.bet_amount)
+            Volume = _dbContext.Bets.Where(b => b.bet_zone == zone.id).Sum(b => b.bet_amount)
           }).ToList();
           double totalVolume = zoneVolumes.Sum(z => z.Volume);
 
