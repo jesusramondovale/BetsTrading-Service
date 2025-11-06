@@ -335,6 +335,7 @@ namespace BetsTrading_Service.Services
                 h.Value.Item1.StartA,
                 h.Value.Item1.EndA,
                 RandomizeOdds(oddsLow),
+                1,
                 h.Key
             ));
             _dbContext.BetZones.Add(new BetZone(
@@ -344,6 +345,7 @@ namespace BetsTrading_Service.Services
                 h.Value.Item1.StartA,
                 h.Value.Item1.EndA,
                 RandomizeOdds(oddsMid),
+                0,
                 h.Key
             ));
             _dbContext.BetZones.Add(new BetZone(
@@ -353,6 +355,7 @@ namespace BetsTrading_Service.Services
                 h.Value.Item1.StartA,
                 h.Value.Item1.EndA,
                 RandomizeOdds(oddsHigh),
+                0,
                 h.Key
             ));
 
@@ -365,6 +368,7 @@ namespace BetsTrading_Service.Services
                 h.Value.Item2.StartB,
                 h.Value.Item2.EndB,
                 RandomizeOdds(oddsLow * 2),
+                0,
                 h.Key
             ));
             _dbContext.BetZones.Add(new BetZone(
@@ -374,6 +378,7 @@ namespace BetsTrading_Service.Services
                 h.Value.Item2.StartB,
                 h.Value.Item2.EndB,
                 RandomizeOdds(oddsMid * 2),
+                0,
                 h.Key
             ));
             _dbContext.BetZones.Add(new BetZone(
@@ -383,6 +388,7 @@ namespace BetsTrading_Service.Services
                 h.Value.Item2.StartB,
                 h.Value.Item2.EndB,
                 RandomizeOdds(oddsHigh * 2),
+                1,
                 h.Key
             ));
           }

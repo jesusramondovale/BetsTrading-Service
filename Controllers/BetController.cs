@@ -136,7 +136,7 @@ namespace BetsTrading_Service.Controllers
               target_won: bet.target_won,
               finished: bet.finished,
               icon_path: tmpAsset.icon ?? "noIcon",
-              type: tmpBetZone.type,
+              type: tmpBetZone.bet_type,
               date_margin: timeMargin.Days,
               bet_zone: bet.bet_zone
           ));
@@ -145,6 +145,137 @@ namespace BetsTrading_Service.Controllers
         _logger.Log.Debug("[INFO] :: UserBets :: success with ID: {msg}", userInfoRequest.id);
 
         return Ok(new { Message = "UserBets SUCCESS", Bets = betDTOs });
+      }
+      catch (Exception ex)
+      {
+        _logger.Log.Error(ex, "[INFO] :: UserBets :: Internal server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+    }
+
+    [HttpPost("UserBet")]
+    public async Task<IActionResult> UserBet([FromBody] tokenRequest userInfoRequest, CancellationToken ct)
+    {
+      try
+      {
+        bool userExists = await _dbContext.Users.AnyAsync(u => u.id == userInfoRequest.user_id, ct);
+        if (!userExists)
+        {
+          _logger.Log.Warning("[INFO] :: UserBet :: User doesn't exist. ID: {msg}", userInfoRequest.user_id);
+          return NotFound(new { Message = "Unexistent user" });
+        }
+
+        var bets = await _dbContext.Bets
+            .AsNoTracking()
+            .Where(bet => bet.user_id == userInfoRequest.user_id && bet.id.ToString() == userInfoRequest.token)
+            .ToListAsync(ct);
+
+        if (bets.Count == 0)
+        {
+          _logger.Log.Debug("[INFO] :: UserBet :: Empty list of bets on userID: {msg}", userInfoRequest.user_id);
+          return NotFound(new { Message = "User has no bets!" });
+        }
+
+        var betDTOs = new List<BetDTO>();
+
+        foreach (var bet in bets)
+        {
+          var tmpAsset = await _dbContext.FinancialAssets
+              .AsNoTracking()
+              .FirstOrDefaultAsync(a => a.ticker == bet.ticker, ct);
+
+          if (tmpAsset == null) continue;
+
+
+          var lastCandle = await _dbContext.AssetCandles
+              .AsNoTracking()
+              .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h")
+              .OrderByDescending(c => c.DateTime)
+              .FirstOrDefaultAsync(ct);
+
+          if (lastCandle == null) continue;
+
+          var lastDay = lastCandle.DateTime.Date;
+
+
+          AssetCandle? prevCandle;
+
+          if (tmpAsset.group == "Cryptos" || tmpAsset.group == "Forex")
+          {
+            prevCandle = await _dbContext.AssetCandles
+                .AsNoTracking()
+                .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h")
+                .OrderByDescending(c => c.DateTime)
+                .Skip(24)
+                .FirstOrDefaultAsync(ct);
+          }
+          else
+          {
+            prevCandle = await _dbContext.AssetCandles
+                .AsNoTracking()
+                .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h" && c.DateTime.Date < lastDay)
+                .OrderByDescending(c => c.DateTime)
+                .FirstOrDefaultAsync(ct);
+          }
+
+
+
+          double necessaryGain;
+
+          var tmpBetZone = await _dbContext.BetZones
+              .AsNoTracking()
+              .FirstOrDefaultAsync(bz => bz.id == bet.bet_zone, ct);
+
+          necessaryGain = (tmpBetZone != null) ? ((tmpBetZone.target_value - tmpAsset.current) / tmpAsset.current) : 0;
+
+          if (tmpBetZone == null) continue;
+
+          double topLimit = tmpBetZone.target_value + (tmpBetZone.target_value * tmpBetZone.bet_margin / 200.0);
+          double bottomLimit = tmpBetZone.target_value - (tmpBetZone.target_value * tmpBetZone.bet_margin / 200.0);
+
+          if (tmpAsset.current < bottomLimit)
+          {
+            necessaryGain = (tmpBetZone != null) ? ((bottomLimit - tmpAsset.current) / tmpAsset.current) : 0;
+          }
+          if (tmpAsset.current > topLimit)
+          {
+            necessaryGain = (tmpBetZone != null) ? ((topLimit - tmpAsset.current) / tmpAsset.current) : 0;
+          }
+          else if (tmpAsset.current >= bottomLimit && tmpAsset.current <= topLimit)
+          {
+            necessaryGain = 0.0;
+          }
+
+
+
+          TimeSpan timeMargin = tmpBetZone!.end_date - tmpBetZone.start_date;
+
+          betDTOs.Add(new BetDTO(
+              id: bet.id,
+              user_id: userInfoRequest.user_id!,
+              ticker: bet.ticker,
+              name: tmpAsset.name,
+              bet_amount: bet.bet_amount,
+              necessary_gain: necessaryGain * 100,
+              origin_value: bet.origin_value,
+              current_value: tmpAsset.current,
+              target_value: tmpBetZone.target_value,
+              target_margin: tmpBetZone.bet_margin,
+              target_date: tmpBetZone.start_date,
+              end_date: tmpBetZone.end_date,
+              target_odds: bet.origin_odds,
+              target_won: bet.target_won,
+              finished: bet.finished,
+              icon_path: tmpAsset.icon ?? "noIcon",
+              type: tmpBetZone.bet_type,
+              date_margin: timeMargin.Days,
+              bet_zone: bet.bet_zone
+          ));
+        }
+
+        _logger.Log.Debug("[INFO] :: UserBets :: success with ID: {msg}", userInfoRequest.token);
+
+        return Ok(new { Message = "UserBet SUCCESS", Bet = betDTOs });
       }
       catch (Exception ex)
       {
@@ -267,7 +398,7 @@ namespace BetsTrading_Service.Controllers
               target_won: bet.target_won,
               finished: bet.finished,
               icon_path: tmpAsset.icon ?? "noIcon",
-              type: tmpBetZone.type,
+              type: tmpBetZone.bet_type,
               date_margin: timeMargin.Days,
               bet_zone: bet.bet_zone
           ));
@@ -551,7 +682,7 @@ namespace BetsTrading_Service.Controllers
         var bet = await _dbContext.Bets.FirstOrDefaultAsync(b => b.id == betID.id);
         if (bet != null)
         {
-          var betZone = await _dbContext.BetZones.FirstOrDefaultAsync(bz => bz.id == bet.bet_zone);
+          BetZone betZone = await _dbContext.BetZones.FirstOrDefaultAsync(bz => bz.id == bet.bet_zone);
           var origin_bet = await _dbContext.Bets.FirstOrDefaultAsync(b => b.bet_zone == betID.id);
           if (origin_bet == null)
           {
@@ -560,8 +691,7 @@ namespace BetsTrading_Service.Controllers
           if (null != betZone)
           {
             _logger.Log.Debug("[INFO] :: GetBetZone :: Success on bet ID: {msg}", betID.id);
-            return Ok(new { bets = new List<BetZone> { new(betZone.ticker, betZone.target_value, betZone.bet_margin,
-                                                            betZone.start_date, betZone.end_date, origin_odds, betZone.timeframe) } });
+            return Ok(new { bets = new List<BetZone> { new( betZone.id, betZone.ticker,  betZone.target_value,  betZone.bet_margin, betZone.start_date, betZone.end_date, origin_odds, betZone.bet_type, betZone.timeframe) } });
           }
           else
           {
