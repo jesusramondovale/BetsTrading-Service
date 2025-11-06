@@ -1008,5 +1008,56 @@ namespace BetsTrading_Service.Controllers
         return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
     }
+
+    [HttpPost("NewRaffle")]
+    public async Task<IActionResult> NewRaffle([FromBody] tokenRequest request, CancellationToken ct)
+    {
+      try
+      {
+        if (request is null || string.IsNullOrWhiteSpace(request.user_id) || string.IsNullOrWhiteSpace(request.token))
+          return BadRequest(new { Error = "Missing or invalid user id or item token" });
+
+        var user = await _dbContext.Users.SingleOrDefaultAsync(u => u.id == request.user_id, ct);
+
+        if (user is null)
+        {
+          _logger.Log.Warning("[INFO] :: NewRaffle :: User not found. ID: {msg}", request.user_id);
+          return NotFound(new { Error = "User not found" });
+        }
+        var raffleItem = await _dbContext.RaffleItems.FirstAsync(ri => ri.id.ToString() == request.token);
+
+        if (user.points < raffleItem.coins)
+        {
+          return BadRequest(new { Error = "Not enough points" });
+        }
+
+        await using var tx = await _dbContext.Database.BeginTransactionAsync(ct);
+
+        user.points -= raffleItem.coins;
+        raffleItem.participants += 1;
+
+        var raffle = new Raffle(raffleItem.id.ToString(), user.id, DateTime.UtcNow);
+
+        await _dbContext.Raffles.AddAsync(raffle, ct);
+        _dbContext.Users.Update(user);
+        _dbContext.RaffleItems.Update(raffleItem);
+        await _dbContext.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
+
+        _logger.Log.Debug("[INFO] :: NewRaffle :: Uploaded succesfully.");
+        return Ok(new
+        {
+          raffle_id = raffleItem.id,
+          user_points = user.points,
+          
+        });
+      }
+      catch (Exception ex)
+      {
+        _logger.Log.Error("[INFO] :: NewRaffle :: Internal server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+    }
+
   }
 }
