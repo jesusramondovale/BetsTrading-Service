@@ -1,4 +1,5 @@
-﻿using Newtonsoft.Json.Linq;
+﻿// UpdaterService.cs
+using Newtonsoft.Json.Linq;
 using BetsTrading_Service.Database;
 using BetsTrading_Service.Interfaces;
 using BetsTrading_Service.Models;
@@ -8,39 +9,30 @@ using System.Globalization;
 using System.Text.Json;
 using EFCore.BulkExtensions;
 using static BetsTrading_Service.Models.TwelveDataParser;
+using Microsoft.Extensions.Options;
 
-
-namespace BetsTrading_Service.Services 
+namespace BetsTrading_Service.Services
 {
-  public class UpdaterService(AppDbContext dbContext, ICustomLogger customLogger, FirebaseNotificationService firebaseNotificationService)
+  public class UpdaterService(AppDbContext dbContext, ICustomLogger customLogger,
+    FirebaseNotificationService firebaseNotificationService, IOptions<OddsAdjusterOptions> options)
   {
-    
     private int currentKeyIndex = 0;
-
-    // Assets & Crypto & Forex
     private static readonly string[] TWELVE_DATA_KEYS = Enumerable.Range(0, 11).Select(i => Environment.GetEnvironmentVariable($"TWELVE_DATA_KEY{i}", EnvironmentVariableTarget.User) ?? "").ToArray() ?? [];
-    // Logos only
     private readonly string MARKETSTACK_KEY = Environment.GetEnvironmentVariable("MARKETSTACK_API_KEY", EnvironmentVariableTarget.User) ?? "";
-
     readonly Random random = new();
-
     private const int PRICE_BET_WIN_PRICE = 50000;
     private readonly FirebaseNotificationService _firebaseNotificationService = firebaseNotificationService;
     private readonly AppDbContext _dbContext = dbContext;
     private readonly ICustomLogger _logger = customLogger;
-    
+    private readonly IOptions<OddsAdjusterOptions> _options = options;
     private static readonly HttpClient client = new();
 
-    #region Update Assets
-
     private string GetCurrentKey() => TWELVE_DATA_KEYS[currentKeyIndex];
-    
     private void NextKey()
     {
       currentKeyIndex = (currentKeyIndex + 1) % TWELVE_DATA_KEYS.Length;
     }
 
-    //UpdateAssets with TwelveData key list
     public async Task UpdateAssetsAsync(IServiceScopeFactory scopeFactory, bool marketHours, CancellationToken ct = default)
     {
       _logger.Log.Information("[UpdaterService] :: UpdateAssetsAsync() called! {0}", (marketHours ? "Mode market hours" : "Continuous mode"));
@@ -56,8 +48,7 @@ namespace BetsTrading_Service.Services
 
       var query = !marketHours ?
         _dbContext.FinancialAssets.AsNoTracking().Where(a => a.group.ToLower() == "cryptos" || a.group.ToLower() == "forex")
-    :   _dbContext.FinancialAssets.AsNoTracking();
-
+        : _dbContext.FinancialAssets.AsNoTracking();
 
       var selectedAssets = await query.ToListAsync(ct);
 
@@ -71,14 +62,14 @@ namespace BetsTrading_Service.Services
 
       const string interval = "1h";
       const string outputsize = "1000";
-      const string desiredQuote = "EUR"; //TO-DO;
+      const string desiredQuote = "EUR";
 
       int keyIndex = 0;
       int callsWithThisKey = 0;
 
       string CurrentKey() => TWELVE_DATA_KEYS[keyIndex] ?? string.Empty;
 
-      void NextKey()
+      void NextKeyLocal()
       {
         keyIndex = (keyIndex + 1) % TWELVE_DATA_KEYS.Length;
         callsWithThisKey = 0;
@@ -94,7 +85,7 @@ namespace BetsTrading_Service.Services
         if (callsWithThisKey == 8)
         {
           var wrapped = (keyIndex + 1) % TWELVE_DATA_KEYS.Length == 0;
-          NextKey();
+          NextKeyLocal();
           if (wrapped)
           {
             _logger.Log.Information("[UpdaterService] :: Sleeping 35 seconds to bypass rate limit");
@@ -234,12 +225,6 @@ namespace BetsTrading_Service.Services
       _logger.Log.Information("[UpdaterService] :: UpdateAssetsAsync() completed successfully! ({0})", (marketHours ? "Mode market hours" : "Continuous mode"));
     }
 
-
-
-    #endregion
-
-    #region Create Bets
-
     public async Task CreateBets(bool marketHoursMode)
     {
       _logger.Log.Information("[UpdaterService] :: CreateBets() called with mode market-Hours = {0}", marketHoursMode.ToString());
@@ -252,10 +237,8 @@ namespace BetsTrading_Service.Services
 
         var financialAssets = await query.ToListAsync();
 
-
         foreach (var currentAsset in financialAssets)
         {
-
           var now = DateTime.UtcNow;
 
           var start1h = now.AddHours(2);
@@ -288,7 +271,6 @@ namespace BetsTrading_Service.Services
 
           foreach (var h in horizons)
           {
-            // Existent active Bet zones for current asset ticker and timeframe
             if (_dbContext.BetZones.Where(bz => bz.active && bz.timeframe == h.Key && bz.ticker == currentAsset.ticker).Any()) continue;
 
             var candles = await _dbContext.AssetCandles
@@ -327,7 +309,6 @@ namespace BetsTrading_Service.Services
             double oddsMid = EstimateOdds(targetMid, lastClose, stdDev, trend, "mid");
             double oddsHigh = EstimateOdds(targetHigh, lastClose, stdDev, trend, "high");
 
-
             _dbContext.BetZones.Add(new BetZone(
                 currentAsset.ticker!,
                 targetLow,
@@ -358,8 +339,6 @@ namespace BetsTrading_Service.Services
                 0,
                 h.Key
             ));
-
-            //-------------- DOUBLE LONGS ----------------------
 
             _dbContext.BetZones.Add(new BetZone(
                 currentAsset.ticker!,
@@ -392,7 +371,6 @@ namespace BetsTrading_Service.Services
                 h.Key
             ));
           }
-
         }
 
         await _dbContext.SaveChangesAsync();
@@ -404,8 +382,7 @@ namespace BetsTrading_Service.Services
         _logger.Log.Error(ex, "[UpdaterService] :: CreateBets() error");
         await transaction.RollbackAsync();
       }
-
-    } 
+    }
 
     double RandomizeOdds(double baseOdds)
     {
@@ -414,64 +391,56 @@ namespace BetsTrading_Service.Services
     }
 
     private static double CalculateLinearRegressionSlope(List<double> data)
+    {
+      int n = data.Count;
+      double sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+
+      for (int i = 0; i < n; i++)
       {
-        int n = data.Count;
-        double sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
-
-        for (int i = 0; i < n; i++)
-        {
-          sumX += i;
-          sumY += data[i];
-          sumXY += i * data[i];
-          sumX2 += i * i;
-        }
-
-        double numerator = n * sumXY - sumX * sumY;
-        double denominator = n * sumX2 - sumX * sumX;
-
-        return denominator == 0 ? 0 : numerator / denominator;
+        sumX += i;
+        sumY += data[i];
+        sumXY += i * data[i];
+        sumX2 += i * i;
       }
+
+      double numerator = n * sumXY - sumX * sumY;
+      double denominator = n * sumX2 - sumX * sumX;
+
+      return denominator == 0 ? 0 : numerator / denominator;
+    }
 
     private static double EstimateOdds(double target, double current, double stdDev, string trend, string zone)
+    {
+      double distance = Math.Abs(current - target);
+      double relativeRisk = distance / stdDev;
+
+      double baseOdds = zone switch
       {
-        double distance = Math.Abs(current - target);
-        double relativeRisk = distance / stdDev;
+        "mid" => 1.8,
+        "low" => 2.0,
+        "high" => 2.0,
+        _ => 2.0
+      };
 
-        double baseOdds = zone switch
-        {
-          "mid" => 1.8,
-          "low" => 2.0,
-          "high" => 2.0,
-          _ => 2.0
-        };
+      if (zone == "low" && trend == "uptrend") baseOdds += 0.4;
+      if (zone == "high" && trend == "downtrend") baseOdds += 0.4;
+      if (zone == "low" && trend == "downtrend") baseOdds -= 0.2;
+      if (zone == "high" && trend == "uptrend") baseOdds -= 0.2;
 
-        if (zone == "low" && trend == "uptrend") baseOdds += 0.4;
-        if (zone == "high" && trend == "downtrend") baseOdds += 0.4;
-        if (zone == "low" && trend == "downtrend") baseOdds -= 0.2;
-        if (zone == "high" && trend == "uptrend") baseOdds -= 0.2;
+      return Math.Max(1.01, baseOdds + relativeRisk * 0.3);
+    }
 
-        return Math.Max(1.01, baseOdds + relativeRisk * 0.3);
-      }
-
-    #endregion
-
-    #region Update Bets
     public async Task SetInactiveBetZones()
     {
-      _logger.Log.Information("[UpdaterService] :: SetInactiveBets() called");
+      _logger.Log.Information("[UpdaterService] :: SetInactiveBetZones() called");
 
-      var betZonesToCheck = await _dbContext.BetZones
-          .Where(bz => DateTime.UtcNow >= bz.start_date)
-          .ToListAsync();
+      var now = DateTime.UtcNow;
 
-      foreach (var currentBetZone in betZonesToCheck)
-      {
-        currentBetZone.active = false;
-        _dbContext.BetZones.Update(currentBetZone);
-      }
+      var affected = await _dbContext.BetZones
+        .Where(bz => bz.active && now >= bz.start_date)
+        .ExecuteUpdateAsync(s => s.SetProperty(bz => bz.active, _ => false));
 
-      _dbContext.SaveChanges();
-      _logger.Log.Debug("[UpdaterService] :: SetInactiveBets() ended succesfully!");
+      _logger.Log.Information("[UpdaterService] :: SetInactiveBetZones() -> {Count} zonas desactivadas", affected);
     }
 
     public async Task SetFinishedBets()
@@ -482,7 +451,7 @@ namespace BetsTrading_Service.Services
           .Where(bz => DateTime.UtcNow >= bz.end_date)
           .Select(bz => bz.id)
           .ToListAsync();
-   
+
       if (betsZonesToCheck.Count != 0)
       {
         var betsToMark = _dbContext.Bets
@@ -502,21 +471,20 @@ namespace BetsTrading_Service.Services
       {
         _logger.Log.Warning("[UpdaterService] :: SetFinishedBets() no bets to check!");
       }
-      
     }
-    
+
     public async Task CheckBets(bool marketHours)
     {
       _logger.Log.Information("[UpdaterService] :: CheckBets() called with market hours mode = {0}", marketHours);
 
       var now = DateTime.UtcNow;
 
-      var betZonesToCheck = (marketHours)? 
+      var betZonesToCheck = (marketHours) ?
         await _dbContext.BetZones
           .Where(bz => now >= bz.start_date && now <= bz.end_date)
           .Select(bz => bz.id)
           .ToListAsync()
-    : 
+        :
         await _dbContext.BetZones
           .Where(bz =>
               _dbContext.FinancialAssets
@@ -574,7 +542,7 @@ namespace BetsTrading_Service.Services
         double lowerBound = currentBetZone.target_value - (currentBetZone.target_value * currentBetZone.bet_margin / 200);
 
         bool hasExitedZone = candles.Any(c =>
-            (double)c.High > upperBound 
+            (double)c.High > upperBound
             ||
             (double)c.Low < lowerBound);
 
@@ -591,11 +559,11 @@ namespace BetsTrading_Service.Services
     {
       _logger.Log.Information("[UpdaterService] :: PayBets() called with mode market hours = {0}", marketHours);
 
-      var betsToPay = (marketHours) ? 
+      var betsToPay = (marketHours) ?
         await _dbContext.Bets
           .Where(b => b.finished && !b.paid && b.target_won)
           .ToListAsync()
-    : 
+        :
         await _dbContext.Bets
           .Where(b => b.finished && !b.paid && b.target_won &&
               _dbContext.FinancialAssets
@@ -632,85 +600,66 @@ namespace BetsTrading_Service.Services
       _logger.Log.Debug("[UpdaterService] :: PayBets() ended succesfully!");
     }
 
-    #endregion
+    public async Task RefreshTargetOddsAsync(CancellationToken ct = default)
+    {
+      var now = DateTime.UtcNow;
 
-    #region Refresh odds
-    //Called from OddsAdjusterService.cs:41
-    public void RefreshTargetOdds()
+      await using var tx = await _dbContext.Database.BeginTransactionAsync(ct);
+
+      var zones = await _dbContext.BetZones
+        .AsNoTracking()
+        .Where(bz => bz.active && now < bz.start_date)
+        .Select(bz => new { bz.id, bz.ticker, bz.timeframe, bz.start_date })
+        .ToListAsync(ct);
+
+      var groups = zones.GroupBy(z => new { z.ticker, z.timeframe, z.start_date });
+
+      foreach (var g in groups)
       {
-        _logger.Log.Debug("[UpdaterService] :: RefreshTargetOdds() called!");
+        var zoneIds = g.Select(z => z.id).ToList();
 
-      using var transaction = _dbContext.Database.BeginTransaction();
-      try
-      {
+        var volumes = await _dbContext.Bets
+          .Where(b => zoneIds.Contains(b.bet_zone))
+          .GroupBy(b => b.bet_zone)
+          .Select(x => new { ZoneId = x.Key, Volume = x.Sum(b => b.bet_amount) })
+          .ToListAsync(ct);
 
-        var betZoneGroups = _dbContext.BetZones
-          .GroupBy(bz => new { bz.ticker })
-          .ToList();
+        if (volumes.Count == 0) continue;
 
-        foreach (var group in betZoneGroups)
+        var volDict = volumes.ToDictionary(x => x.ZoneId, x => (double)x.Volume);
+
+        double k = 1.0;
+        double margin = 0.98;
+        double total = volumes.Sum(v => v.Volume + k);
+
+        foreach (var v in volumes)
         {
-          var zones = group.ToList();
+          double prob = (v.Volume + k) / total;
+          double odds = Math.Max(1.1, Math.Round((1.0 / prob) * margin, 2));
 
-          if (zones.Count < 2)
-            continue;
-
-          var zoneVolumes = zones.Select(zone => new
-          {
-            Zone = zone,
-            Volume = _dbContext.Bets.Where(b => b.bet_zone == zone.id).Sum(b => b.bet_amount)
-          }).ToList();
-          double totalVolume = zoneVolumes.Sum(z => z.Volume);
-
-          if (totalVolume == 0)
-            continue;
-
-          foreach (var z in zoneVolumes)
-          {
-
-            double oppositeVolume = totalVolume - z.Volume;
-
-            double odds = (z.Volume == 0)
-              ? 2.5
-              : (oppositeVolume / z.Volume) * 0.99;
-
-            z.Zone.target_odds = Math.Max(Math.Round(odds, 2), 1.1);
-            _dbContext.BetZones.Update(z.Zone);
-
-            _logger.Log.Debug("[UpdaterService] :: RefreshTargetOdds() :: ZONE {0} updated: volume={1}, odd={2}",
-              z.Zone.id, z.Volume, odds);
-          }
+          await _dbContext.BetZones
+            .Where(bz => bz.id == v.ZoneId)
+            .ExecuteUpdateAsync(s => s.SetProperty(b => b.target_odds, _ => odds), ct);
         }
+      }
 
-        _dbContext.SaveChanges();
-        transaction.Commit();
-        _logger.Log.Debug("[UpdaterService] :: RefreshTargetOdds() completed successfully.");
-      }
-      catch (Exception ex)
-      {
-        _logger.Log.Error("[UpdaterService] :: AdjustTargetOdds() error: ", ex.ToString());
-        transaction.Rollback();
-      }
+      await tx.CommitAsync(ct);
+      _logger.Log.Debug("[UpdaterService] :: RefreshTargetOdds() completed successfully.");
     }
-    #endregion
 
-    #region Update Trends
     public void UpdateTrends(bool marketHours)
     {
       using var transaction = _dbContext.Database.BeginTransaction();
       try
       {
-
         var query = (marketHours) ?
           _dbContext.FinancialAssets
             .AsNoTracking()
             .Where(a => a.current > 0)
-
             :
             _dbContext.FinancialAssets
             .AsNoTracking()
             .Where(a => a.current > 0 && (a.group.ToLower() == "cryptos" || a.group.ToLower() == "forex"));
-
 
         var assets = query.ToList();
 
@@ -793,20 +742,17 @@ namespace BetsTrading_Service.Services
       }
     }
 
-    #endregion
-
-    #region Check Price-Bets
     public async Task CheckAndPayPriceBets(bool marketHoursMode)
-      {
-        _logger.Log.Information("[UpdaterService] :: CheckAndPayPriceBets() called with market hours mode = {0}", marketHoursMode);
+    {
+      _logger.Log.Information("[UpdaterService] :: CheckAndPayPriceBets() called with market hours mode = {0}", marketHoursMode);
       using var transaction = await _dbContext.Database.BeginTransactionAsync();
       try
       {
-        var priceBetsToPay = (marketHoursMode) ? 
+        var priceBetsToPay = (marketHoursMode) ?
           await _dbContext.PriceBets
             .Where(pb => !pb.paid && pb.end_date < DateTime.UtcNow)
             .ToListAsync()
-    : 
+          :
           await _dbContext.PriceBets
             .Where(pb =>
                 !pb.paid && pb.end_date < DateTime.UtcNow &&
@@ -826,7 +772,6 @@ namespace BetsTrading_Service.Services
 
           if (asset != null && user != null)
           {
-            // 🔹 Precio real al final del periodo (última vela antes del end_date)
             var lastCandle = await _dbContext.AssetCandles
                 .Where(c => c.AssetId == asset.id && c.DateTime <= priceBet.end_date)
                 .OrderByDescending(c => c.DateTime)
@@ -834,8 +779,7 @@ namespace BetsTrading_Service.Services
 
             double finalClose = lastCandle != null ? (double)lastCandle.Close : asset.current;
 
-            // WON BET
-            if (Math.Abs(finalClose - priceBet.price_bet) < 0.0001) // tolerancia por decimales
+            if (Math.Abs(finalClose - priceBet.price_bet) < 0.0001)
             {
               user.points += PRICE_BET_WIN_PRICE;
               priceBet.paid = true;
@@ -855,7 +799,7 @@ namespace BetsTrading_Service.Services
 
               _logger.Log.Debug("[UpdaterService] :: CheckAndPayPriceBets :: Paid exact price bet to user {0}", user.id);
             }
-            else // LOST BET
+            else
             {
               priceBet.paid = true;
               _dbContext.PriceBets.Update(priceBet);
@@ -878,12 +822,8 @@ namespace BetsTrading_Service.Services
         _logger.Log.Error(ex, "[UpdaterService] :: CheckAndPayPriceBets error. Rolling back transaction");
         await transaction.RollbackAsync();
       }
-
     }
 
-    #endregion
-
-    #region Private methods
     public static string GetCountryByTicker(string ticker)
     {
       string[] parts = ticker.Split('.');
@@ -893,68 +833,66 @@ namespace BetsTrading_Service.Services
         throw new ArgumentException("Invalid ticker format. Must be NAME.MARKET. Received: ", ticker);
       }
 
-      string name = parts[0].ToUpper(); 
-      string market = parts[1].ToUpper(); 
+      string name = parts[0].ToUpper();
+      string market = parts[1].ToUpper();
 
       if (market == "NASDAQ" || market == "NYSE" || market == "NYSEARCA" || market == "USD")
       {
         return "US";
       }
-
       else if (market == "INDEX")
       {
         return name switch
         {
-          "FTSE" => "GB",// UK (Reino Unido)
-          "N225" => "JP",// Japón
-          "HSI" => "HK",// Hong Kong
-          "CAC" => "FR",// Francia
-          "SSEC" => "CN",// China
-          "SENSEX" => "IN",// India
-          "STOXX50E" => "EU",// Unión Europea
-          "FTSEMIB" => "IT",// Italia
-          "N100" => "EU",// Unión Europea
-          "SPTSX60" => "CA",// Canadá
-          "MDAX" => "DE",// Alemania
-          "OBX" => "NO",// Noruega
-          "BEL20" => "BE",// Bélgica
-          "AEX" => "NL",// Países Bajos
-          "PSI20" => "PT",// Portugal
-          "ISEQ20" => "IE",// Irlanda
-          "OMXS30" => "SE",// Suecia
-          "OMXH25" => "FI",// Finlandia
-          "SMI" => "CH",// Suiza
-          "ATX" => "AT",// Austria
-          "GDAXI" => "DE",// Alemania
-          "AS51" => "AU",// Australia
-          "IBEX" => "ES",// España
-          "SPTSE" => "CA",// Canadá
-          "XAU" => "WORLD",// World (para activos globales como oro, plata, etc.)
-          "XAG" => "WORLD",// World
-          "OIL" => "WORLD",// World
-          "BTC" => "WORLD",// World (Bitcoin)
-          "ETH" => "WORLD",// World (Ethereum)
-          "XRP" => "WORLD",// World
-          "ADA" => "WORLD",// World
-          "DOT" => "WORLD",// World
-          "LTC" => "WORLD",// World
-          "LINK" => "WORLD",// World
-          "BCH" => "WORLD",// World
-          "XLM" => "WORLD",// World
-          "USDC" => "WORLD",// World
-          "UNI" => "WORLD",// World
-          "SOL" => "WORLD",// World
-          "AVAX" => "WORLD",// World
-          "NATGAS" => "WORLD",// World (Gas natural)
-          "HG" => "WORLD",// World (Cobre)
-          _ => "WORLD",// Código por defecto para mercados desconocidos
+          "FTSE" => "GB",
+          "N225" => "JP",
+          "HSI" => "HK",
+          "CAC" => "FR",
+          "SSEC" => "CN",
+          "SENSEX" => "IN",
+          "STOXX50E" => "EU",
+          "FTSEMIB" => "IT",
+          "N100" => "EU",
+          "SPTSX60" => "CA",
+          "MDAX" => "DE",
+          "OBX" => "NO",
+          "BEL20" => "BE",
+          "AEX" => "NL",
+          "PSI20" => "PT",
+          "ISEQ20" => "IE",
+          "OMXS30" => "SE",
+          "OMXH25" => "FI",
+          "SMI" => "CH",
+          "ATX" => "AT",
+          "GDAXI" => "DE",
+          "AS51" => "AU",
+          "IBEX" => "ES",
+          "SPTSE" => "CA",
+          "XAU" => "WORLD",
+          "XAG" => "WORLD",
+          "OIL" => "WORLD",
+          "BTC" => "WORLD",
+          "ETH" => "WORLD",
+          "XRP" => "WORLD",
+          "ADA" => "WORLD",
+          "DOT" => "WORLD",
+          "LTC" => "WORLD",
+          "LINK" => "WORLD",
+          "BCH" => "WORLD",
+          "XLM" => "WORLD",
+          "USDC" => "WORLD",
+          "UNI" => "WORLD",
+          "SOL" => "WORLD",
+          "AVAX" => "WORLD",
+          "NATGAS" => "WORLD",
+          "HG" => "WORLD",
+          _ => "WORLD",
         };
       }
       else
       {
         return "WORLD";
       }
-
     }
 
     public async Task<string> GetStockIconUrl(string ticker)
@@ -966,7 +904,7 @@ namespace BetsTrading_Service.Services
       {
         var jsonResponse = await response.Content.ReadAsStringAsync();
         var data = JObject.Parse(jsonResponse);
-        return data["url"]!.ToString(); 
+        return data["url"]!.ToString();
       }
       else
       {
@@ -996,10 +934,7 @@ namespace BetsTrading_Service.Services
         return string.Empty;
       }
     }
-    #endregion
-  
   }
-  
 
   public class UpdaterHostedService(IServiceProvider serviceProvider, ICustomLogger customLogger) : IHostedService, IDisposable
   {
@@ -1109,5 +1044,4 @@ namespace BetsTrading_Service.Services
       _backgroundTask?.Dispose();
     }
   }
-  
 }

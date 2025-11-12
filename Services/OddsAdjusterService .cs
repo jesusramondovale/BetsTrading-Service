@@ -1,77 +1,64 @@
-﻿using BetsTrading_Service.Database;
-using BetsTrading_Service.Interfaces;
-using BetsTrading_Service.Services;
-using System.Diagnostics;
+﻿using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
-public class OddsAdjusterService : BackgroundService
+namespace BetsTrading_Service.Services
 {
-  private int REFRESH_TIME_SECONDS = 2;
-
-  private readonly IServiceProvider _serviceProvider;
-  private readonly ICustomLogger _logger;
-  private bool _isRunning = false;
-
-  public OddsAdjusterService(IServiceProvider serviceProvider, ICustomLogger logger)
+  public sealed record OddsAdjusterOptions
   {
-    _serviceProvider = serviceProvider;
-    _logger = logger;
+    public TimeSpan AdjustRefreshTime { get; init; } = TimeSpan.FromSeconds(4);
   }
 
-  protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+  public class OddsAdjusterService : BackgroundService
   {
-    _logger.Log.Information("[OddsAdjusterService] :: Service started");
+    private readonly IServiceProvider _serviceProvider;
+    private readonly ILogger<OddsAdjusterService> _logger;
+    private readonly IOptionsMonitor<OddsAdjusterOptions> _options;
+    private readonly SemaphoreSlim _mutex = new(1, 1);
 
-    while (!stoppingToken.IsCancellationRequested)
+    public OddsAdjusterService(IServiceProvider serviceProvider, ILogger<OddsAdjusterService> logger, IOptionsMonitor<OddsAdjusterOptions> options)
     {
-      if (!_isRunning)
+      _serviceProvider = serviceProvider;
+      _logger = logger;
+      _options = options;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+      while (!stoppingToken.IsCancellationRequested)
       {
-        _ = Task.Run(() =>
+        await _mutex.WaitAsync(stoppingToken);
+        try
         {
-          _isRunning = true;
-          var stopwatch = Stopwatch.StartNew();
+          using var scope = _serviceProvider.CreateScope();
+          var updater = scope.ServiceProvider.GetRequiredService<UpdaterService>();
+          await updater.RefreshTargetOddsAsync(stoppingToken);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+          _logger.LogError(ex, "Error executing AdjustTargetOdds().");
+        }
+        finally
+        {
+          _mutex.Release();
+        }
 
-          try
-          {
-            using var scope = _serviceProvider.CreateScope();
-            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var firebaseNotificationService = scope.ServiceProvider.GetRequiredService<FirebaseNotificationService>();
-            var updater = new UpdaterService(dbContext, _logger, firebaseNotificationService);
-
-            _logger.Log.Debug("AdjustTargetOdds() execution started.");
-            updater.RefreshTargetOdds();
-            stopwatch.Stop();
-            _logger.Log.Debug($"AdjustTargetOdds() execution finished in {stopwatch.ElapsedMilliseconds} ms.");
-
-            AdjustRefreshTime(stopwatch.ElapsedMilliseconds);
-          }
-          catch (Exception ex)
-          {
-            _logger.Log.Error(ex, "Error executing AdjustTargetOdds().");
-          }
-          finally
-          {
-            _isRunning = false;
-          }
-        });
+        var wait = _options.CurrentValue.AdjustRefreshTime;
+        try
+        {
+          await Task.Delay(wait, stoppingToken);
+        }
+        catch
+        {
+        }
       }
-
-      await Task.Delay(TimeSpan.FromSeconds(REFRESH_TIME_SECONDS), stoppingToken);
-    }
-
-    _logger.Log.Information("OddsAdjusterService stopped.");
-  }
-
-  private void AdjustRefreshTime(long elapsedMs)
-  {
-    if (elapsedMs > 1500)
-    {
-      REFRESH_TIME_SECONDS = Math.Min(REFRESH_TIME_SECONDS + 1, 10);
-      _logger.Log.Debug($"Execution heavy: increased refresh to {REFRESH_TIME_SECONDS}s.");
-    }
-    else if (elapsedMs < 700 && REFRESH_TIME_SECONDS > 2)
-    {
-      REFRESH_TIME_SECONDS--;
-      _logger.Log.Debug($"Execution light: decreased refresh to {REFRESH_TIME_SECONDS}s.");
     }
   }
 }
