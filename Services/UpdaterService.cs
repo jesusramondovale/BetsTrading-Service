@@ -101,8 +101,8 @@ namespace BetsTrading_Service.Services
         }
 
         string url = asset.group == "Cryptos"
-            ? $"https://api.twelvedata.com/time_series?symbol={symbol}/{desiredQuote}&interval={interval}&outputsize={outputsize}&apikey={CurrentKey()}"
-            : $"https://api.twelvedata.com/time_series?symbol={symbol}&interval={interval}&outputsize={outputsize}&apikey={CurrentKey()}";
+            ? $"https://api.twelvedata.com/time_series?symbol={symbol}/{desiredQuote}&interval={interval}&timezone=UTC&outputsize={outputsize}&apikey={CurrentKey()}"
+            : $"https://api.twelvedata.com/time_series?symbol={symbol}&interval={interval}&timezone=UTC&outputsize={outputsize}&apikey={CurrentKey()}";
 
         HttpResponseMessage resp;
         try
