@@ -20,10 +20,13 @@
     public DbSet<Bet> Bets{ get; set; }
     public DbSet<FinancialAsset> FinancialAssets { get; set; }
     public DbSet<AssetCandle> AssetCandles { get; set; }
+    public DbSet<AssetCandleUSD> AssetCandlesUSD { get; set; }
     public DbSet<Trend> Trends { get; set; }
     public DbSet<Favorite> Favorites { get; set; }
     public DbSet<BetZone> BetZones { get; set; }
+    public DbSet<BetZoneUSD> BetZonesUSD { get; set; }
     public DbSet<PriceBet> PriceBets { get; set; }
+    public DbSet<PriceBetUSD> PriceBetsUSD { get; set; }
     public DbSet<Raffle> Raffles { get; set; }
     public DbSet<RaffleItem> RaffleItems { get; set; }
     public DbSet<WithdrawalMethod> WithdrawalMethods{ get; set; }
@@ -40,6 +43,32 @@
 
       modelBuilder.Entity<VerificationCode>().ToTable("VerificationCodes", schema: "BetsTrading");
 
+      modelBuilder.Entity<BetZone>()
+      .ToTable("BetZones", "BetsTrading");
+
+      modelBuilder.Entity<BetZone>()
+          .Property(e => e.start_date)
+          .HasConversion(v => v, v => DateTime.SpecifyKind(v, DateTimeKind.Utc))
+          .HasColumnType("timestamp without time zone");
+
+      modelBuilder.Entity<BetZone>()
+          .Property(e => e.end_date)
+          .HasConversion(v => v, v => DateTime.SpecifyKind(v, DateTimeKind.Utc))
+          .HasColumnType("timestamp without time zone");
+
+
+      modelBuilder.Entity<PriceBet>()
+      .ToTable("PriceBets", "BetsTrading");
+
+      modelBuilder.Entity<PriceBet>()
+          .Property(e => e.end_date)
+          .HasConversion(v => v, v => DateTime.SpecifyKind(v, DateTimeKind.Utc))
+          .HasColumnType("timestamp without time zone");
+
+      modelBuilder.Entity<PriceBet>()
+          .Property(e => e.end_date)
+          .HasConversion(v => v, v => DateTime.SpecifyKind(v, DateTimeKind.Utc))
+          .HasColumnType("timestamp without time zone");
 
       modelBuilder.Entity<Bet>(entity =>
       {
@@ -85,7 +114,25 @@
               .HasForeignKey(c => c.AssetId);
       });
 
+      modelBuilder.Entity<AssetCandleUSD>(entity =>
+      {
+        entity.ToTable("AssetCandlesUSD");
 
+        entity.HasKey(c => new { c.AssetId, c.Exchange, c.Interval, c.DateTime });
+
+        entity.Property(c => c.AssetId).HasColumnName("AssetId");
+        entity.Property(c => c.Exchange).HasColumnName("exchange");
+        entity.Property(c => c.Interval).HasColumnName("interval");
+        entity.Property(c => c.DateTime).HasColumnName("datetime");
+        entity.Property(c => c.Open).HasColumnName("open");
+        entity.Property(c => c.High).HasColumnName("high");
+        entity.Property(c => c.Low).HasColumnName("low");
+        entity.Property(c => c.Close).HasColumnName("close");
+
+        entity.HasOne(c => c.Asset)
+              .WithMany() // o colección distinta si la tienes
+              .HasForeignKey(c => c.AssetId);
+      });
 
       base.OnModelCreating(modelBuilder);
     }

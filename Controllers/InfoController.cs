@@ -94,115 +94,239 @@ namespace BetsTrading_Service.Controllers
     }
 
     [HttpPost("Favorites")]
-    public async Task<IActionResult> Favorites([FromBody] idRequest userId, CancellationToken ct)
+    public async Task<IActionResult> Favorites([FromBody] symbolWithTimeframe userId, CancellationToken ct)
     {
       try
       {
-        var tokenUserId =
-            User.FindFirstValue(ClaimTypes.NameIdentifier) ??
-            User.FindFirstValue("app_sub") ??
-            User.FindFirstValue(JwtRegisteredClaimNames.Sub);
-
-        if (string.IsNullOrEmpty(tokenUserId))
-          return Unauthorized(new { Message = "Invalid token" });
-
-        if (!string.IsNullOrEmpty(userId.id) &&
-            !string.Equals(userId.id, tokenUserId, StringComparison.Ordinal) &&
-            !User.IsInRole("admin"))
+        IActionResult result;
+        if (userId.currency == "EUR")
         {
-          return Forbid();
+          result = await InnerFavorites(userId,ct);
         }
-
-        var favorites = await _dbContext.Favorites
-            .AsNoTracking()
-            .Where(u => u.user_id == userId.id)
-            .ToListAsync(ct);
-
-        if (favorites.Count == 0)
+        else
         {
-          _logger.Log.Warning("[INFO] :: Favorites :: Empty list of Favorites to userID: {msg}", userId.id);
-          return NotFound(new { Message = "ERROR :: No Favorites!" });
+          result = await InnerFavoritesUSD(userId, ct);
         }
+        return result;
 
-        var favsDTO = new List<FavoriteDTO>();
-
-        foreach (var fav in favorites)
-        {
-          var tmpAsset = await _dbContext.FinancialAssets
-              .AsNoTracking()
-              .FirstOrDefaultAsync(fa => fa.ticker == fav.ticker, ct);
-
-          if (tmpAsset == null) continue;
-
-          var lastCandle = await _dbContext.AssetCandles
-              .AsNoTracking()
-              .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h")
-              .OrderByDescending(c => c.DateTime)
-              .FirstOrDefaultAsync(ct);
-
-          if (lastCandle == null) continue;
-
-          var lastDay = lastCandle.DateTime.Date;
-
-          AssetCandle? prevCandle;
-
-          if (tmpAsset.group == "Cryptos" || tmpAsset.group == "Forex")
-          {
-            prevCandle = await _dbContext.AssetCandles
-                .AsNoTracking()
-                .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h")
-                .OrderByDescending(c => c.DateTime)
-                .Skip(24)
-                .FirstOrDefaultAsync(ct);
-          }
-          else
-          {
-            prevCandle = await _dbContext.AssetCandles
-                .AsNoTracking()
-                .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h" && c.DateTime.Date < lastDay)
-                .OrderByDescending(c => c.DateTime)
-                .FirstOrDefaultAsync(ct);
-          }
-
-          double prevClose;
-          double dailyGain;
-
-          if (prevCandle != null)
-          {
-            prevClose = (double)prevCandle.Close;
-            dailyGain = prevClose == 0 ? 0 : (((double)tmpAsset.current - prevClose) / prevClose) * 100.0;
-          }
-          else
-          {
-            prevClose = tmpAsset.current * 0.95;
-            dailyGain = ((tmpAsset.current - prevClose) / prevClose) * 100.0;
-          }
-
-          favsDTO.Add(new FavoriteDTO(
-              id: fav.id,
-              name: tmpAsset.name,
-              icon: tmpAsset.icon ?? "noIcon",
-              daily_gain: dailyGain,
-              close: prevClose,
-              current: (double)lastCandle.Close,
-              user_id: userId.id!,
-              ticker: fav.ticker
-          ));
-        }
-
-        _logger.Log.Debug("[INFO] :: Favorites :: success to ID: {msg}", userId.id);
-
-        return Ok(new
-        {
-          Message = "Favorites SUCCESS",
-          Favorites = favsDTO
-        });
       }
       catch (Exception ex)
       {
         _logger.Log.Error(ex, "[INFO] :: Favorites :: Internal server error: {msg}", ex.Message);
         return StatusCode(500, new { Message = "Server error", Error = ex.Message });
       }
+    }
+
+    public async Task<IActionResult> InnerFavorites(symbolWithTimeframe userId, CancellationToken ct)
+    {
+      var tokenUserId =
+            User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+            User.FindFirstValue("app_sub") ??
+            User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+      if (string.IsNullOrEmpty(tokenUserId))
+        return Unauthorized(new { Message = "Invalid token" });
+
+      if (!string.IsNullOrEmpty(userId.id) &&
+          !string.Equals(userId.id, tokenUserId, StringComparison.Ordinal) &&
+          !User.IsInRole("admin"))
+      {
+        return Forbid();
+      }
+
+      var favorites = await _dbContext.Favorites
+          .AsNoTracking()
+          .Where(u => u.user_id == userId.id)
+          .ToListAsync(ct);
+
+      if (favorites.Count == 0)
+      {
+        _logger.Log.Warning("[INFO] :: Favorites :: Empty list of Favorites to userID: {msg}", userId.id);
+        return NotFound(new { Message = "ERROR :: No Favorites!" });
+      }
+
+      var favsDTO = new List<FavoriteDTO>();
+
+      foreach (var fav in favorites)
+      {
+        var tmpAsset = await _dbContext.FinancialAssets
+            .AsNoTracking()
+            .FirstOrDefaultAsync(fa => fa.ticker == fav.ticker, ct);
+
+        if (tmpAsset == null) continue;
+
+        AssetCandle? lastCandle = await _dbContext.AssetCandles
+           .AsNoTracking()
+           .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h")
+           .OrderByDescending(c => c.DateTime)
+           .FirstOrDefaultAsync(ct);
+
+
+        if (lastCandle == null) continue;
+
+        var lastDay = lastCandle.DateTime.Date;
+
+        AssetCandle? prevCandle;
+
+        if (tmpAsset.group == "Cryptos" || tmpAsset.group == "Forex")
+        {
+          prevCandle = await _dbContext.AssetCandles
+              .AsNoTracking()
+              .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h")
+              .OrderByDescending(c => c.DateTime)
+              .Skip(24)
+              .FirstOrDefaultAsync(ct);
+          }
+        else
+        {
+          prevCandle = await _dbContext.AssetCandles
+              .AsNoTracking()
+              .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h" && c.DateTime.Date < lastDay)
+              .OrderByDescending(c => c.DateTime)
+              .FirstOrDefaultAsync(ct);
+        }
+
+        double prevClose;
+        double dailyGain;
+        double currentClose = (double)tmpAsset.current_eur;
+
+        if (prevCandle != null)
+        {
+          prevClose = (double)prevCandle.Close;
+          dailyGain = prevClose == 0 ? 0 : ((currentClose - prevClose) / prevClose) * 100.0;
+        }
+        else
+        {
+          prevClose = tmpAsset.current_eur * 0.95;
+          dailyGain = ((currentClose - prevClose) / prevClose) * 100.0;
+        }
+
+        favsDTO.Add(new FavoriteDTO(
+            id: fav.id,
+            name: tmpAsset.name,
+            icon: tmpAsset.icon ?? "noIcon",
+            daily_gain: dailyGain,
+            close: prevClose,
+            current: (double)lastCandle.Close,
+            user_id: userId.id!,
+            ticker: fav.ticker
+        ));
+      }
+      
+      _logger.Log.Debug("[INFO] :: Favorites :: success to ID: {msg}", userId.id);
+
+      return Ok(new
+      {
+        Message = "Favorites SUCCESS",
+        Favorites = favsDTO
+      });
+
+    }
+
+    public async Task<IActionResult> InnerFavoritesUSD(symbolWithTimeframe userId, CancellationToken ct)
+    {
+      var tokenUserId =
+            User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+            User.FindFirstValue("app_sub") ??
+            User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+      if (string.IsNullOrEmpty(tokenUserId))
+        return Unauthorized(new { Message = "Invalid token" });
+
+      if (!string.IsNullOrEmpty(userId.id) &&
+          !string.Equals(userId.id, tokenUserId, StringComparison.Ordinal) &&
+          !User.IsInRole("admin"))
+      {
+        return Forbid();
+      }
+
+      var favorites = await _dbContext.Favorites
+          .AsNoTracking()
+          .Where(u => u.user_id == userId.id)
+          .ToListAsync(ct);
+
+      if (favorites.Count == 0)
+      {
+        _logger.Log.Warning("[INFO] :: Favorites :: Empty list of Favorites to userID: {msg}", userId.id);
+        return NotFound(new { Message = "ERROR :: No Favorites!" });
+      }
+
+      var favsDTO = new List<FavoriteDTO>();
+
+      foreach (var fav in favorites)
+      {
+        var tmpAsset = await _dbContext.FinancialAssets
+            .AsNoTracking()
+            .FirstOrDefaultAsync(fa => fa.ticker == fav.ticker, ct);
+
+        if (tmpAsset == null) continue;
+
+        AssetCandleUSD? lastCandle = await _dbContext.AssetCandlesUSD
+           .AsNoTracking()
+           .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h")
+           .OrderByDescending(c => c.DateTime)
+           .FirstOrDefaultAsync(ct);
+
+
+        if (lastCandle == null) continue;
+
+        var lastDay = lastCandle.DateTime.Date;
+
+        AssetCandleUSD? prevCandle;
+
+        if (tmpAsset.group == "Cryptos" || tmpAsset.group == "Forex")
+        {
+          prevCandle = await _dbContext.AssetCandlesUSD
+              .AsNoTracking()
+              .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h")
+              .OrderByDescending(c => c.DateTime)
+              .Skip(24)
+              .FirstOrDefaultAsync(ct);
+        }
+        else
+        {
+          prevCandle = await _dbContext.AssetCandlesUSD
+              .AsNoTracking()
+              .Where(c => c.AssetId == tmpAsset.id && c.Interval == "1h" && c.DateTime.Date < lastDay)
+              .OrderByDescending(c => c.DateTime)
+              .FirstOrDefaultAsync(ct);
+        }
+
+        double prevClose;
+        double dailyGain;
+        double currentClose = (userId.currency == "EUR" ? (double)tmpAsset.current_eur : (double)tmpAsset.current_usd);
+
+        if (prevCandle != null)
+        {
+          prevClose = (double)prevCandle.Close;
+          dailyGain = prevClose == 0 ? 0 : ((currentClose - prevClose) / prevClose) * 100.0;
+        }
+        else
+        {
+          prevClose = tmpAsset.current_eur * 0.95;
+          dailyGain = ((currentClose - prevClose) / prevClose) * 100.0;
+        }
+
+        favsDTO.Add(new FavoriteDTO(
+            id: fav.id,
+            name: tmpAsset.name,
+            icon: tmpAsset.icon ?? "noIcon",
+            daily_gain: dailyGain,
+            close: prevClose,
+            current: (double)lastCandle.Close,
+            user_id: userId.id!,
+            ticker: fav.ticker
+        ));
+      }
+
+      _logger.Log.Debug("[INFO] :: Favorites :: success to ID: {msg}", userId.id);
+
+      return Ok(new
+      {
+        Message = "Favorites SUCCESS",
+        Favorites = favsDTO
+      });
+
     }
 
     [HttpPost("NewFavorite")]
@@ -264,7 +388,7 @@ namespace BetsTrading_Service.Controllers
     }
 
     [HttpPost("Trends")]
-    public async Task<IActionResult> Trends([FromBody] idRequest userInfoRequest, CancellationToken ct)
+    public async Task<IActionResult> Trends([FromBody] symbolWithTimeframe userInfoRequest, CancellationToken ct)
     {
       try
       {
@@ -302,7 +426,7 @@ namespace BetsTrading_Service.Controllers
               .AsNoTracking()
               .FirstOrDefaultAsync(a => a.ticker == trend.ticker, ct);
          
-            double prevClose = tmpAsset!.current / ((100.0+trend.daily_gain)/100.0);
+            double prevClose = tmpAsset!.current_eur / ((100.0+trend.daily_gain)/100.0);
             
             trendDTOs.Add(new TrendDTO(
              id: trend.id,
@@ -310,7 +434,7 @@ namespace BetsTrading_Service.Controllers
              icon: tmpAsset.icon ?? "noIcon",
              daily_gain: trend.daily_gain,
              close: prevClose,
-             current: tmpAsset.current,
+             current: (userInfoRequest.currency == "EUR" ? tmpAsset.current_eur : tmpAsset.current_usd),
              ticker: trend.ticker));
         }
 

@@ -19,6 +19,7 @@ namespace BetsTrading_Service.Services
     private int currentKeyIndex = 0;
     private static readonly string[] TWELVE_DATA_KEYS = Enumerable.Range(0, 11).Select(i => Environment.GetEnvironmentVariable($"TWELVE_DATA_KEY{i}", EnvironmentVariableTarget.User) ?? "").ToArray() ?? [];
     private readonly string MARKETSTACK_KEY = Environment.GetEnvironmentVariable("MARKETSTACK_API_KEY", EnvironmentVariableTarget.User) ?? "";
+    private readonly decimal FIXED_EUR_USD = 1.16m;
     readonly Random random = new();
     private const int PRICE_BET_WIN_PRICE = 50000;
     private readonly FirebaseNotificationService _firebaseNotificationService = firebaseNotificationService;
@@ -27,15 +28,9 @@ namespace BetsTrading_Service.Services
     private readonly IOptions<OddsAdjusterOptions> _options = options;
     private static readonly HttpClient client = new();
 
-    private string GetCurrentKey() => TWELVE_DATA_KEYS[currentKeyIndex];
-    private void NextKey()
-    {
-      currentKeyIndex = (currentKeyIndex + 1) % TWELVE_DATA_KEYS.Length;
-    }
-
     public async Task UpdateAssetsAsync(IServiceScopeFactory scopeFactory, bool marketHours, CancellationToken ct = default)
     {
-      _logger.Log.Information("[UpdaterService] :: UpdateAssetsAsync() called! {0}", (marketHours ? "Mode market hours" : "Continuous mode"));
+      _logger.Log.Information("[UpdaterService] :: UpdateAssetsAsync() called! {Mode}", marketHours ? "Mode market hours" : "Continuous mode");
 
       if (TWELVE_DATA_KEYS is null || TWELVE_DATA_KEYS.Length == 0 || TWELVE_DATA_KEYS.All(string.IsNullOrWhiteSpace))
       {
@@ -46,9 +41,17 @@ namespace BetsTrading_Service.Services
       using var scope = scopeFactory.CreateScope();
       var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-      var query = !marketHours ?
-        _dbContext.FinancialAssets.AsNoTracking().Where(a => a.group.ToLower() == "cryptos" || a.group.ToLower() == "forex")
+      var query = !marketHours
+        ? _dbContext.FinancialAssets.AsNoTracking().Where(a => a.group.ToLower() == "cryptos" || a.group.ToLower() == "forex")
         : _dbContext.FinancialAssets.AsNoTracking();
+
+      var eurUsdAsset = _dbContext.AssetCandles
+          .AsNoTracking()
+          .Where(ac => ac.AssetId == 223) // EURUSD FOREX
+          .OrderByDescending(ac => ac.DateTime)
+          .FirstOrDefault();
+
+      var eurToUsd = eurUsdAsset != null ? eurUsdAsset.Close : FIXED_EUR_USD;
 
       var selectedAssets = await query.ToListAsync(ct);
 
@@ -161,7 +164,12 @@ namespace BetsTrading_Service.Services
         }
 
         var exchange = parsed.Meta?.Exchange ?? "Unknown";
-        var candles = new List<AssetCandle>(parsed.Values.Count);
+
+        var lastDate = await db.AssetCandles
+            .Where(c => c.AssetId == asset.id && c.Interval == interval)
+            .MaxAsync(c => (DateTime?)c.DateTime, ct) ?? DateTime.MinValue;
+
+        var newCandles = new List<AssetCandle>();
 
         foreach (var v in parsed.Values)
         {
@@ -170,7 +178,10 @@ namespace BetsTrading_Service.Services
             var dtRaw = DateTime.Parse(v.Datetime!, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal);
             var dt = new DateTime(dtRaw.Year, dtRaw.Month, dtRaw.Day, dtRaw.Hour, 0, 0, DateTimeKind.Utc);
 
-            candles.Add(new AssetCandle
+            if (dt <= lastDate)
+              continue;
+
+            newCandles.Add(new AssetCandle
             {
               AssetId = asset.id,
               Exchange = exchange,
@@ -188,9 +199,9 @@ namespace BetsTrading_Service.Services
           }
         }
 
-        if (candles.Count == 0)
+        if (newCandles.Count == 0)
         {
-          _logger.Log.Warning("[UpdaterService] :: No valid candles for {Symbol}", symbol);
+          _logger.Log.Debug("[UpdaterService] :: No new candles for {Symbol}", symbol);
           continue;
         }
 
@@ -200,21 +211,61 @@ namespace BetsTrading_Service.Services
 
           var bulkConfig = new BulkConfig
           {
-            UpdateByProperties = ["AssetId", "Exchange", "Interval", "DateTime"],
+            UpdateByProperties = new List<string> { "AssetId", "Exchange", "Interval", "DateTime" },
             SetOutputIdentity = false,
             UseTempDB = true
           };
 
-          await db.BulkInsertOrUpdateAsync(candles, bulkConfig, cancellationToken: ct);
+          await db.BulkInsertOrUpdateAsync(newCandles, bulkConfig, cancellationToken: ct);
 
-          var lastClose = candles.OrderByDescending(c => c.DateTime).First().Close;
+          if (!string.Equals(asset.group, "Forex", StringComparison.OrdinalIgnoreCase))
+          {
+            var usdCandles = new List<AssetCandleUSD>(newCandles.Count);
+            foreach (var c in newCandles)
+            {
+              usdCandles.Add(new AssetCandleUSD
+              {
+                AssetId = c.AssetId,
+                Exchange = c.Exchange,
+                Interval = c.Interval,
+                DateTime = c.DateTime,
+                Open = c.Open * eurToUsd,
+                High = c.High * eurToUsd,
+                Low = c.Low * eurToUsd,
+                Close = c.Close * eurToUsd
+              });
+            }
+
+            if (usdCandles.Count > 0)
+            {
+              var bulkUsdConfig = new BulkConfig
+              {
+                UpdateByProperties = new List<string> { "AssetId", "Exchange", "Interval", "DateTime" },
+                SetOutputIdentity = false,
+                UseTempDB = true
+              };
+
+              await db.BulkInsertOrUpdateAsync(usdCandles, bulkUsdConfig, cancellationToken: ct);
+            }
+          }
+
+          var lastClose = newCandles
+              .OrderByDescending(c => c.DateTime)
+              .First()
+              .Close;
+
+          var lastCloseUsd = lastClose * eurToUsd;
+
           await db.FinancialAssets
               .Where(f => f.id == asset.id)
-              .ExecuteUpdateAsync(s => s.SetProperty(f => f.current, _ => (double)lastClose), ct);
+              .ExecuteUpdateAsync(s => s
+                  .SetProperty(f => f.current_eur, _ => (double)lastClose)
+                  .SetProperty(f => f.current_usd, _ => (double)lastCloseUsd),
+                  ct);
 
           await transaction.CommitAsync(ct);
 
-          _logger.Log.Debug("[UpdaterService] :: Saved {Count} candles for {Symbol}", candles.Count, symbol);
+          _logger.Log.Debug("[UpdaterService] :: Saved {Count} new candles for {Symbol}", newCandles.Count, symbol);
         }
         catch (Exception ex)
         {
@@ -222,10 +273,10 @@ namespace BetsTrading_Service.Services
         }
       }
 
-      _logger.Log.Information("[UpdaterService] :: UpdateAssetsAsync() completed successfully! ({0})", (marketHours ? "Mode market hours" : "Continuous mode"));
+      _logger.Log.Information("[UpdaterService] :: UpdateAssetsAsync() completed successfully! ({Mode})", marketHours ? "Mode market hours" : "Continuous mode");
     }
 
-    public async Task CreateBets(bool marketHoursMode)
+    public async Task CreateBetZones(bool marketHoursMode)
     {
       _logger.Log.Information("[UpdaterService] :: CreateBets() called with mode market-Hours = {0}", marketHoursMode.ToString());
       using var transaction = await _dbContext.Database.BeginTransactionAsync();
@@ -309,6 +360,14 @@ namespace BetsTrading_Service.Services
             double oddsMid = EstimateOdds(targetMid, lastClose, stdDev, trend, "mid");
             double oddsHigh = EstimateOdds(targetHigh, lastClose, stdDev, trend, "high");
 
+            var eurUsdAsset = _dbContext.AssetCandles
+              .AsNoTracking()
+              .Where(ac => ac.AssetId == 223) // EURUSD FOREX
+              .OrderByDescending(ac => ac.DateTime)
+              .FirstOrDefault();
+
+            var eurToUsd = eurUsdAsset != null ? eurUsdAsset.Close : FIXED_EUR_USD;
+
             _dbContext.BetZones.Add(new BetZone(
                 currentAsset.ticker!,
                 targetLow,
@@ -363,6 +422,68 @@ namespace BetsTrading_Service.Services
             _dbContext.BetZones.Add(new BetZone(
                 currentAsset.ticker!,
                 targetHigh,
+                Math.Round(marginHigh, 1),
+                h.Value.Item2.StartB,
+                h.Value.Item2.EndB,
+                RandomizeOdds(oddsHigh * 2),
+                1,
+                h.Key
+            ));
+            //--------- USD ------------
+            _dbContext.BetZonesUSD.Add(new BetZoneUSD(
+                currentAsset.ticker!,
+                targetLow * (double)eurToUsd,
+                Math.Round(marginLow, 1),
+                h.Value.Item1.StartA,
+                h.Value.Item1.EndA,
+                RandomizeOdds(oddsLow),
+                1,
+                h.Key
+            ));
+            _dbContext.BetZonesUSD.Add(new BetZoneUSD(
+                currentAsset.ticker!,
+                targetMid * (double)eurToUsd,
+                Math.Round(marginMid, 1),
+                h.Value.Item1.StartA,
+                h.Value.Item1.EndA,
+                RandomizeOdds(oddsMid),
+                0,
+                h.Key
+            ));
+            _dbContext.BetZonesUSD.Add(new BetZoneUSD(
+                currentAsset.ticker!,
+                targetHigh * (double)eurToUsd,
+                Math.Round(marginHigh, 1),
+                h.Value.Item1.StartA,
+                h.Value.Item1.EndA,
+                RandomizeOdds(oddsHigh),
+                0,
+                h.Key
+            ));
+
+            _dbContext.BetZonesUSD.Add(new BetZoneUSD(
+                currentAsset.ticker!,
+                targetLow * (double)eurToUsd,
+                Math.Round(marginLow, 1),
+                h.Value.Item2.StartB,
+                h.Value.Item2.EndB,
+                RandomizeOdds(oddsLow * 2),
+                0,
+                h.Key
+            ));
+            _dbContext.BetZonesUSD.Add(new BetZoneUSD(
+                currentAsset.ticker!,
+                targetMid * (double)eurToUsd,
+                Math.Round(marginMid, 1),
+                h.Value.Item2.StartB,
+                h.Value.Item2.EndB,
+                RandomizeOdds(oddsMid * 2),
+                0,
+                h.Key
+            ));
+            _dbContext.BetZonesUSD.Add(new BetZoneUSD(
+                currentAsset.ticker!,
+                targetHigh * (double)eurToUsd,
                 Math.Round(marginHigh, 1),
                 h.Value.Item2.StartB,
                 h.Value.Item2.EndB,
@@ -440,7 +561,12 @@ namespace BetsTrading_Service.Services
         .Where(bz => bz.active && now >= bz.start_date)
         .ExecuteUpdateAsync(s => s.SetProperty(bz => bz.active, _ => false));
 
-      _logger.Log.Information("[UpdaterService] :: SetInactiveBetZones() -> {Count} zonas desactivadas", affected);
+      var affectedUSD = await _dbContext.BetZonesUSD
+        .Where(bz => bz.active && now >= bz.start_date)
+        .ExecuteUpdateAsync(s => s.SetProperty(bz => bz.active, _ => false));
+
+
+      _logger.Log.Information("[UpdaterService] :: SetInactiveBetZones() -> {Count} deactivated zones", affected);
     }
 
     public async Task SetFinishedBets()
@@ -473,6 +599,36 @@ namespace BetsTrading_Service.Services
       }
     }
 
+    public async Task SetFinishedUSDBets()
+    {
+      _logger.Log.Information("[UpdaterService] :: SetFinishedUSDBets() called");
+
+      var betsZonesToCheck = await _dbContext.BetZonesUSD
+          .Where(bz => DateTime.UtcNow >= bz.end_date)
+          .Select(bz => bz.id)
+          .ToListAsync();
+
+      if (betsZonesToCheck.Count != 0)
+      {
+        var betsToMark = _dbContext.Bets
+          .Where(b => betsZonesToCheck.Contains(b.bet_zone) && !b.finished)
+          .ToList();
+
+        foreach (var currentBet in betsToMark)
+        {
+          currentBet.finished = true;
+          _dbContext.Bets.Update(currentBet);
+        }
+
+        _dbContext.SaveChanges();
+        _logger.Log.Debug("[UpdaterService] :: SetFinishedUSDBets() ended succesfully!");
+      }
+      else
+      {
+        _logger.Log.Warning("[UpdaterService] :: SetFinishedUSDBets() no bets to check!");
+      }
+    }
+
     public async Task CheckBets(bool marketHours)
     {
       _logger.Log.Information("[UpdaterService] :: CheckBets() called with market hours mode = {0}", marketHours);
@@ -494,6 +650,7 @@ namespace BetsTrading_Service.Services
               && now >= bz.start_date && now <= bz.end_date)
           .Select(bz => bz.id)
           .ToListAsync();
+
 
       if (betZonesToCheck.Count == 0)
       {
@@ -553,6 +710,89 @@ namespace BetsTrading_Service.Services
 
       await _dbContext.SaveChangesAsync();
       _logger.Log.Debug("[UpdaterService] :: CheckBets() ended successfully!");
+    }
+
+    public async Task CheckUSDBets(bool marketHours)
+    {
+      _logger.Log.Information("[UpdaterService] :: CheckUSDBets() called with market hours mode = {0}", marketHours);
+
+      var now = DateTime.UtcNow;
+
+      var betZonesToCheck = (marketHours) ?
+        await _dbContext.BetZonesUSD
+          .Where(bz => now >= bz.start_date && now <= bz.end_date)
+          .Select(bz => bz.id)
+          .ToListAsync()
+        :
+        await _dbContext.BetZonesUSD
+          .Where(bz =>
+              _dbContext.FinancialAssets
+                  .Where(a => a.group.ToLower() == "cryptos" || a.group.ToLower() == "forex")
+                  .Select(a => a.ticker)
+                  .Contains(bz.ticker)
+              && now >= bz.start_date && now <= bz.end_date)
+          .Select(bz => bz.id)
+          .ToListAsync();
+
+
+      if (betZonesToCheck.Count == 0)
+      {
+        _logger.Log.Warning("[UpdaterService] :: CheckUSDBets() :: No bets to update!");
+        return;
+      }
+
+      var betsToUpdate = await _dbContext.Bets
+          .Where(b => betZonesToCheck.Contains(b.bet_zone) && !b.finished)
+          .ToListAsync();
+
+      foreach (var currentBet in betsToUpdate)
+      {
+        var currentBetZone = await _dbContext.BetZonesUSD
+            .FirstOrDefaultAsync(bz => bz.id == currentBet.bet_zone);
+
+        if (currentBetZone == null)
+        {
+          _logger.Log.Error("[UpdaterService] :: CheckUSDBets() :: Bet zone null on bet [{0}]", currentBet.id);
+          continue;
+        }
+
+        var asset = await _dbContext.FinancialAssets
+            .FirstOrDefaultAsync(fa => fa.ticker == currentBet.ticker);
+
+        if (asset == null)
+        {
+          _logger.Log.Error("[UpdaterService] :: CheckUSDBets() :: Asset null on bet [{0}]", currentBet.ticker);
+          continue;
+        }
+
+        var candles = await _dbContext.AssetCandlesUSD
+            .Where(c => c.AssetId == asset.id &&
+                        c.Interval == "1h" &&
+                        c.DateTime >= currentBetZone.start_date &&
+                        c.DateTime < currentBetZone.end_date)
+            .ToListAsync();
+
+        if (candles.Count == 0)
+        {
+          _logger.Log.Warning("[UpdaterService] :: CheckUSDBets() :: No candles for [{0}] zone [{1}]", asset.ticker, currentBetZone.id);
+          continue;
+        }
+
+        double upperBound = currentBetZone.target_value + (currentBetZone.target_value * currentBetZone.bet_margin / 200);
+        double lowerBound = currentBetZone.target_value - (currentBetZone.target_value * currentBetZone.bet_margin / 200);
+
+        bool hasExitedZone = candles.Any(c =>
+            (double)c.High > upperBound
+            ||
+            (double)c.Low < lowerBound);
+
+        currentBet.target_won = !hasExitedZone;
+        if (hasExitedZone) currentBet.finished = true;
+        _dbContext.Bets.Update(currentBet);
+      }
+
+      await _dbContext.SaveChangesAsync();
+      _logger.Log.Debug("[UpdaterService] :: CheckUSDBets() ended successfully!");
     }
 
     public async Task PayBets(bool marketHours)
@@ -655,11 +895,11 @@ namespace BetsTrading_Service.Services
         var query = (marketHours) ?
           _dbContext.FinancialAssets
             .AsNoTracking()
-            .Where(a => a.current > 0)
+            .Where(a => a.current_eur > 0)
             :
             _dbContext.FinancialAssets
             .AsNoTracking()
-            .Where(a => a.current > 0 && (a.group.ToLower() == "cryptos" || a.group.ToLower() == "forex"));
+            .Where(a => a.current_eur > 0 && (a.group.ToLower() == "cryptos" || a.group.ToLower() == "forex"));
 
         var assets = query.ToList();
 
@@ -704,12 +944,12 @@ namespace BetsTrading_Service.Services
           if (prevCandle != null)
           {
             prevClose = (double)prevCandle.Close;
-            dailyGain = prevClose == 0 ? 0 : (((double)asset.current - prevClose) / prevClose) * 100.0;
+            dailyGain = prevClose == 0 ? 0 : (((double)asset.current_eur - prevClose) / prevClose) * 100.0;
           }
           else
           {
-            prevClose = asset.current * 0.95;
-            dailyGain = ((asset.current - prevClose) / prevClose) * 100.0;
+            prevClose = asset.current_eur * 0.95;
+            dailyGain = ((asset.current_eur - prevClose) / prevClose) * 100.0;
           }
 
           trends.Add(new Trend(
@@ -777,7 +1017,7 @@ namespace BetsTrading_Service.Services
                 .OrderByDescending(c => c.DateTime)
                 .FirstOrDefaultAsync();
 
-            double finalClose = lastCandle != null ? (double)lastCandle.Close : asset.current;
+            double finalClose = lastCandle != null ? (double)lastCandle.Close : asset.current_eur;
 
             if (Math.Abs(finalClose - priceBet.price_bet) < 0.0001)
             {
@@ -820,6 +1060,88 @@ namespace BetsTrading_Service.Services
       catch (Exception ex)
       {
         _logger.Log.Error(ex, "[UpdaterService] :: CheckAndPayPriceBets error. Rolling back transaction");
+        await transaction.RollbackAsync();
+      }
+    }
+
+    public async Task CheckAndPayUSDPriceBets(bool marketHoursMode)
+    {
+      _logger.Log.Information("[UpdaterService] :: CheckAndPayUSDPriceBets() called with market hours mode = {0}", marketHoursMode);
+      using var transaction = await _dbContext.Database.BeginTransactionAsync();
+      try
+      {
+        var priceBetsToPay = (marketHoursMode) ?
+          await _dbContext.PriceBetsUSD
+            .Where(pb => !pb.paid && pb.end_date < DateTime.UtcNow)
+            .ToListAsync()
+          :
+          await _dbContext.PriceBetsUSD
+            .Where(pb =>
+                !pb.paid && pb.end_date < DateTime.UtcNow &&
+                _dbContext.FinancialAssets
+                    .Where(a => a.group.ToLower() == "cryptos" || a.group.ToLower() == "forex")
+                    .Select(a => a.ticker)
+                    .Contains(pb.ticker))
+            .ToListAsync();
+
+        foreach (var priceBet in priceBetsToPay)
+        {
+          var asset = await _dbContext.FinancialAssets
+              .FirstOrDefaultAsync(fa => fa.ticker == priceBet.ticker);
+
+          var user = await _dbContext.Users
+              .FirstOrDefaultAsync(u => u.id == priceBet.user_id);
+
+          if (asset != null && user != null)
+          {
+            var lastCandle = await _dbContext.AssetCandlesUSD
+                .Where(c => c.AssetId == asset.id && c.DateTime <= priceBet.end_date)
+                .OrderByDescending(c => c.DateTime)
+                .FirstOrDefaultAsync();
+
+            double finalClose = lastCandle != null ? (double)lastCandle.Close : asset.current_eur;
+
+            if (Math.Abs(finalClose - priceBet.price_bet) < 0.0001)
+            {
+              user.points += PRICE_BET_WIN_PRICE;
+              priceBet.paid = true;
+
+              _dbContext.PriceBetsUSD.Update(priceBet);
+              _dbContext.Users.Update(user);
+
+              string youWonMessageTemplate = LocalizedTexts.GetTranslationByCountry(user.country, "youWon");
+              string msg = string.Format(youWonMessageTemplate, PRICE_BET_WIN_PRICE.ToString("N2"), priceBet.ticker);
+
+              _ = _firebaseNotificationService.SendNotificationToUser(
+                  user.fcm,
+                  "Betrader",
+                  msg,
+                  new() { { "type", "price_bet" } }
+              );
+
+              _logger.Log.Debug("[UpdaterService] :: CheckAndPayUSDPriceBets :: Paid exact price bet to user {0}", user.id);
+            }
+            else
+            {
+              priceBet.paid = true;
+              _dbContext.PriceBetsUSD.Update(priceBet);
+
+              _logger.Log.Debug("[UpdaterService] :: CheckAndPayUSDPriceBets :: User {0} lost exact price bet on {1}", user.id, priceBet.ticker);
+            }
+          }
+          else
+          {
+            _logger.Log.Error("[UpdaterService] :: CheckAndPayUSDPriceBets :: Unexistent user or asset for PriceBet ID {0}", priceBet.id);
+          }
+        }
+
+        await _dbContext.SaveChangesAsync();
+        await transaction.CommitAsync();
+        _logger.Log.Information("[UpdaterService] :: CheckAndPayUSDPriceBets ended successfully!");
+      }
+      catch (Exception ex)
+      {
+        _logger.Log.Error(ex, "[UpdaterService] :: CheckAndPayUSDPriceBets error. Rolling back transaction");
         await transaction.RollbackAsync();
       }
     }
@@ -983,7 +1305,7 @@ namespace BetsTrading_Service.Services
       using var scope = _serviceProvider.CreateScope();
       var updaterService = scope.ServiceProvider.GetRequiredService<UpdaterService>();
       _customLogger.Log.Information("[UpdaterHostedService] :: Executing CreateBets with mode {0}", (marketHoursMode ? "Market Hours" : "continue mode"));
-      await updaterService.CreateBets(marketHoursMode);
+      await updaterService.CreateBetZones(marketHoursMode);
     }
 
     private async Task ExecuteCheckBets(bool marketHoursMode)
@@ -993,9 +1315,12 @@ namespace BetsTrading_Service.Services
       _customLogger.Log.Information("[UpdaterHostedService] :: Executing Check bets service with market hours mode: {0}", marketHoursMode.ToString());
       await updaterService.SetInactiveBetZones();
       await updaterService.CheckBets(marketHoursMode);
+      await updaterService.CheckUSDBets(marketHoursMode);
       await updaterService.SetFinishedBets();
+      await updaterService.SetFinishedUSDBets();
       await updaterService.PayBets(marketHoursMode);
       await updaterService.CheckAndPayPriceBets(marketHoursMode);
+      await updaterService.CheckAndPayUSDPriceBets(marketHoursMode);
     }
 
     private async Task ExecuteUpdateAssets(bool marketHours)

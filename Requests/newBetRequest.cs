@@ -32,6 +32,10 @@ namespace BetsTrading_Service.Requests
     [JsonPropertyName("bet_zone")]
     public int bet_zone { get; set; }
 
+    [Required]
+    [JsonPropertyName("currency")]
+    public string? currency { get; set; }
+
   }
 
   public class newPriceBetRequest
@@ -52,6 +56,11 @@ namespace BetsTrading_Service.Requests
     [Required]
     [JsonPropertyName("price_bet")]
     public double price_bet { get; set; }
+
+    [Required]
+    [JsonPropertyName("price_bet")]
+    public string? currency { get; set; }
+
 
     [Required]
     [JsonPropertyName("margin")]

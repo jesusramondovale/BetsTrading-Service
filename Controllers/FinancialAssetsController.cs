@@ -4,7 +4,8 @@ using BetsTrading_Service.Models;
 using BetsTrading_Service.Requests;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 
 namespace BetsTrading_Service.Controllers
 {
@@ -14,7 +15,7 @@ namespace BetsTrading_Service.Controllers
   {
     private readonly AppDbContext _context = context;
     private readonly ICustomLogger _logger = customLogger;
-
+       
     // GET: api/FinancialAssets (all)
     [HttpGet]
     public async Task<ActionResult<IEnumerable<FinancialAsset>>> GetFinancialAssets()
@@ -29,7 +30,7 @@ namespace BetsTrading_Service.Controllers
     {
 
       var financialAssets = await _context.FinancialAssets
-        .Where(fa => fa.group == group.id).OrderByDescending(fa => fa.current)
+        .Where(fa => fa.group == group.id).OrderByDescending(fa => fa.current_eur)
         .ToListAsync();
 
       if (financialAssets == null)
@@ -63,8 +64,33 @@ namespace BetsTrading_Service.Controllers
     [HttpPost("FetchCandles")]
     public async Task<ActionResult<IEnumerable<CandleDto>>> FetchCandlesAsync([FromBody] symbolWithTimeframe symbol, CancellationToken ct)
     {
-      int timeframe = symbol.timeframe ?? 1;
+      try
+      {
+        ActionResult<IEnumerable<CandleDto>> result; 
+        if (symbol.currency == "EUR")
+        {
+          result = await InnerFetchCandles(symbol, ct);
+        }
+        else
+        {
+          result = await InnerFetchCandlesUSD(symbol, ct);
+        }
 
+        return result;
+
+      }
+      catch (Exception ex)
+      {
+        _logger.Log.Error("[INFO] :: FetchCandles :: Server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+
+    }
+
+    [NonAction]
+    public async Task<ActionResult<IEnumerable<CandleDto>>> InnerFetchCandles(symbolWithTimeframe symbol, CancellationToken ct)
+    {
+      int timeframe = symbol.timeframe ?? 1;
       var financialAsset = await _context.FinancialAssets
           .AsNoTracking()
           .FirstOrDefaultAsync(fa => fa.ticker == symbol.id, ct);
@@ -72,15 +98,17 @@ namespace BetsTrading_Service.Controllers
       if (financialAsset == null)
         return NotFound();
 
-      var candles = await _context.AssetCandles
+      List<AssetCandle> candles = await _context.AssetCandles
           .AsNoTracking()
           .Where(c => c.AssetId == financialAsset.id && c.Interval == "1h")
-          .OrderByDescending(c => c.DateTime) 
+          .OrderByDescending(c => c.DateTime)
           .ToListAsync(ct);
+      
+      
 
       if (candles.Count == 0)
         return Ok(new List<CandleDto>());
-      
+
       if (timeframe <= 1)
       {
         var resultRaw = candles.Select(c => new CandleDto
@@ -90,11 +118,12 @@ namespace BetsTrading_Service.Controllers
           High = c.High,
           Low = c.Low,
           Close = c.Close
+
         });
 
         return Ok(resultRaw);
       }
-      
+
       var grouped = candles
         .GroupBy(c => new DateTime(
             c.DateTime.Year,
@@ -113,10 +142,69 @@ namespace BetsTrading_Service.Controllers
         .OrderByDescending(c => c.DateTime)
         .ToList();
 
-
       return Ok(grouped);
+
     }
 
+    [NonAction]
+    public async Task<ActionResult<IEnumerable<CandleDto>>> InnerFetchCandlesUSD(symbolWithTimeframe symbol, CancellationToken ct)
+    {
+      int timeframe = symbol.timeframe ?? 1;
+      var financialAsset = await _context.FinancialAssets
+          .AsNoTracking()
+          .FirstOrDefaultAsync(fa => fa.ticker == symbol.id, ct);
+
+      if (financialAsset == null)
+        return NotFound();
+
+      List<AssetCandleUSD> candles = await _context.AssetCandlesUSD
+          .AsNoTracking()
+          .Where(c => c.AssetId == financialAsset.id && c.Interval == "1h")
+          .OrderByDescending(c => c.DateTime)
+          .ToListAsync(ct);
+
+
+      if (candles.Count == 0)
+        return Ok(new List<CandleDto>());
+
+      if (timeframe <= 1)
+      {
+        var resultRaw = candles.Select(c => new CandleDto
+        {
+          DateTime = c.DateTime,
+          Open = c.Open,
+          High = c.High,
+          Low = c.Low,
+          Close = c.Close
+
+        });
+
+        return Ok(resultRaw);
+      }
+
+      var grouped = candles
+        .GroupBy(c => new DateTime(
+            c.DateTime.Year,
+            c.DateTime.Month,
+            c.DateTime.Day,
+            c.DateTime.Hour / timeframe * timeframe,
+            0, 0, DateTimeKind.Utc))
+        .Select(g => new CandleDto
+        {
+          DateTime = g.Key,
+          Open = g.OrderBy(c => c.DateTime).First().Open,
+          Close = g.OrderBy(c => c.DateTime).Last().Close,
+          High = g.Max(c => c.High),
+          Low = g.Min(c => c.Low)
+        })
+        .OrderByDescending(c => c.DateTime)
+        .ToList();
+
+      return Ok(grouped);
+
+    }
 
   }
+
 }
+

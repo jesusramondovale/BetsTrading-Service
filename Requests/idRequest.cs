@@ -29,9 +29,10 @@ namespace BetsTrading_Service.Requests
     [Required]
     public int? timeframe { get; set; } //1,2,4,24
 
+    [Required]
+    public string? currency{ get; set; } //'EUR' , 'USD'
+
   }
-
-
 
 
   public class tokenRequest
@@ -44,6 +45,23 @@ namespace BetsTrading_Service.Requests
     [Required]
     [StringLength(200, MinimumLength = 1)]
     public string? token { get; set; }
+
+  }
+
+  public class tokenRequestWithCurrency
+  {
+
+    [Required]
+    [StringLength(100, MinimumLength = 1)]
+    public string? user_id { get; set; }
+
+    [Required]
+    [StringLength(200, MinimumLength = 1)]
+    public string? token { get; set; }
+
+    [Required]
+    [StringLength(100, MinimumLength = 1)]
+    public string? currency { get; set; }
 
   }
 
