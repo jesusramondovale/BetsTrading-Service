@@ -1,18 +1,19 @@
+using AspNetCoreRateLimit;
 using BetsTrading_Service.Controllers;
 using BetsTrading_Service.Database;
 using BetsTrading_Service.Interfaces;
-using Microsoft.EntityFrameworkCore;
-using Serilog;
-using System.Net;
 using BetsTrading_Service.Services;
-using AspNetCoreRateLimit;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
 using Microsoft.AspNetCore.Authorization;
-using System.IdentityModel.Tokens.Jwt;
-using System.Text;
-using System.Security.Claims;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Tokens;
+using Serilog;
+using System.IdentityModel.Tokens.Jwt;
+using System.Net;
+using System.Security.Claims;
+using System.Text;
 
 namespace BetsTrading_Service
 {
@@ -213,6 +214,25 @@ namespace BetsTrading_Service
         app.MapControllers();
         customLogger.Log.Information("[PROGRAM] :: Controller endpoints added successfully");
         customLogger.Log.Information("[PROGRAM] :: All Backend services started successfully!");
+
+        // Mmigrate EF (only Linux)
+        using (var scope = app.Services.CreateScope())
+        {
+          var services = scope.ServiceProvider;
+          try
+          {
+            var context = services.GetRequiredService<AppDbContext>();
+
+            customLogger.Log.Information("[PROGRAM] :: Aplicando migraciones de Entity Framework Core...");
+            context.Database.Migrate();
+            customLogger.Log.Information("[PROGRAM] :: Migraciones aplicadas correctamente.");
+
+          }
+          catch (Exception ex)
+          {
+            customLogger.Log.Error(ex, "[PROGRAM] :: Ocurrió un error al aplicar las migraciones de la base de datos. La aplicación no continuará.");
+          }
+        }
 
         app.Run();
 

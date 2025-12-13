@@ -1264,7 +1264,8 @@ namespace BetsTrading_Service.Services
     private readonly ICustomLogger _customLogger = customLogger;
     private CancellationTokenSource? _cts;
     private Task? _backgroundTask;
-    private readonly TimeZoneInfo _nyZone = TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time");
+    //private readonly TimeZoneInfo _nyZone = TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time"); // Windows
+    private readonly TimeZoneInfo _nyZone = TimeZoneInfo.FindSystemTimeZoneById("America/New_York"); // Linux
     private int _assetsBusy = 0;
 
     public Task StartAsync(CancellationToken cancellationToken)
