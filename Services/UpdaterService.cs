@@ -17,8 +17,8 @@ namespace BetsTrading_Service.Services
     FirebaseNotificationService firebaseNotificationService, IOptions<OddsAdjusterOptions> options)
   {
     private int currentKeyIndex = 0;
-    private static readonly string[] TWELVE_DATA_KEYS = Enumerable.Range(0, 11).Select(i => Environment.GetEnvironmentVariable($"TWELVE_DATA_KEY{i}", EnvironmentVariableTarget.User) ?? "").ToArray() ?? [];
-    private readonly string MARKETSTACK_KEY = Environment.GetEnvironmentVariable("MARKETSTACK_API_KEY", EnvironmentVariableTarget.User) ?? "";
+    private static readonly string[] TWELVE_DATA_KEYS = Enumerable.Range(0, 11).Select(i => Environment.GetEnvironmentVariable($"TWELVE_DATA_KEY{i}") ?? "").ToArray() ?? [];
+    private readonly string MARKETSTACK_KEY = Environment.GetEnvironmentVariable("MARKETSTACK_API_KEY") ?? "";
     private readonly decimal FIXED_EUR_USD = 1.16m;
     readonly Random random = new();
     private const int PRICE_BET_WIN_PRICE = 50000;

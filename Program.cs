@@ -39,7 +39,7 @@ namespace BetsTrading_Service
         var googleClientId = builder.Configuration["Google:ClientId"]!;
         var localIssuer = builder.Configuration["Jwt:Issuer"] ?? "https://api.betstrading.online";
         var localAudience = builder.Configuration["Jwt:Audience"] ?? "bets-trading-api";
-        var jwtLocalKey = Environment.GetEnvironmentVariable("JWT_LOCAL_KEY", EnvironmentVariableTarget.User) ?? "";
+        var jwtLocalKey = Environment.GetEnvironmentVariable("JWT_LOCAL_KEY") ?? "";
 
         if (jwtLocalKey.IsNullOrEmpty()) Log.Logger.Fatal("[PROGRAM] :: JWT Local Custom Key is empty!");
         if (googleClientId.IsNullOrEmpty()) Log.Logger.Fatal("[PROGRAM] :: Google JWT Client Id is empty!");
@@ -56,7 +56,7 @@ namespace BetsTrading_Service
         builder.Services.Configure<SmtpSettings>(settings =>
         {
           builder.Configuration.GetSection("SMTP").Bind(settings);
-          var envPassword = Environment.GetEnvironmentVariable("SMTP__Password", EnvironmentVariableTarget.User);
+          var envPassword = Environment.GetEnvironmentVariable("SMTP__Password");
           if (!string.IsNullOrEmpty(envPassword))
           {
             settings.Password = envPassword;

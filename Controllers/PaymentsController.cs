@@ -34,9 +34,9 @@
       _config = config;
       _logger = customLogger;
       _emailService = emailService;
-      StripeConfiguration.ApiKey = Environment.GetEnvironmentVariable("STRIPE_SECRET_KEY", EnvironmentVariableTarget.User) ?? "";
+      StripeConfiguration.ApiKey = Environment.GetEnvironmentVariable("STRIPE_SECRET_KEY") ?? "";
       //TO-DO -> Use real Key (already added to env variables)
-      //StripeConfiguration.ApiKey = Environment.GetEnvironmentVariable("STRIPE_REAL_SECRET_KEY", EnvironmentVariableTarget.User) ?? "";
+      //StripeConfiguration.ApiKey = Environment.GetEnvironmentVariable("STRIPE_REAL_SECRET_KEY") ?? "";
 
     }
 
@@ -116,7 +116,7 @@
       try
       {
         var sigHeader = Request.Headers["Stripe-Signature"];
-        var endpointSecret = Environment.GetEnvironmentVariable("STRIPE_WEBHOOK_SECRET", EnvironmentVariableTarget.User) ?? "";
+        var endpointSecret = Environment.GetEnvironmentVariable("STRIPE_WEBHOOK_SECRET") ?? "";
 
         var stripeEvent = EventUtility.ConstructEvent(json, sigHeader, endpointSecret);
 

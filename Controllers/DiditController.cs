@@ -26,8 +26,8 @@ namespace BetsTrading_Service.Controllers
         var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.id == req.id);
         if (user == null) return NotFound(new { Message = "User not found" });
 
-        var apiKey = Environment.GetEnvironmentVariable("DIDIT_API_KEY", EnvironmentVariableTarget.User) ?? "";
-        var workflowId = Environment.GetEnvironmentVariable("DIDIT_WORKFLOW_ID", EnvironmentVariableTarget.User) ?? "";
+        var apiKey = Environment.GetEnvironmentVariable("DIDIT_API_KEY") ?? "";
+        var workflowId = Environment.GetEnvironmentVariable("DIDIT_WORKFLOW_ID") ?? "";
         //TODO
         var callbackUrl = "https://api.betstrading.online/api/Didit/Webhook";
 
@@ -132,7 +132,7 @@ namespace BetsTrading_Service.Controllers
             {
               using var http = new HttpClient();
               http.DefaultRequestHeaders.Add("x-api-key",
-                  Environment.GetEnvironmentVariable("DIDIT_API_KEY", EnvironmentVariableTarget.User) ?? "");
+                  Environment.GetEnvironmentVariable("DIDIT_API_KEY") ?? "");
 
               var response = await http.GetAsync($"https://verification.didit.me/v2/session/{user.didit_session_id}/decision");
               if (response.IsSuccessStatusCode)
