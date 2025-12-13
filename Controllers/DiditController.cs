@@ -63,7 +63,7 @@ namespace BetsTrading_Service.Controllers
           user.didit_session_id = sessionId ?? null;
           await _dbContext.SaveChangesAsync();
 
-          _logger.Log.Debug("[DIDIT] :: Session {sid} created for user {id}", sessionId, user.id);
+          _logger.Log.Information("[DIDIT] :: Session {sid} created for user {id}", sessionId, user.id);
         }
 
         return Ok(json);
@@ -75,6 +75,7 @@ namespace BetsTrading_Service.Controllers
       }
     }
 
+    //https://api.betstrading.online/api/Didit/Webhook
     [AllowAnonymous]
     [HttpPost("Webhook")]
     public async Task<IActionResult> Webhook()
@@ -110,7 +111,7 @@ namespace BetsTrading_Service.Controllers
           {
             user.didit_session_id = sessionId;
             await _dbContext.SaveChangesAsync();
-            _logger.Log.Debug("[DIDIT] :: Updated user {id} with session {sid}", user.id, sessionId);
+            _logger.Log.Information("[DIDIT] :: Updated user {id} with session {sid}", user.id, sessionId);
           }
         }
         
@@ -124,7 +125,7 @@ namespace BetsTrading_Service.Controllers
 
         if (webhookType == "status.updated")
         {
-          _logger.Log.Debug("[DIDIT] :: Status update for user {id}: {status}", user.id, status);
+          _logger.Log.Information("[DIDIT] :: Status update for user {id}: {status}", user.id, status);
           
           if (status == "Approved" || status == "Declined")
           {
