@@ -296,7 +296,7 @@ namespace BetsTrading_Service.Services
           // Cada timeframe tendrá al menos 3 períodos temporales de diferentes tamaños
           var horizons = new Dictionary<int, List<(DateTime Start, DateTime End)>>();
 
-          // Timeframe 1h: 3 períodos cortos
+          // Timeframe 1h: 3 períodos cortos (3 columnas)
           horizons[1] = new List<(DateTime Start, DateTime End)>
           {
             (now.AddHours(2), now.AddHours(5)),   // Muy corto: 3 horas
@@ -304,32 +304,28 @@ namespace BetsTrading_Service.Services
             (now.AddHours(10), now.AddHours(18))  // Medio: 8 horas
           };
 
-          // Timeframe 2h: 4 períodos
+          // Timeframe 2h: 3 períodos (3 columnas máximo)
           horizons[2] = new List<(DateTime Start, DateTime End)>
           {
             (now.AddHours(2), now.AddHours(8)),   // Corto: 6 horas
             (now.AddHours(8), now.AddHours(16)),  // Medio: 8 horas
-            (now.AddHours(16), now.AddHours(28)),  // Largo: 12 horas
-            (now.AddHours(28), now.AddHours(44))   // Muy largo: 16 horas
+            (now.AddHours(16), now.AddHours(28))  // Largo: 12 horas
           };
 
-          // Timeframe 4h: 4 períodos
+          // Timeframe 4h: 3 períodos (3 columnas máximo)
           horizons[4] = new List<(DateTime Start, DateTime End)>
           {
             (now.AddHours(2), now.AddHours(10)),   // Corto: 8 horas
             (now.AddHours(10), now.AddHours(22)),  // Medio: 12 horas
-            (now.AddHours(22), now.AddHours(40)),  // Largo: 18 horas
-            (now.AddHours(40), now.AddHours(70))   // Muy largo: 30 horas
+            (now.AddHours(22), now.AddHours(40))   // Largo: 18 horas
           };
 
-          // Timeframe 24h: 5 períodos (más columnas para horizontes largos)
+          // Timeframe 24h: 3 períodos (3 columnas máximo)
           horizons[24] = new List<(DateTime Start, DateTime End)>
           {
             (now.AddHours(2), now.AddHours(26)),   // Corto: 24 horas (1 día)
             (now.AddHours(26), now.AddHours(74)),  // Medio: 48 horas (2 días)
-            (now.AddHours(74), now.AddHours(146)), // Largo: 72 horas (3 días)
-            (now.AddHours(146), now.AddHours(242)), // Muy largo: 96 horas (4 días)
-            (now.AddHours(242), now.AddHours(362))  // Extremo: 120 horas (5 días)
+            (now.AddHours(74), now.AddHours(146))  // Largo: 72 horas (3 días)
           };
 
           foreach (var timeframeEntry in horizons)
@@ -387,50 +383,17 @@ namespace BetsTrading_Service.Services
             var eurToUsd = eurUsdAsset != null ? eurUsdAsset.Close : FIXED_EUR_USD;
 
             // Generar zonas para cada período temporal (columna)
+            // Máximo 3 períodos (3 columnas) × 3 zonas por período (3 filas) = 9 zonas totales
             int totalZonesCreated = 0;
-            for (int periodIndex = 0; periodIndex < timePeriods.Count; periodIndex++)
+            int maxPeriods = Math.Min(3, timePeriods.Count); // Limitar a máximo 3 períodos
+            
+            for (int periodIndex = 0; periodIndex < maxPeriods; periodIndex++)
             {
               var period = timePeriods[periodIndex];
               double timeToExpiry = (period.End - now).TotalHours;
               
-              // Generar MUCHAS zonas por período - el usuario quiere muchas zonas activas
-              // Distribuir más zonas en períodos intermedios
-              // Máximo 8-9 zonas por timeframe total, distribuidas en los períodos
-              // Distribuir zonas de manera equilibrada entre períodos
-              int zonesPerPeriod = periodIndex switch
-              {
-                0 => 2,  // Primera columna: 2 zonas
-                1 => 2,  // Segunda columna: 2 zonas
-                2 => 2,  // Tercera columna: 2 zonas
-                3 => 2,  // Cuarta columna: 2 zonas
-                4 => 1,  // Quinta columna: 1 zona (solo para 24h)
-                _ => 2   // Resto: 2 zonas
-              };
-              
-              // Para timeframes con menos períodos, aumentar zonas por período
-              if (timePeriods.Count == 3)
-              {
-                // Timeframe 1h: 3 períodos → 3 zonas cada uno = 9 total
-                zonesPerPeriod = 3;
-              }
-              else if (timePeriods.Count == 4)
-              {
-                // Timeframe 2h y 4h: 4 períodos → 2 zonas cada uno = 8 total
-                zonesPerPeriod = 2;
-              }
-              else if (timePeriods.Count == 5)
-              {
-                // Timeframe 24h: 5 períodos → ajustar según índice
-                zonesPerPeriod = periodIndex switch
-                {
-                  0 => 2,  // Primera: 2 zonas
-                  1 => 2,  // Segunda: 2 zonas
-                  2 => 2,  // Tercera: 2 zonas
-                  3 => 1,  // Cuarta: 1 zona
-                  4 => 1,  // Quinta: 1 zona
-                  _ => 2
-                };
-              }
+              // Generar exactamente 3 zonas por período (3 filas) para tener 9 zonas totales (3x3)
+              int zonesPerPeriod = 3;
               
               // Generar zonas para este período
               var zones = GenerateIntelligentZones(
@@ -757,9 +720,9 @@ namespace BetsTrading_Service.Services
       {
         zonePercentages = zoneCount switch
         {
-          2 => new List<double> { -0.04, 0.0, 0.04 },
-          3 => new List<double> { -0.05, 0.0, 0.05 },
-          _ => new List<double> { -0.05, 0.0, 0.05 }
+          2 => new List<double> { -0.05, 0.05 },
+          3 => new List<double> { -0.08, 0.08 }, // 3 zonas: una abajo, una actual (ya se añade), una arriba
+          _ => new List<double> { -0.08, 0.08 }
         };
       }
       else
@@ -787,11 +750,11 @@ namespace BetsTrading_Service.Services
       }
 
       // 1. ZONA ACTUAL (0% - precio actual) - siempre la primera, probabilidad muy alta
-      // Margen mínimo garantizado: al menos 2% del precio para que sea visible y no se solape
-      double currentZoneMargin = Math.Max(
-        currentPrice * 0.02, // Mínimo 2% del precio
-        currentPrice * effectiveVolatility * 0.025 // O basado en volatilidad si es mayor
-      );
+      // Margen mínimo garantizado: al menos 2% del precio para que sea visible
+      // Para 3 zonas, usar un margen más pequeño para permitir que las otras zonas se ajusten
+      double currentZoneMargin = zoneCount == 3 
+        ? Math.Max(currentPrice * 0.015, currentPrice * effectiveVolatility * 0.02) // Margen más pequeño para 3 zonas
+        : Math.Max(currentPrice * 0.02, currentPrice * effectiveVolatility * 0.025); // Margen normal para más zonas
       double currentProb = 0.88; // Alta probabilidad de quedarse en zona actual
       zones.Add((currentPrice, currentZoneMargin, currentProb, "current"));
 
@@ -866,30 +829,46 @@ namespace BetsTrading_Service.Services
           // Calcular margen basado en distancia: zonas más lejanas = márgenes más grandes
           double distanceFromCurrent = Math.Abs(targetPct);
           
-          // Margen mínimo: 2% del precio objetivo (para zonas cercanas)
-          // Margen para zonas lejanas: aumenta proporcionalmente
-          double minMarginPercent = 0.02; // 2% mínimo
-          double maxMarginPercent = 0.08; // 8% máximo para zonas muy lejanas
+          // Para 3 zonas, usar márgenes más pequeños para permitir que se toquen
+          double minMarginPercent = zoneCount == 3 ? 0.015 : 0.02; // 1.5% para 3 zonas, 2% para más
+          double maxMarginPercent = zoneCount == 3 ? 0.05 : 0.08; // 5% para 3 zonas, 8% para más
           
-          // Escalar margen según distancia: desde 2% (cerca) hasta 8% (lejos)
+          // Escalar margen según distancia: desde minMarginPercent (cerca) hasta maxMarginPercent (lejos)
           double marginPercent = minMarginPercent + (distanceFromCurrent / 0.20) * (maxMarginPercent - minMarginPercent);
           marginPercent = Math.Min(maxMarginPercent, Math.Max(minMarginPercent, marginPercent));
           
           margin = targetPrice * marginPercent;
           
           // Asegurar que el margen nunca sea menor que un mínimo absoluto
-          double absoluteMinMargin = targetPrice * 0.015; // 1.5% mínimo absoluto
+          double absoluteMinMargin = targetPrice * (zoneCount == 3 ? 0.012 : 0.015); // Mínimo más pequeño para 3 zonas
           margin = Math.Max(margin, absoluteMinMargin);
         }
 
         // Verificar que la zona no se solape con otras zonas existentes
-        // Una zona se solapa si: |target1 - target2| < (margin1 + margin2)
-        // Hacer la verificación de solapamiento menos estricta para permitir más zonas
+        // Una zona se solapa si los rangos se superponen
+        // El margen es absoluto, así que los límites son: target ± margin
+        // Para zonas cercanas, permitimos que se toquen (serán ajustadas después por AdjustZonesToTouchPercent)
         bool overlaps = zones.Any(z =>
         {
-          double distance = Math.Abs(z.Target - targetPrice);
-          double combinedMargin = (z.Margin + margin) * 0.7; // Reducir el umbral de solapamiento al 70%
-          return distance < combinedMargin;
+          double zUpper = z.Target + z.Margin;
+          double zLower = z.Target - z.Margin;
+          double targetUpper = targetPrice + margin;
+          double targetLower = targetPrice - margin;
+          
+          // Verificar solapamiento: si los rangos se superponen significativamente
+          // Permitir que se toquen (serán ajustadas después), pero no solapamiento real
+          double overlapAmount = Math.Min(targetUpper - zLower, zUpper - targetLower);
+          // Para 3 zonas, ser más permisivo para permitir que se generen
+          if (zoneCount == 3)
+          {
+            // Para 3 zonas, solo rechazar si hay solapamiento mayor al 20% del margen
+            return overlapAmount > (Math.Min(margin, z.Margin) * 0.2);
+          }
+          else
+          {
+            // Para más zonas, rechazar cualquier solapamiento significativo
+            return overlapAmount > (Math.Min(margin, z.Margin) * 0.1);
+          }
         });
         
         if (overlaps)
@@ -952,12 +931,18 @@ namespace BetsTrading_Service.Services
           tempMargin = Math.Max(tempMargin, targetPrice * 0.02);
           
           // Verificar que no se solape con zonas existentes
-          // Hacer la verificación menos estricta para permitir más zonas
+          // El margen es absoluto, así que los límites son: target ± margin
+          // Permitir que se toquen (serán ajustadas después por AdjustZonesToTouchPercent)
           bool overlaps = zones.Any(z =>
           {
-            double distance = Math.Abs(z.Target - targetPrice);
-            double combinedMargin = (z.Margin + tempMargin) * 0.7; // Reducir el umbral de solapamiento al 70%
-            return distance < combinedMargin;
+            double zUpper = z.Target + z.Margin;
+            double zLower = z.Target - z.Margin;
+            double targetUpper = targetPrice + tempMargin;
+            double targetLower = targetPrice - tempMargin;
+            
+            // Verificar solapamiento: si los rangos se superponen significativamente
+            double gap = Math.Min(targetLower - zUpper, zLower - targetUpper);
+            return gap < 0 && Math.Abs(gap) > (tempMargin * 0.1); // Solo rechazar si hay solapamiento significativo
           });
           
           if (overlaps)
@@ -1071,8 +1056,8 @@ namespace BetsTrading_Service.Services
     }
 
     /// <summary>
-    /// Ajusta los márgenes porcentuales de las zonas para que se toquen en sus extremos.
-    /// El máximo de una zona coincidirá con el mínimo de la siguiente.
+    /// Ajusta los márgenes porcentuales de las zonas para que se toquen en sus extremos sin solaparse.
+    /// El máximo de una zona coincidirá exactamente con el mínimo de la siguiente.
     /// El margin es porcentual total, y los límites se calculan como:
     /// - upperBound = target + (target * margin / 200)
     /// - lowerBound = target - (target * margin / 200)
@@ -1083,59 +1068,77 @@ namespace BetsTrading_Service.Services
       if (zones.Count <= 1)
         return zones;
 
+      // Ordenar zonas por precio (target) de menor a mayor
+      var sortedZones = zones.OrderBy(z => z.Target).ToList();
       var adjustedZones = new List<(double Target, double MarginPercent, double BaseProbability, string ZoneType)>();
       
-      // Calcular los puntos de contacto entre zonas consecutivas
-      // Para que dos zonas se toquen: upperBound[i] = lowerBound[i+1]
+      // Calcular puntos de contacto entre zonas consecutivas
+      // Para que dos zonas se toquen exactamente: upperBound[i] = lowerBound[i+1]
       // target[i] * (1 + margin[i] / 200) = target[i+1] * (1 - margin[i+1] / 200)
       
-      // Calcular puntos de contacto como punto medio entre targets
+      // Calcular puntos de contacto como punto medio entre targets adyacentes
       var touchPoints = new List<double>();
       
-      for (int i = 0; i < zones.Count - 1; i++)
+      for (int i = 0; i < sortedZones.Count - 1; i++)
       {
-        var currentZone = zones[i];
-        var nextZone = zones[i + 1];
+        var currentZone = sortedZones[i];
+        var nextZone = sortedZones[i + 1];
         
-        // Calcular el punto medio entre los targets (donde se tocarán)
+        // Calcular el punto medio entre los targets (donde se tocarán exactamente)
         double touchPoint = (currentZone.Target + nextZone.Target) / 2.0;
         touchPoints.Add(touchPoint);
       }
       
-      // Ajustar cada zona para que sus límites lleguen a los puntos de contacto
-      for (int i = 0; i < zones.Count; i++)
+      // Ajustar cada zona para que sus límites lleguen exactamente a los puntos de contacto
+      for (int i = 0; i < sortedZones.Count; i++)
       {
-        var zone = zones[i];
+        var zone = sortedZones[i];
         double adjustedMarginPercent;
         
-        if (zones.Count == 1)
+        if (sortedZones.Count == 1)
         {
-          // Si solo hay una zona, mantener el margen original
-          adjustedMarginPercent = zone.MarginPercent;
+          // Si solo hay una zona, mantener el margen original pero con mínimo razonable
+          adjustedMarginPercent = Math.Max(2.0, zone.MarginPercent); // Mínimo 2%
         }
         else if (i == 0)
         {
-          // Primera zona: el límite superior debe llegar al primer punto de contacto
+          // Primera zona: el límite superior debe llegar exactamente al primer punto de contacto
           // upperBound = target * (1 + margin / 200) = touchPoint
           // margin / 200 = (touchPoint / target) - 1
           // margin = ((touchPoint / target) - 1) * 200
           double touchPoint = touchPoints[0];
-          adjustedMarginPercent = ((touchPoint / zone.Target) - 1.0) * 200.0;
-          adjustedMarginPercent = Math.Max(1.0, adjustedMarginPercent); // Mínimo 1%
+          if (touchPoint > zone.Target)
+          {
+            adjustedMarginPercent = ((touchPoint / zone.Target) - 1.0) * 200.0;
+          }
+          else
+          {
+            // Si el touchPoint está por debajo del target, usar margen mínimo
+            adjustedMarginPercent = 2.0;
+          }
+          adjustedMarginPercent = Math.Max(2.0, adjustedMarginPercent); // Mínimo 2%
         }
-        else if (i == zones.Count - 1)
+        else if (i == sortedZones.Count - 1)
         {
-          // Última zona: el límite inferior debe llegar al último punto de contacto
+          // Última zona: el límite inferior debe llegar exactamente al último punto de contacto
           // lowerBound = target * (1 - margin / 200) = touchPoint
           // margin / 200 = 1 - (touchPoint / target)
           // margin = (1 - (touchPoint / target)) * 200
           double touchPoint = touchPoints[i - 1];
-          adjustedMarginPercent = (1.0 - (touchPoint / zone.Target)) * 200.0;
-          adjustedMarginPercent = Math.Max(1.0, adjustedMarginPercent); // Mínimo 1%
+          if (touchPoint < zone.Target)
+          {
+            adjustedMarginPercent = (1.0 - (touchPoint / zone.Target)) * 200.0;
+          }
+          else
+          {
+            // Si el touchPoint está por encima del target, usar margen mínimo
+            adjustedMarginPercent = 2.0;
+          }
+          adjustedMarginPercent = Math.Max(2.0, adjustedMarginPercent); // Mínimo 2%
         }
         else
         {
-          // Zonas intermedias: deben tocar ambos puntos de contacto
+          // Zonas intermedias: deben tocar ambos puntos de contacto exactamente
           double lowerTouchPoint = touchPoints[i - 1];
           double upperTouchPoint = touchPoints[i];
           
@@ -1145,12 +1148,37 @@ namespace BetsTrading_Service.Services
           // Para el límite superior:
           double upperMarginPercent = ((upperTouchPoint / zone.Target) - 1.0) * 200.0;
           
-          // Usar el máximo para asegurar que toque ambos puntos
+          // Usar el máximo para asegurar que toque ambos puntos sin solaparse
           adjustedMarginPercent = Math.Max(lowerMarginPercent, upperMarginPercent);
-          adjustedMarginPercent = Math.Max(1.0, adjustedMarginPercent); // Mínimo 1%
+          adjustedMarginPercent = Math.Max(2.0, adjustedMarginPercent); // Mínimo 2%
         }
         
         adjustedZones.Add((zone.Target, adjustedMarginPercent, zone.BaseProbability, zone.ZoneType));
+      }
+      
+      // Verificar que no haya solapamiento después del ajuste
+      for (int i = 0; i < adjustedZones.Count - 1; i++)
+      {
+        var current = adjustedZones[i];
+        var next = adjustedZones[i + 1];
+        
+        double currentUpper = current.Target * (1.0 + current.MarginPercent / 200.0);
+        double nextLower = next.Target * (1.0 - next.MarginPercent / 200.0);
+        
+        // Si hay solapamiento, ajustar para que se toquen exactamente
+        if (currentUpper > nextLower)
+        {
+          // Calcular el punto medio y ajustar ambas zonas
+          double touchPoint = (currentUpper + nextLower) / 2.0;
+          
+          // Ajustar zona actual
+          double newCurrentMargin = ((touchPoint / current.Target) - 1.0) * 200.0;
+          adjustedZones[i] = (current.Target, Math.Max(2.0, newCurrentMargin), current.BaseProbability, current.ZoneType);
+          
+          // Ajustar zona siguiente
+          double newNextMargin = (1.0 - (touchPoint / next.Target)) * 200.0;
+          adjustedZones[i + 1] = (next.Target, Math.Max(2.0, newNextMargin), next.BaseProbability, next.ZoneType);
+        }
       }
       
       return adjustedZones;
