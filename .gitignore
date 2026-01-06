@@ -6,3 +6,4 @@ obj
 Properties/PublishProfiles/FolderProfile.pubxml.user
 betrader-v1-firebase.json
 appsettings.json
+Properties/PublishProfiles/Linux-x64.pubxml.user
