@@ -78,5 +78,16 @@ namespace BetsTrading_Service.Requests
 
   }
 
+  public class idRequestWithCurrency
+  {
+    [Required]
+    [StringLength(100, MinimumLength = 1)]
+    public string? id { get; set; }
+
+    [Required]
+    [StringLength(10, MinimumLength = 1)]
+    public string? currency { get; set; } // 'EUR' , 'USD'
+  }
+
 
 }

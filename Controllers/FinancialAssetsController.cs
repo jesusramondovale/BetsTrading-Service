@@ -5,6 +5,7 @@ using BetsTrading_Service.Requests;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 
 namespace BetsTrading_Service.Controllers
@@ -26,20 +27,242 @@ namespace BetsTrading_Service.Controllers
 
     // POST: api/FinancialAssets/ByGroup/
     [HttpPost("ByGroup")]
-    public async Task<ActionResult<IEnumerable<FinancialAsset>>> GetFinancialAssetsByGroup([FromBody] idRequest group)
+    public async Task<ActionResult<IEnumerable<FinancialAssetDTO>>> GetFinancialAssetsByGroup([FromBody] idRequestWithCurrency request, CancellationToken ct)
     {
-
-      var financialAssets = await _context.FinancialAssets
-        .Where(fa => fa.group == group.id).OrderByDescending(fa => fa.current_eur)
-        .ToListAsync();
-
-      if (financialAssets == null)
+      try
       {
-        _logger.Log.Information("[FINANCIAL] :: ByGroup :: Not found . Group: {grp}", group.id);
+        ActionResult<IEnumerable<FinancialAssetDTO>> result;
+        if (request.currency == "EUR")
+        {
+          result = await InnerGetFinancialAssetsByGroup(request, ct);
+        }
+        else
+        {
+          result = await InnerGetFinancialAssetsByGroupUSD(request, ct);
+        }
+        return result;
+      }
+      catch (Exception ex)
+      {
+        _logger.Log.Error("[FINANCIAL] :: ByGroup :: Server error: {msg}", ex.Message);
+        return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+      }
+    }
+
+    [NonAction]
+    public async Task<ActionResult<IEnumerable<FinancialAssetDTO>>> InnerGetFinancialAssetsByGroup(idRequestWithCurrency request, CancellationToken ct)
+    {
+      var financialAssets = await _context.FinancialAssets
+        .AsNoTracking()
+        .Where(fa => fa.group == request.id)
+        .OrderByDescending(fa => fa.current_eur)
+        .ToListAsync(ct);
+
+      if (financialAssets == null || financialAssets.Count == 0)
+      {
+        _logger.Log.Information("[FINANCIAL] :: ByGroup :: Not found . Group: {grp}", request.id);
         return NotFound();
       }
-      _logger.Log.Debug("[FINANCIAL] :: ByGroup :: Success. Assets group : {msg}", group.id);
-      return financialAssets;
+
+      var assetIds = financialAssets.Select(a => a.id).ToList();
+
+      // Cargar todas las velas necesarias en una sola consulta
+      var allCandles = await _context.AssetCandles
+        .AsNoTracking()
+        .Where(c => assetIds.Contains(c.AssetId) && c.Interval == "1h")
+        .OrderByDescending(c => c.DateTime)
+        .ToListAsync(ct);
+
+      // Agrupar velas por AssetId para procesamiento eficiente
+      var candlesByAsset = allCandles
+        .GroupBy(c => c.AssetId)
+        .ToDictionary(g => g.Key, g => g.OrderByDescending(c => c.DateTime).ToList());
+
+      var assetsDTO = new List<FinancialAssetDTO>();
+
+      foreach (var asset in financialAssets)
+      {
+        if (!candlesByAsset.TryGetValue(asset.id, out var assetCandles) || assetCandles.Count == 0)
+        {
+          // Si no hay velas, devolvemos el activo sin precios calculados
+          assetsDTO.Add(new FinancialAssetDTO
+          {
+            id = asset.id,
+            name = asset.name,
+            group = asset.group,
+            icon = asset.icon,
+            country = asset.country,
+            ticker = asset.ticker,
+            current_eur = asset.current_eur,
+            current_usd = asset.current_usd,
+            current = null,
+            close = null,
+            daily_gain = null
+          });
+          continue;
+        }
+
+        var lastCandle = assetCandles[0];
+        var lastDay = lastCandle.DateTime.Date;
+
+        AssetCandle? prevCandle = null;
+
+        if (asset.group == "Cryptos" || asset.group == "Forex")
+        {
+          // Para Cryptos/Forex: buscar vela de hace 24 horas (índice 24)
+          if (assetCandles.Count > 24)
+          {
+            prevCandle = assetCandles[24];
+          }
+        }
+        else
+        {
+          // Para otros activos: buscar la última vela del día anterior
+          prevCandle = assetCandles.FirstOrDefault(c => c.DateTime.Date < lastDay);
+        }
+
+        double prevClose;
+        double dailyGain;
+        double currentClose = (double)asset.current_eur;
+        double current = (double)lastCandle.Close;
+
+        if (prevCandle != null)
+        {
+          prevClose = (double)prevCandle.Close;
+          dailyGain = prevClose == 0 ? 0 : ((currentClose - prevClose) / prevClose) * 100.0;
+        }
+        else
+        {
+          prevClose = asset.current_eur * 0.95;
+          dailyGain = ((currentClose - prevClose) / prevClose) * 100.0;
+        }
+
+        assetsDTO.Add(new FinancialAssetDTO
+        {
+          id = asset.id,
+          name = asset.name,
+          group = asset.group,
+          icon = asset.icon,
+          country = asset.country,
+          ticker = asset.ticker,
+          current_eur = asset.current_eur,
+          current_usd = asset.current_usd,
+          current = current,
+          close = prevClose,
+          daily_gain = dailyGain
+        });
+      }
+
+      _logger.Log.Debug("[FINANCIAL] :: ByGroup :: Success. Assets group : {msg}", request.id);
+      return Ok(assetsDTO);
+    }
+
+    [NonAction]
+    public async Task<ActionResult<IEnumerable<FinancialAssetDTO>>> InnerGetFinancialAssetsByGroupUSD(idRequestWithCurrency request, CancellationToken ct)
+    {
+      var financialAssets = await _context.FinancialAssets
+        .AsNoTracking()
+        .Where(fa => fa.group == request.id)
+        .OrderByDescending(fa => fa.current_usd)
+        .ToListAsync(ct);
+
+      if (financialAssets == null || financialAssets.Count == 0)
+      {
+        _logger.Log.Information("[FINANCIAL] :: ByGroup :: Not found . Group: {grp}", request.id);
+        return NotFound();
+      }
+
+      var assetIds = financialAssets.Select(a => a.id).ToList();
+
+      // Cargar todas las velas necesarias en una sola consulta
+      var allCandles = await _context.AssetCandlesUSD
+        .AsNoTracking()
+        .Where(c => assetIds.Contains(c.AssetId) && c.Interval == "1h")
+        .OrderByDescending(c => c.DateTime)
+        .ToListAsync(ct);
+
+      // Agrupar velas por AssetId para procesamiento eficiente
+      var candlesByAsset = allCandles
+        .GroupBy(c => c.AssetId)
+        .ToDictionary(g => g.Key, g => g.OrderByDescending(c => c.DateTime).ToList());
+
+      var assetsDTO = new List<FinancialAssetDTO>();
+
+      foreach (var asset in financialAssets)
+      {
+        if (!candlesByAsset.TryGetValue(asset.id, out var assetCandles) || assetCandles.Count == 0)
+        {
+          // Si no hay velas, devolvemos el activo sin precios calculados
+          assetsDTO.Add(new FinancialAssetDTO
+          {
+            id = asset.id,
+            name = asset.name,
+            group = asset.group,
+            icon = asset.icon,
+            country = asset.country,
+            ticker = asset.ticker,
+            current_eur = asset.current_eur,
+            current_usd = asset.current_usd,
+            current = null,
+            close = null,
+            daily_gain = null
+          });
+          continue;
+        }
+
+        var lastCandle = assetCandles[0];
+        var lastDay = lastCandle.DateTime.Date;
+
+        AssetCandleUSD? prevCandle = null;
+
+        if (asset.group == "Cryptos" || asset.group == "Forex")
+        {
+          // Para Cryptos/Forex: buscar vela de hace 24 horas (índice 24)
+          if (assetCandles.Count > 24)
+          {
+            prevCandle = assetCandles[24];
+          }
+        }
+        else
+        {
+          // Para otros activos: buscar la última vela del día anterior
+          prevCandle = assetCandles.FirstOrDefault(c => c.DateTime.Date < lastDay);
+        }
+
+        double prevClose;
+        double dailyGain;
+        double currentClose = (double)asset.current_usd;
+        double current = (double)lastCandle.Close;
+
+        if (prevCandle != null)
+        {
+          prevClose = (double)prevCandle.Close;
+          dailyGain = prevClose == 0 ? 0 : ((currentClose - prevClose) / prevClose) * 100.0;
+        }
+        else
+        {
+          prevClose = asset.current_usd * 0.95;
+          dailyGain = ((currentClose - prevClose) / prevClose) * 100.0;
+        }
+
+        assetsDTO.Add(new FinancialAssetDTO
+        {
+          id = asset.id,
+          name = asset.name,
+          group = asset.group,
+          icon = asset.icon,
+          country = asset.country,
+          ticker = asset.ticker,
+          current_eur = asset.current_eur,
+          current_usd = asset.current_usd,
+          current = current,
+          close = prevClose,
+          daily_gain = dailyGain
+        });
+      }
+
+      _logger.Log.Debug("[FINANCIAL] :: ByGroup :: Success. Assets group : {msg}", request.id);
+      return Ok(assetsDTO);
     }
 
     // POST: api/FinancialAssets/ByCountry/
