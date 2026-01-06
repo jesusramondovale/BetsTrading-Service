@@ -39,6 +39,21 @@
 
   }
 
+  public class FinancialAssetDTO
+  {
+    public int id { get; set; }
+    public string name { get; set; }
+    public string group { get; set; }
+    public string? icon { get; set; }
+    public string? country { get; set; }
+    public string? ticker { get; set; }
+    public double current_eur { get; set; }
+    public double current_usd { get; set; }
+    public double? current { get; set; }
+    public double? close { get; set; }
+    public double? daily_gain { get; set; }
+  }
+
 }
 
 

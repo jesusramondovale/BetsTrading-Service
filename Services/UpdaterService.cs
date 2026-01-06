@@ -278,7 +278,7 @@ namespace BetsTrading_Service.Services
 
     public async Task CreateBetZones(bool marketHoursMode)
     {
-      _logger.Log.Information("[UpdaterService] :: CreateBets() called with mode market-Hours = {0}", marketHoursMode.ToString());
+      _logger.Log.Information("[UpdaterService] :: CreateBetZones() called with mode market-Hours = {0}", marketHoursMode.ToString());
       using var transaction = await _dbContext.Database.BeginTransactionAsync();
       try
       {
@@ -292,74 +292,88 @@ namespace BetsTrading_Service.Services
         {
           var now = DateTime.UtcNow;
 
-          var start1h = now.AddHours(2);
-          var end1h = now.AddHours(7);
-          var start1h_b = now.AddHours(7);
-          var end1h_b = now.AddHours(17);
+          // Definir múltiples columnas temporales para cada timeframe
+          // Cada timeframe tendrá al menos 3 períodos temporales de diferentes tamaños
+          var horizons = new Dictionary<int, List<(DateTime Start, DateTime End)>>();
 
-          var start2h = now.AddHours(2);
-          var end2h = now.AddHours(12);
-          var start2h_b = now.AddHours(12);
-          var end2h_b = now.AddHours(32);
-
-          var start4h = now.AddHours(2);
-          var end4h = now.AddHours(22);
-          var start4h_b = now.AddHours(22);
-          var end4h_b = now.AddHours(62);
-
-          var start24h = now.AddHours(2);
-          var end24h = now.AddHours(122);
-          var start24h_b = now.AddHours(122);
-          var end24h_b = now.AddHours(362);
-
-          var horizons = new Dictionary<int, ((DateTime StartA, DateTime EndA), (DateTime StartB, DateTime EndB))>
+          // Timeframe 1h: 3 períodos cortos (3 columnas)
+          horizons[1] = new List<(DateTime Start, DateTime End)>
           {
-                { 1, ((start1h, end1h), (start1h_b, end1h_b)) },
-                { 2, ((start2h, end2h), (start2h_b, end2h_b)) },
-                { 4, ((start4h, end4h), (start4h_b, end4h_b)) },
-                { 24, ((start24h, end24h), (start24h_b, end24h_b)) }
+            (now.AddHours(2), now.AddHours(5)),   // Muy corto: 3 horas
+            (now.AddHours(5), now.AddHours(10)),  // Corto: 5 horas
+            (now.AddHours(10), now.AddHours(18))  // Medio: 8 horas
           };
 
-          foreach (var h in horizons)
+          // Timeframe 2h: 3 períodos (3 columnas máximo)
+          horizons[2] = new List<(DateTime Start, DateTime End)>
           {
-            if (_dbContext.BetZones.Where(bz => bz.active && bz.timeframe == h.Key && bz.ticker == currentAsset.ticker).Any()) continue;
+            (now.AddHours(2), now.AddHours(8)),   // Corto: 6 horas
+            (now.AddHours(8), now.AddHours(16)),  // Medio: 8 horas
+            (now.AddHours(16), now.AddHours(28))  // Largo: 12 horas
+          };
 
+          // Timeframe 4h: 3 períodos (3 columnas máximo)
+          horizons[4] = new List<(DateTime Start, DateTime End)>
+          {
+            (now.AddHours(2), now.AddHours(10)),   // Corto: 8 horas
+            (now.AddHours(10), now.AddHours(22)),  // Medio: 12 horas
+            (now.AddHours(22), now.AddHours(40))   // Largo: 18 horas
+          };
+
+          // Timeframe 24h: 3 períodos (3 columnas máximo)
+          horizons[24] = new List<(DateTime Start, DateTime End)>
+          {
+            (now.AddHours(2), now.AddHours(26)),   // Corto: 24 horas (1 día)
+            (now.AddHours(26), now.AddHours(74)),  // Medio: 48 horas (2 días)
+            (now.AddHours(74), now.AddHours(146))  // Largo: 72 horas (3 días)
+          };
+
+          foreach (var timeframeEntry in horizons)
+          {
+            int timeframe = timeframeEntry.Key;
+            var timePeriods = timeframeEntry.Value;
+            
+            // NO saltar si ya hay zonas activas - queremos generar MÁS zonas para el mismo timeframe
+            // Solo verificar que tengamos datos suficientes
+
+            // Obtener más candles para análisis técnico robusto
             var candles = await _dbContext.AssetCandles
                 .Where(c => c.AssetId == currentAsset.id && c.Interval == "1h")
                 .OrderByDescending(c => c.DateTime)
-                .Take(30)
+                .Take(100) // Más datos para análisis técnico
                 .ToListAsync();
 
-            if (candles.Count < 30) continue;
+            if (candles.Count < 50) continue; // Mínimo 50 candles para análisis confiable
 
-            var closes = candles.Select(c => (double)c.Close).ToList();
-            var highs = candles.Select(c => (double)c.High).ToList();
-            var lows = candles.Select(c => (double)c.Low).ToList();
-            double lastClose = closes.First();
-            double avgClose = closes.Average();
-            double stdDev = Math.Sqrt(closes.Average(c => Math.Pow(c - avgClose, 2)));
-            double maxHigh = highs.Max();
-            double minLow = lows.Min();
-            double priceRange = maxHigh - minLow;
-            double slope = CalculateLinearRegressionSlope(closes);
-            string trend = slope > stdDev * 0.02 ? "uptrend" : slope < -stdDev * 0.02 ? "downtrend" : "sideways";
-            double zoneHeight = priceRange / 3.0;
-            double lowLow = minLow;
-            double lowHigh = lowLow + zoneHeight;
-            double midLow = lowHigh;
-            double midHigh = midLow + zoneHeight;
-            double highLow = midHigh;
-            double highHigh = maxHigh;
-            double targetLow = (lowLow + lowHigh) / 2.0;
-            double targetMid = (midLow + midHigh) / 2.0;
-            double targetHigh = (highLow + highHigh) / 2.0;
-            double marginLow = (lowHigh - lowLow) / targetLow * 100.0;
-            double marginMid = (midHigh - midLow) / targetMid * 100.0;
-            double marginHigh = (highHigh - highLow) / targetHigh * 100.0;
-            double oddsLow = EstimateOdds(targetLow, lastClose, stdDev, trend, "low");
-            double oddsMid = EstimateOdds(targetMid, lastClose, stdDev, trend, "mid");
-            double oddsHigh = EstimateOdds(targetHigh, lastClose, stdDev, trend, "high");
+            // Preparar datos
+            var closes = candles.Select(c => (double)c.Close).Reverse().ToList(); // Invertir para orden cronológico
+            var highs = candles.Select(c => (double)c.High).Reverse().ToList();
+            var lows = candles.Select(c => (double)c.Low).Reverse().ToList();
+            double currentPrice = closes.Last(); // Precio más reciente
 
+            // Calcular retornos logarítmicos
+            var returns = CalculateLogReturns(closes);
+
+            // Calcular volatilidad EWMA (más reactiva que stdDev simple)
+            double volatility = CalculateEWMAVolatility(returns);
+            if (volatility == 0 || double.IsNaN(volatility))
+            {
+              // Fallback a desviación estándar si EWMA falla
+              double avgClose = closes.Average();
+              volatility = Math.Sqrt(closes.Average(c => Math.Pow(c - avgClose, 2))) / avgClose;
+            }
+
+            // Calcular drift (tendencia)
+            double drift = CalculateDrift(returns);
+
+            // Indicadores técnicos
+            double rsi = CalculateRSI(closes);
+            var bollinger = CalculateBollingerBands(closes);
+
+            // Detectar soportes y resistencias
+            var (supports, resistances) = DetectSupportResistance(highs, lows, closes);
+
+            // Obtener tipo de cambio EUR/USD
             var eurUsdAsset = _dbContext.AssetCandles
               .AsNoTracking()
               .Where(ac => ac.AssetId == 223) // EURUSD FOREX
@@ -368,147 +382,806 @@ namespace BetsTrading_Service.Services
 
             var eurToUsd = eurUsdAsset != null ? eurUsdAsset.Close : FIXED_EUR_USD;
 
-            _dbContext.BetZones.Add(new BetZone(
-                currentAsset.ticker!,
-                targetLow,
-                Math.Round(marginLow, 1),
-                h.Value.Item1.StartA,
-                h.Value.Item1.EndA,
-                RandomizeOdds(oddsLow),
-                1,
-                h.Key
-            ));
-            _dbContext.BetZones.Add(new BetZone(
-                currentAsset.ticker!,
-                targetMid,
-                Math.Round(marginMid, 1),
-                h.Value.Item1.StartA,
-                h.Value.Item1.EndA,
-                RandomizeOdds(oddsMid),
-                0,
-                h.Key
-            ));
-            _dbContext.BetZones.Add(new BetZone(
-                currentAsset.ticker!,
-                targetHigh,
-                Math.Round(marginHigh, 1),
-                h.Value.Item1.StartA,
-                h.Value.Item1.EndA,
-                RandomizeOdds(oddsHigh),
-                0,
-                h.Key
-            ));
+            // Generar zonas para cada período temporal (columna)
+            // Máximo 3 períodos (3 columnas) × 3 zonas por período (3 filas) = 9 zonas totales
+            int totalZonesCreated = 0;
+            int maxPeriods = Math.Min(3, timePeriods.Count); // Limitar a máximo 3 períodos
+            
+            for (int periodIndex = 0; periodIndex < maxPeriods; periodIndex++)
+            {
+              var period = timePeriods[periodIndex];
+              double timeToExpiry = (period.End - now).TotalHours;
+              
+              // Generar exactamente 3 zonas por período (3 filas) para tener 9 zonas totales (3x3)
+              int zonesPerPeriod = 3;
+              
+              // Generar zonas para este período
+              var zones = GenerateIntelligentZones(
+                currentPrice, supports, resistances, volatility, 
+                timeToExpiry, rsi, bollinger, drift, zoneCount: zonesPerPeriod);
 
-            _dbContext.BetZones.Add(new BetZone(
-                currentAsset.ticker!,
-                targetLow,
-                Math.Round(marginLow, 1),
-                h.Value.Item2.StartB,
-                h.Value.Item2.EndB,
-                RandomizeOdds(oddsLow * 2),
-                0,
-                h.Key
-            ));
-            _dbContext.BetZones.Add(new BetZone(
-                currentAsset.ticker!,
-                targetMid,
-                Math.Round(marginMid, 1),
-                h.Value.Item2.StartB,
-                h.Value.Item2.EndB,
-                RandomizeOdds(oddsMid * 2),
-                0,
-                h.Key
-            ));
-            _dbContext.BetZones.Add(new BetZone(
-                currentAsset.ticker!,
-                targetHigh,
-                Math.Round(marginHigh, 1),
-                h.Value.Item2.StartB,
-                h.Value.Item2.EndB,
-                RandomizeOdds(oddsHigh * 2),
-                1,
-                h.Key
-            ));
-            //--------- USD ------------
-            _dbContext.BetZonesUSD.Add(new BetZoneUSD(
-                currentAsset.ticker!,
-                targetLow * (double)eurToUsd,
-                Math.Round(marginLow, 1),
-                h.Value.Item1.StartA,
-                h.Value.Item1.EndA,
-                RandomizeOdds(oddsLow),
-                1,
-                h.Key
-            ));
-            _dbContext.BetZonesUSD.Add(new BetZoneUSD(
-                currentAsset.ticker!,
-                targetMid * (double)eurToUsd,
-                Math.Round(marginMid, 1),
-                h.Value.Item1.StartA,
-                h.Value.Item1.EndA,
-                RandomizeOdds(oddsMid),
-                0,
-                h.Key
-            ));
-            _dbContext.BetZonesUSD.Add(new BetZoneUSD(
-                currentAsset.ticker!,
-                targetHigh * (double)eurToUsd,
-                Math.Round(marginHigh, 1),
-                h.Value.Item1.StartA,
-                h.Value.Item1.EndA,
-                RandomizeOdds(oddsHigh),
-                0,
-                h.Key
-            ));
+              // Validar que se generaron zonas
+              if (zones == null || zones.Count == 0)
+              {
+                _logger.Log.Warning("[UpdaterService] :: No zones generated for {Ticker} timeframe {Timeframe} period {PeriodIndex}. Price: {Price}, Volatility: {Vol}", 
+                  currentAsset.ticker, timeframe, periodIndex, currentPrice, volatility);
+                continue; // Saltar este período si no se generaron zonas
+              }
 
-            _dbContext.BetZonesUSD.Add(new BetZoneUSD(
-                currentAsset.ticker!,
-                targetLow * (double)eurToUsd,
-                Math.Round(marginLow, 1),
-                h.Value.Item2.StartB,
-                h.Value.Item2.EndB,
-                RandomizeOdds(oddsLow * 2),
-                0,
-                h.Key
-            ));
-            _dbContext.BetZonesUSD.Add(new BetZoneUSD(
-                currentAsset.ticker!,
-                targetMid * (double)eurToUsd,
-                Math.Round(marginMid, 1),
-                h.Value.Item2.StartB,
-                h.Value.Item2.EndB,
-                RandomizeOdds(oddsMid * 2),
-                0,
-                h.Key
-            ));
-            _dbContext.BetZonesUSD.Add(new BetZoneUSD(
-                currentAsset.ticker!,
-                targetHigh * (double)eurToUsd,
-                Math.Round(marginHigh, 1),
-                h.Value.Item2.StartB,
-                h.Value.Item2.EndB,
-                RandomizeOdds(oddsHigh * 2),
-                1,
-                h.Key
-            ));
+              // Ajustar probabilidades según distancia temporal (períodos más largos = menos probable)
+              double timeAdjustmentFactor = 1.0 - (periodIndex * 0.08); // Reducir 8% por cada período más lejano
+              timeAdjustmentFactor = Math.Max(0.60, timeAdjustmentFactor); // Mínimo 60% de la probabilidad original
+
+              // Ajustar márgenes porcentuales para que las zonas se toquen en sus extremos
+              // Primero convertir márgenes absolutos a porcentuales
+              var zonesWithPercentMargins = zones.Select(z => (
+                z.Target,
+                MarginPercent: (z.Margin / z.Target) * 100.0,
+                z.BaseProbability,
+                z.ZoneType
+              )).ToList();
+              
+              zonesWithPercentMargins = AdjustZonesToTouchPercent(zonesWithPercentMargins);
+
+              // Crear zonas EUR para este período
+              int betTypeCounter = 0;
+              foreach (var zone in zonesWithPercentMargins)
+              {
+                if (zone.Target <= 0 || zone.MarginPercent <= 0)
+                {
+                  _logger.Log.Warning("[UpdaterService] :: Invalid zone data for {Ticker}: Target={Target}, MarginPercent={Margin}", 
+                    currentAsset.ticker, zone.Target, zone.MarginPercent);
+                  continue;
+                }
+
+                double adjustedProb = zone.BaseProbability * timeAdjustmentFactor;
+                double odds = ProbabilityToOdds(adjustedProb, 0.95);
+
+                _dbContext.BetZones.Add(new BetZone(
+                    currentAsset.ticker!,
+                    zone.Target,
+                    Math.Round(zone.MarginPercent, 1),
+                    period.Start,
+                    period.End,
+                    Math.Round(odds, 2),
+                    betTypeCounter % 2, // Alternar entre 0 y 1
+                    timeframe
+                ));
+                betTypeCounter++;
+              }
+
+              // Crear zonas USD para este período
+              betTypeCounter = 0;
+              foreach (var zone in zonesWithPercentMargins)
+              {
+                if (zone.Target <= 0 || zone.MarginPercent <= 0)
+                {
+                  continue; // Ya se logueó arriba
+                }
+
+                double adjustedProb = zone.BaseProbability * timeAdjustmentFactor;
+                double odds = ProbabilityToOdds(adjustedProb, 0.95);
+
+                _dbContext.BetZonesUSD.Add(new BetZoneUSD(
+                    currentAsset.ticker!,
+                    zone.Target * (double)eurToUsd,
+                    Math.Round(zone.MarginPercent, 1),
+                    period.Start,
+                    period.End,
+                    Math.Round(odds, 2),
+                    betTypeCounter % 2,
+                    timeframe
+                ));
+                betTypeCounter++;
+              }
+
+              totalZonesCreated += zonesWithPercentMargins.Count;
+              
+              _logger.Log.Debug("[UpdaterService] :: Created {Count} zones for period {PeriodIndex} ({Start} to {End}) for {Ticker} timeframe {Timeframe}", 
+                zonesWithPercentMargins.Count, periodIndex, period.Start, period.End, currentAsset.ticker, timeframe);
+            }
+
+            _logger.Log.Debug("[UpdaterService] :: Created TOTAL {Count} zones across {Periods} time periods for {Ticker} timeframe {Timeframe}", 
+              totalZonesCreated, timePeriods.Count, currentAsset.ticker, timeframe);
           }
         }
 
         await _dbContext.SaveChangesAsync();
         await transaction.CommitAsync();
-        _logger.Log.Information("[UpdaterService] :: CreateBets() completed successfully with exact margins. ({0})", (marketHoursMode ? "Mode market hours" : "Continuous mode"));
+        _logger.Log.Information("[UpdaterService] :: CreateBetZones() completed successfully with technical analysis. ({0})", 
+          (marketHoursMode ? "Mode market hours" : "Continuous mode"));
       }
       catch (Exception ex)
       {
-        _logger.Log.Error(ex, "[UpdaterService] :: CreateBets() error");
+        _logger.Log.Error(ex, "[UpdaterService] :: CreateBetZones() error");
         await transaction.RollbackAsync();
       }
     }
 
-    double RandomizeOdds(double baseOdds)
+    // ========== ANÁLISIS TÉCNICO Y MODELOS FINANCIEROS ==========
+
+    /// <summary>
+    /// Calcula la volatilidad EWMA (Exponentially Weighted Moving Average)
+    /// Más reactiva que la desviación estándar simple
+    /// </summary>
+    private static double CalculateEWMAVolatility(List<double> returns, double lambda = 0.94)
     {
-      var factor = 1 + (random.NextDouble() * 0.10 - 0.05);
-      return Math.Round(baseOdds * factor, 1);
+      if (returns.Count < 2) return 0.0;
+
+      double variance = 0.0;
+      double weightSum = 0.0;
+
+      for (int i = returns.Count - 1; i >= 0; i--)
+      {
+        double weight = Math.Pow(lambda, returns.Count - 1 - i);
+        variance += weight * returns[i] * returns[i];
+        weightSum += weight;
+      }
+
+      return Math.Sqrt(variance / weightSum);
+    }
+
+    /// <summary>
+    /// Calcula los retornos logarítmicos
+    /// </summary>
+    private static List<double> CalculateLogReturns(List<double> prices)
+    {
+      var returns = new List<double>();
+      for (int i = 1; i < prices.Count; i++)
+      {
+        if (prices[i - 1] > 0)
+          returns.Add(Math.Log(prices[i] / prices[i - 1]));
+      }
+      return returns;
+    }
+
+    /// <summary>
+    /// Calcula el RSI (Relative Strength Index)
+    /// </summary>
+    private static double CalculateRSI(List<double> closes, int period = 14)
+    {
+      if (closes.Count < period + 1) return 50.0; // Neutral si no hay suficientes datos
+
+      var gains = new List<double>();
+      var losses = new List<double>();
+
+      for (int i = closes.Count - period; i < closes.Count; i++)
+      {
+        double change = closes[i] - closes[i - 1];
+        if (change > 0) gains.Add(change);
+        else if (change < 0) losses.Add(Math.Abs(change));
+      }
+
+      double avgGain = gains.Count > 0 ? gains.Average() : 0.0;
+      double avgLoss = losses.Count > 0 ? losses.Average() : 0.0;
+
+      if (avgLoss == 0) return 100.0;
+      double rs = avgGain / avgLoss;
+      return 100.0 - (100.0 / (1.0 + rs));
+    }
+
+    /// <summary>
+    /// Calcula las Bandas de Bollinger
+    /// </summary>
+    private static (double Upper, double Middle, double Lower) CalculateBollingerBands(List<double> closes, int period = 20, double numStdDev = 2.0)
+    {
+      if (closes.Count < period) period = closes.Count;
+
+      var recentCloses = closes.Skip(Math.Max(0, closes.Count - period)).Take(period).ToList();
+      double sma = recentCloses.Average();
+      double variance = recentCloses.Average(c => Math.Pow(c - sma, 2));
+      double stdDev = Math.Sqrt(variance);
+
+      return (sma + numStdDev * stdDev, sma, sma - numStdDev * stdDev);
+    }
+
+    /// <summary>
+    /// Detecta soportes y resistencias usando pivots locales
+    /// </summary>
+    private static (List<double> Supports, List<double> Resistances) DetectSupportResistance(
+      List<double> highs, List<double> lows, List<double> closes, int lookback = 5)
+    {
+      var supports = new List<double>();
+      var resistances = new List<double>();
+
+      for (int i = lookback; i < closes.Count - lookback; i++)
+      {
+        // Detectar mínimos locales (soportes)
+        bool isLocalMin = true;
+        for (int j = i - lookback; j <= i + lookback; j++)
+        {
+          if (j != i && lows[j] < lows[i])
+          {
+            isLocalMin = false;
+            break;
+          }
+        }
+        if (isLocalMin && !supports.Contains(lows[i]))
+          supports.Add(lows[i]);
+
+        // Detectar máximos locales (resistencias)
+        bool isLocalMax = true;
+        for (int j = i - lookback; j <= i + lookback; j++)
+        {
+          if (j != i && highs[j] > highs[i])
+          {
+            isLocalMax = false;
+            break;
+          }
+        }
+        if (isLocalMax && !resistances.Contains(highs[i]))
+          resistances.Add(highs[i]);
+      }
+
+      return (supports.OrderByDescending(s => s).Take(5).ToList(),
+              resistances.OrderBy(r => r).Take(5).ToList());
+    }
+
+    /// <summary>
+    /// Calcula la probabilidad de que el precio alcance un nivel usando movimiento browniano geométrico
+    /// </summary>
+    private static double CalculateReachProbability(
+      double currentPrice, double targetPrice, double volatility, 
+      double timeToExpiryHours, double drift = 0.0)
+    {
+      if (timeToExpiryHours <= 0) return currentPrice == targetPrice ? 1.0 : 0.0;
+      if (currentPrice <= 0 || targetPrice <= 0) return 0.01;
+
+      // Convertir tiempo a años para el modelo
+      double timeToExpiry = timeToExpiryHours / (365.0 * 24.0);
+      
+      // Anualizar volatilidad (asumiendo que viene en términos horarios)
+      double annualizedVol = volatility * Math.Sqrt(24.0 * 365.0);
+      
+      // Usar movimiento browniano geométrico: dS = μS dt + σS dW
+      double logPriceRatio = Math.Log(targetPrice / currentPrice);
+      double adjustedDrift = drift - 0.5 * annualizedVol * annualizedVol; // Ajuste de Itô
+      
+      // Probabilidad usando distribución normal
+      double mean = adjustedDrift * timeToExpiry;
+      double variance = annualizedVol * annualizedVol * timeToExpiry;
+      double stdDev = Math.Sqrt(variance);
+
+      if (stdDev == 0 || double.IsNaN(stdDev)) return Math.Abs(logPriceRatio) < 0.001 ? 0.5 : 0.01;
+
+      // Calcular probabilidad usando función de distribución acumulada normal
+      double z = (logPriceRatio - mean) / stdDev;
+      
+      // Aproximación de la CDF normal usando función de error
+      double probability = 0.5 * (1.0 + Erf(z / Math.Sqrt(2.0)));
+      
+      // Asegurar que la probabilidad esté en un rango razonable
+      return Math.Max(0.01, Math.Min(0.99, probability));
+    }
+
+    /// <summary>
+    /// Función de error complementaria para aproximar la CDF normal
+    /// </summary>
+    private static double Erf(double x)
+    {
+      // Aproximación de Abramowitz y Stegun
+      double a1 = 0.254829592;
+      double a2 = -0.284496736;
+      double a3 = 1.421413741;
+      double a4 = -1.453152027;
+      double a5 = 1.061405429;
+      double p = 0.3275911;
+
+      int sign = x < 0 ? -1 : 1;
+      x = Math.Abs(x);
+
+      double t = 1.0 / (1.0 + p * x);
+      double y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.Exp(-x * x);
+
+      return sign * y;
+    }
+
+    /// <summary>
+    /// Calcula el drift (tendencia) basado en regresión lineal de retornos
+    /// </summary>
+    private static double CalculateDrift(List<double> returns, double timeStep = 1.0)
+    {
+      if (returns.Count < 2) return 0.0;
+      return returns.Average() / timeStep;
+    }
+
+    /// <summary>
+    /// Convierte probabilidad a odds decimales
+    /// </summary>
+    private static double ProbabilityToOdds(double probability, double margin = 0.95)
+    {
+      if (probability <= 0) return 100.0; // Odds muy altas para probabilidad 0
+      if (probability >= 1) return 1.01; // Odds mínimas para probabilidad 1
+      
+      double fairOdds = 1.0 / probability;
+      return Math.Max(1.01, Math.Round(fairOdds * margin, 2));
+    }
+
+    /// <summary>
+    /// Genera zonas inteligentes basadas en niveles técnicos
+    /// Genera zoneCount zonas VISUALMENTE DISTINTAS distribuidas en diferentes niveles de precio
+    /// </summary>
+    private static List<(double Target, double Margin, double BaseProbability, string ZoneType)> GenerateIntelligentZones(
+      double currentPrice, List<double> supports, List<double> resistances,
+      double volatility, double timeToExpiryHours, double rsi, 
+      (double Upper, double Middle, double Lower) bollinger, double drift, int zoneCount = 6)
+    {
+      var zones = new List<(double Target, double Margin, double BaseProbability, string ZoneType)>();
+
+      // Asegurar que la volatilidad tenga un mínimo razonable para generar zonas visibles
+      double minVolatility = 0.01; // 1% mínimo
+      double effectiveVolatility = Math.Max(volatility, minVolatility);
+
+      // Definir porcentajes de distancia del precio actual para generar zonas VISUALMENTE DISTINTAS
+      // Generar MUCHAS zonas distribuidas ampliamente
+      var zonePercentages = new List<double>();
+      
+      if (zoneCount <= 3)
+      {
+        zonePercentages = zoneCount switch
+        {
+          2 => new List<double> { -0.05, 0.05 },
+          3 => new List<double> { -0.08, 0.08 }, // 3 zonas: una abajo, una actual (ya se añade), una arriba
+          _ => new List<double> { -0.08, 0.08 }
+        };
+      }
+      else
+      {
+        // Para muchas zonas (6+), generar distribución amplia y variada
+        zonePercentages.Add(0.0); // Zona actual siempre
+        
+        // Zonas por debajo: distribuidas desde -12% hasta -2% en incrementos de 1.5%
+        for (double pct = -0.12; pct <= -0.02; pct += 0.015)
+        {
+          zonePercentages.Add(pct);
+        }
+        
+        // Zonas por arriba: distribuidas desde +2% hasta +12% en incrementos de 1.5%
+        for (double pct = 0.02; pct <= 0.12; pct += 0.015)
+        {
+          zonePercentages.Add(pct);
+        }
+        
+        // Para timeframes largos, añadir zonas más extremas
+        if (timeToExpiryHours > 12)
+        {
+          zonePercentages.AddRange(new[] { -0.18, -0.15, -0.20, 0.15, 0.18, 0.20 });
+        }
+      }
+
+      // 1. ZONA ACTUAL (0% - precio actual) - siempre la primera, probabilidad muy alta
+      // Margen mínimo garantizado: al menos 2% del precio para que sea visible
+      // Para 3 zonas, usar un margen más pequeño para permitir que las otras zonas se ajusten
+      double currentZoneMargin = zoneCount == 3 
+        ? Math.Max(currentPrice * 0.015, currentPrice * effectiveVolatility * 0.02) // Margen más pequeño para 3 zonas
+        : Math.Max(currentPrice * 0.02, currentPrice * effectiveVolatility * 0.025); // Margen normal para más zonas
+      double currentProb = 0.88; // Alta probabilidad de quedarse en zona actual
+      zones.Add((currentPrice, currentZoneMargin, currentProb, "current"));
+
+      // 2. Generar zonas distribuidas VISUALMENTE en diferentes niveles
+      // Priorizar niveles técnicos reales, pero asegurar distribución visual
+      var usedPercentages = new HashSet<double> { 0.0 }; // Ya usamos 0%
+
+      // Buscar soportes/resistencias y mapearlos a los porcentajes más cercanos
+      var technicalLevels = new List<(double Price, double Percentage, string Type)>();
+      
+      // Añadir soportes detectados
+      foreach (var support in supports.Where(s => s > 0 && s < currentPrice * 1.5))
+      {
+        double pct = (support - currentPrice) / currentPrice;
+        if (pct >= -0.20 && pct <= 0.20) // Solo dentro de ±20%
+          technicalLevels.Add((support, pct, "support"));
+      }
+
+      // Añadir resistencias detectadas
+      foreach (var resistance in resistances.Where(r => r > 0 && r > currentPrice * 0.5))
+      {
+        double pct = (resistance - currentPrice) / currentPrice;
+        if (pct >= -0.20 && pct <= 0.20)
+          technicalLevels.Add((resistance, pct, "resistance"));
+      }
+
+      // Añadir Bollinger Bands
+      if (bollinger.Lower > 0)
+      {
+        double pct = (bollinger.Lower - currentPrice) / currentPrice;
+        if (pct >= -0.20 && pct <= 0.20)
+          technicalLevels.Add((bollinger.Lower, pct, "bollinger_lower"));
+      }
+      if (bollinger.Upper > 0)
+      {
+        double pct = (bollinger.Upper - currentPrice) / currentPrice;
+        if (pct >= -0.20 && pct <= 0.20)
+          technicalLevels.Add((bollinger.Upper, pct, "bollinger_upper"));
+      }
+
+      // Para cada porcentaje objetivo, buscar el nivel técnico más cercano o usar el porcentaje directamente
+      foreach (var targetPct in zonePercentages.Where(p => p != 0.0).OrderBy(p => Math.Abs(p)))
+      {
+        if (zones.Count >= zoneCount) break; // Ya tenemos suficientes zonas
+
+        double targetPrice;
+        string zoneType;
+        double margin;
+        
+        // Buscar si hay un nivel técnico cercano a este porcentaje (dentro de 1.5%)
+        var closestTechnical = technicalLevels
+          .Where(t => Math.Abs(t.Percentage - targetPct) < 0.015)
+          .OrderBy(t => Math.Abs(t.Percentage - targetPct))
+          .FirstOrDefault();
+
+        if (closestTechnical.Price > 0)
+        {
+          // Usar el nivel técnico real
+          targetPrice = closestTechnical.Price;
+          zoneType = closestTechnical.Type;
+          // Margen mínimo garantizado: al menos 2% del precio objetivo
+          double baseMargin = targetPrice * 0.02;
+          double volatilityMargin = targetPrice * effectiveVolatility * 0.03;
+          margin = Math.Max(baseMargin, volatilityMargin);
+        }
+        else
+        {
+          // Usar el porcentaje directamente para asegurar distribución visual
+          targetPrice = currentPrice * (1.0 + targetPct);
+          zoneType = targetPct < 0 ? "below" : "above";
+          
+          // Calcular margen basado en distancia: zonas más lejanas = márgenes más grandes
+          double distanceFromCurrent = Math.Abs(targetPct);
+          
+          // Para 3 zonas, usar márgenes más pequeños para permitir que se toquen
+          double minMarginPercent = zoneCount == 3 ? 0.015 : 0.02; // 1.5% para 3 zonas, 2% para más
+          double maxMarginPercent = zoneCount == 3 ? 0.05 : 0.08; // 5% para 3 zonas, 8% para más
+          
+          // Escalar margen según distancia: desde minMarginPercent (cerca) hasta maxMarginPercent (lejos)
+          double marginPercent = minMarginPercent + (distanceFromCurrent / 0.20) * (maxMarginPercent - minMarginPercent);
+          marginPercent = Math.Min(maxMarginPercent, Math.Max(minMarginPercent, marginPercent));
+          
+          margin = targetPrice * marginPercent;
+          
+          // Asegurar que el margen nunca sea menor que un mínimo absoluto
+          double absoluteMinMargin = targetPrice * (zoneCount == 3 ? 0.012 : 0.015); // Mínimo más pequeño para 3 zonas
+          margin = Math.Max(margin, absoluteMinMargin);
+        }
+
+        // Verificar que la zona no se solape con otras zonas existentes
+        // Una zona se solapa si los rangos se superponen
+        // El margen es absoluto, así que los límites son: target ± margin
+        // Para zonas cercanas, permitimos que se toquen (serán ajustadas después por AdjustZonesToTouchPercent)
+        bool overlaps = zones.Any(z =>
+        {
+          double zUpper = z.Target + z.Margin;
+          double zLower = z.Target - z.Margin;
+          double targetUpper = targetPrice + margin;
+          double targetLower = targetPrice - margin;
+          
+          // Verificar solapamiento: si los rangos se superponen significativamente
+          // Permitir que se toquen (serán ajustadas después), pero no solapamiento real
+          double overlapAmount = Math.Min(targetUpper - zLower, zUpper - targetLower);
+          // Para 3 zonas, ser más permisivo para permitir que se generen
+          if (zoneCount == 3)
+          {
+            // Para 3 zonas, solo rechazar si hay solapamiento mayor al 20% del margen
+            return overlapAmount > (Math.Min(margin, z.Margin) * 0.2);
+          }
+          else
+          {
+            // Para más zonas, rechazar cualquier solapamiento significativo
+            return overlapAmount > (Math.Min(margin, z.Margin) * 0.1);
+          }
+        });
+        
+        if (overlaps)
+          continue;
+
+        // Calcular probabilidad real
+        double prob = CalculateReachProbability(currentPrice, targetPrice, effectiveVolatility, timeToExpiryHours, drift);
+        
+        // Ajustar probabilidad según indicadores técnicos
+        if (targetPct < 0 && rsi < 30) prob *= 1.15; // Más probable bajar si RSI sobrevendido
+        if (targetPct > 0 && rsi > 70) prob *= 0.85; // Menos probable subir si RSI sobrecomprado
+        
+        // Ajustar probabilidad según distancia (zonas más lejanas = menos probable)
+        double distanceFactor = 1.0 - (Math.Abs(targetPct) * 0.3); // Reducir probabilidad según distancia
+        prob *= Math.Max(0.5, distanceFactor);
+        
+        // Asegurar rango razonable de probabilidades
+        prob = Math.Max(0.15, Math.Min(0.75, prob));
+        
+        // Asegurar que zonas menos probables tengan márgenes aún más grandes para ser visibles
+        if (prob < 0.30) 
+        {
+          margin *= 1.3; // Aumentar margen para zonas de baja probabilidad
+        }
+        
+        // Garantizar margen mínimo final: nunca menos del 2% del precio objetivo
+        double finalMinMargin = targetPrice * 0.02;
+        margin = Math.Max(margin, finalMinMargin);
+        
+        zones.Add((targetPrice, margin, prob, zoneType));
+        usedPercentages.Add(targetPct);
+      }
+
+      // 3. Si aún no tenemos suficientes zonas, completar con zonas distribuidas uniformemente
+      while (zones.Count < zoneCount)
+      {
+        // Generar zonas en incrementos uniformes
+        int missingZones = zoneCount - zones.Count;
+        double step = 0.15 / (missingZones + 1); // Distribuir en ±15%
+        
+        for (int i = 1; i <= missingZones && zones.Count < zoneCount; i++)
+        {
+          // Alternar entre arriba y abajo
+          bool isUp = i % 2 == 0;
+          double pct = isUp ? step * i : -step * i;
+          
+          // Asegurar que no esté muy cerca de zonas existentes
+          if (usedPercentages.Any(up => Math.Abs(up - pct) < 0.02))
+            continue;
+            
+          double targetPrice = currentPrice * (1.0 + pct);
+          
+          // Calcular margen para esta zona antes de verificar solapamiento
+          double distanceFromCurrent = Math.Abs(pct);
+          double minMarginPercent = 0.02;
+          double maxMarginPercent = 0.08;
+          double marginPercent = minMarginPercent + (distanceFromCurrent / 0.20) * (maxMarginPercent - minMarginPercent);
+          marginPercent = Math.Min(maxMarginPercent, Math.Max(minMarginPercent, marginPercent));
+          double tempMargin = targetPrice * marginPercent;
+          tempMargin = Math.Max(tempMargin, targetPrice * 0.02);
+          
+          // Verificar que no se solape con zonas existentes
+          // El margen es absoluto, así que los límites son: target ± margin
+          // Permitir que se toquen (serán ajustadas después por AdjustZonesToTouchPercent)
+          bool overlaps = zones.Any(z =>
+          {
+            double zUpper = z.Target + z.Margin;
+            double zLower = z.Target - z.Margin;
+            double targetUpper = targetPrice + tempMargin;
+            double targetLower = targetPrice - tempMargin;
+            
+            // Verificar solapamiento: si los rangos se superponen significativamente
+            double gap = Math.Min(targetLower - zUpper, zLower - targetUpper);
+            return gap < 0 && Math.Abs(gap) > (tempMargin * 0.1); // Solo rechazar si hay solapamiento significativo
+          });
+          
+          if (overlaps)
+            continue;
+
+          double prob = CalculateReachProbability(currentPrice, targetPrice, effectiveVolatility, timeToExpiryHours, drift);
+          prob = Math.Max(0.20, Math.Min(0.60, prob * (1.0 - Math.Abs(pct) * 0.4)));
+          
+          // Usar el margen ya calculado (tempMargin) que ya verificó no solaparse
+          double margin = tempMargin;
+          
+          zones.Add((targetPrice, margin, prob, isUp ? "above" : "below"));
+          usedPercentages.Add(pct);
+        }
+        
+        // Si aún no tenemos suficientes después de varios intentos, usar las zonas que tenemos
+        // Asegurar que al menos tengamos la zona actual
+        if (zones.Count == 0)
+        {
+          // Si no hay zonas, crear al menos una zona en el precio actual
+          double minMargin = currentPrice * 0.02;
+          zones.Add((currentPrice, minMargin, 0.5, "current"));
+        }
+        
+        // Si aún no tenemos suficientes, romper el bucle para evitar infinito
+        if (zones.Count < zoneCount / 2 && zones.Count > 0) break;
+      }
+
+      // 4. Ordenar por precio (de menor a mayor) para mejor visualización
+      var sortedZones = zones.OrderBy(z => z.Target).ToList();
+      
+      // Asegurar distribución balanceada: al menos una zona arriba y una abajo del precio actual
+      var zonesBelow = sortedZones.Where(z => z.Target < currentPrice).ToList();
+      var zonesAbove = sortedZones.Where(z => z.Target > currentPrice).ToList();
+      var currentZone = sortedZones.FirstOrDefault(z => Math.Abs(z.Target - currentPrice) / currentPrice < 0.001);
+      bool hasCurrentZone = currentZone.Target > 0 && !double.IsNaN(currentZone.Target);
+
+      var finalZones = new List<(double Target, double Margin, double BaseProbability, string ZoneType)>();
+      
+      // Si no hay suficientes zonas generadas, devolver las que tenemos
+      if (sortedZones.Count <= zoneCount)
+      {
+        return sortedZones.Take(zoneCount).ToList();
+      }
+      
+      // Seleccionar zonas según el número solicitado
+      if (zoneCount == 2)
+      {
+        // Para 2 zonas: 1 abajo, 1 arriba (sin zona actual para maximizar separación)
+        if (zonesBelow.Any())
+          finalZones.Add(zonesBelow.OrderByDescending(z => z.Target).First());
+        
+        if (zonesAbove.Any())
+          finalZones.Add(zonesAbove.OrderBy(z => z.Target).First());
+        
+        // Si no hay suficientes, añadir zona actual
+        if (finalZones.Count < 2 && hasCurrentZone)
+          finalZones.Add(currentZone);
+      }
+      else if (zoneCount == 3)
+      {
+        // Para 3 zonas: 1 abajo, 1 actual, 1 arriba
+        if (zonesBelow.Any())
+          finalZones.Add(zonesBelow.OrderByDescending(z => z.Target).First());
+        
+        if (hasCurrentZone)
+          finalZones.Add(currentZone);
+        else if (zonesBelow.Any() || zonesAbove.Any())
+        {
+          var closest = sortedZones.OrderBy(z => Math.Abs(z.Target - currentPrice)).First();
+          finalZones.Add(closest);
+        }
+        
+        if (zonesAbove.Any())
+          finalZones.Add(zonesAbove.OrderBy(z => z.Target).First());
+      }
+      else
+      {
+        // Para más zonas: distribución más amplia
+        if (hasCurrentZone && zoneCount > 3)
+          finalZones.Add(currentZone);
+        
+        // Calcular cuántas zonas necesitamos arriba y abajo
+        int zonesNeeded = zoneCount - finalZones.Count;
+        int zonesBelowCount = zonesNeeded / 2;
+        int zonesAboveCount = zonesNeeded - zonesBelowCount;
+        
+        // Añadir zonas abajo
+        finalZones.AddRange(zonesBelow.OrderByDescending(z => z.Target).Take(zonesBelowCount));
+        
+        // Añadir zonas arriba
+        finalZones.AddRange(zonesAbove.OrderBy(z => z.Target).Take(zonesAboveCount));
+        
+        // Si aún no tenemos suficientes, completar con las mejores restantes
+        var remaining = sortedZones
+          .Where(z => !finalZones.Any(fz => Math.Abs(fz.Target - z.Target) / currentPrice < 0.001))
+          .OrderByDescending(z => z.BaseProbability)
+          .Take(zoneCount - finalZones.Count);
+        
+        finalZones.AddRange(remaining);
+      }
+      
+      // Asegurar que siempre devolvamos al menos una zona
+      if (finalZones.Count == 0 && sortedZones.Count > 0)
+      {
+        finalZones.Add(sortedZones.First());
+      }
+      
+      // Ordenar por precio para visualización y tomar exactamente zoneCount
+      return finalZones.OrderBy(z => z.Target).Take(Math.Max(1, zoneCount)).ToList();
+    }
+
+    /// <summary>
+    /// Ajusta los márgenes porcentuales de las zonas para que se toquen en sus extremos sin solaparse.
+    /// El máximo de una zona coincidirá exactamente con el mínimo de la siguiente.
+    /// El margin es porcentual total, y los límites se calculan como:
+    /// - upperBound = target + (target * margin / 200)
+    /// - lowerBound = target - (target * margin / 200)
+    /// </summary>
+    private static List<(double Target, double MarginPercent, double BaseProbability, string ZoneType)> AdjustZonesToTouchPercent(
+      List<(double Target, double MarginPercent, double BaseProbability, string ZoneType)> zones)
+    {
+      if (zones.Count <= 1)
+        return zones;
+
+      // Ordenar zonas por precio (target) de menor a mayor
+      var sortedZones = zones.OrderBy(z => z.Target).ToList();
+      var adjustedZones = new List<(double Target, double MarginPercent, double BaseProbability, string ZoneType)>();
+      
+      // Calcular puntos de contacto entre zonas consecutivas
+      // Para que dos zonas se toquen exactamente: upperBound[i] = lowerBound[i+1]
+      // target[i] * (1 + margin[i] / 200) = target[i+1] * (1 - margin[i+1] / 200)
+      
+      // Calcular puntos de contacto como punto medio entre targets adyacentes
+      var touchPoints = new List<double>();
+      
+      for (int i = 0; i < sortedZones.Count - 1; i++)
+      {
+        var currentZone = sortedZones[i];
+        var nextZone = sortedZones[i + 1];
+        
+        // Calcular el punto medio entre los targets (donde se tocarán exactamente)
+        double touchPoint = (currentZone.Target + nextZone.Target) / 2.0;
+        touchPoints.Add(touchPoint);
+      }
+      
+      // Ajustar cada zona para que sus límites lleguen exactamente a los puntos de contacto
+      for (int i = 0; i < sortedZones.Count; i++)
+      {
+        var zone = sortedZones[i];
+        double adjustedMarginPercent;
+        
+        if (sortedZones.Count == 1)
+        {
+          // Si solo hay una zona, mantener el margen original pero con mínimo razonable
+          adjustedMarginPercent = Math.Max(2.0, zone.MarginPercent); // Mínimo 2%
+        }
+        else if (i == 0)
+        {
+          // Primera zona: el límite superior debe llegar exactamente al primer punto de contacto
+          // upperBound = target * (1 + margin / 200) = touchPoint
+          // margin / 200 = (touchPoint / target) - 1
+          // margin = ((touchPoint / target) - 1) * 200
+          double touchPoint = touchPoints[0];
+          if (touchPoint > zone.Target)
+          {
+            adjustedMarginPercent = ((touchPoint / zone.Target) - 1.0) * 200.0;
+          }
+          else
+          {
+            // Si el touchPoint está por debajo del target, usar margen mínimo
+            adjustedMarginPercent = 2.0;
+          }
+          adjustedMarginPercent = Math.Max(2.0, adjustedMarginPercent); // Mínimo 2%
+        }
+        else if (i == sortedZones.Count - 1)
+        {
+          // Última zona: el límite inferior debe llegar exactamente al último punto de contacto
+          // lowerBound = target * (1 - margin / 200) = touchPoint
+          // margin / 200 = 1 - (touchPoint / target)
+          // margin = (1 - (touchPoint / target)) * 200
+          double touchPoint = touchPoints[i - 1];
+          if (touchPoint < zone.Target)
+          {
+            adjustedMarginPercent = (1.0 - (touchPoint / zone.Target)) * 200.0;
+          }
+          else
+          {
+            // Si el touchPoint está por encima del target, usar margen mínimo
+            adjustedMarginPercent = 2.0;
+          }
+          adjustedMarginPercent = Math.Max(2.0, adjustedMarginPercent); // Mínimo 2%
+        }
+        else
+        {
+          // Zonas intermedias: deben tocar ambos puntos de contacto exactamente
+          double lowerTouchPoint = touchPoints[i - 1];
+          double upperTouchPoint = touchPoints[i];
+          
+          // Calcular márgenes necesarios para cada dirección
+          // Para el límite inferior:
+          double lowerMarginPercent = (1.0 - (lowerTouchPoint / zone.Target)) * 200.0;
+          // Para el límite superior:
+          double upperMarginPercent = ((upperTouchPoint / zone.Target) - 1.0) * 200.0;
+          
+          // Usar el máximo para asegurar que toque ambos puntos sin solaparse
+          adjustedMarginPercent = Math.Max(lowerMarginPercent, upperMarginPercent);
+          adjustedMarginPercent = Math.Max(2.0, adjustedMarginPercent); // Mínimo 2%
+        }
+        
+        adjustedZones.Add((zone.Target, adjustedMarginPercent, zone.BaseProbability, zone.ZoneType));
+      }
+      
+      // Verificar que no haya solapamiento después del ajuste
+      for (int i = 0; i < adjustedZones.Count - 1; i++)
+      {
+        var current = adjustedZones[i];
+        var next = adjustedZones[i + 1];
+        
+        double currentUpper = current.Target * (1.0 + current.MarginPercent / 200.0);
+        double nextLower = next.Target * (1.0 - next.MarginPercent / 200.0);
+        
+        // Si hay solapamiento, ajustar para que se toquen exactamente
+        if (currentUpper > nextLower)
+        {
+          // Calcular el punto medio y ajustar ambas zonas
+          double touchPoint = (currentUpper + nextLower) / 2.0;
+          
+          // Ajustar zona actual
+          double newCurrentMargin = ((touchPoint / current.Target) - 1.0) * 200.0;
+          adjustedZones[i] = (current.Target, Math.Max(2.0, newCurrentMargin), current.BaseProbability, current.ZoneType);
+          
+          // Ajustar zona siguiente
+          double newNextMargin = (1.0 - (touchPoint / next.Target)) * 200.0;
+          adjustedZones[i + 1] = (next.Target, Math.Max(2.0, newNextMargin), next.BaseProbability, next.ZoneType);
+        }
+      }
+      
+      return adjustedZones;
     }
 
     private static double CalculateLinearRegressionSlope(List<double> data)
@@ -528,27 +1201,6 @@ namespace BetsTrading_Service.Services
       double denominator = n * sumX2 - sumX * sumX;
 
       return denominator == 0 ? 0 : numerator / denominator;
-    }
-
-    private static double EstimateOdds(double target, double current, double stdDev, string trend, string zone)
-    {
-      double distance = Math.Abs(current - target);
-      double relativeRisk = distance / stdDev;
-
-      double baseOdds = zone switch
-      {
-        "mid" => 1.8,
-        "low" => 2.0,
-        "high" => 2.0,
-        _ => 2.0
-      };
-
-      if (zone == "low" && trend == "uptrend") baseOdds += 0.4;
-      if (zone == "high" && trend == "downtrend") baseOdds += 0.4;
-      if (zone == "low" && trend == "downtrend") baseOdds -= 0.2;
-      if (zone == "high" && trend == "uptrend") baseOdds -= 0.2;
-
-      return Math.Max(1.01, baseOdds + relativeRisk * 0.3);
     }
 
     public async Task SetInactiveBetZones()
