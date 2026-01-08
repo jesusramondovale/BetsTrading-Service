@@ -30,7 +30,7 @@ namespace BetsTrading_Service.Services
 
     public async Task UpdateAssetsAsync(IServiceScopeFactory scopeFactory, bool marketHours, CancellationToken ct = default)
     {
-      _logger.Log.Information("[UpdaterService] :: UpdateAssetsAsync() called! {Mode}", marketHours ? "Mode market hours" : "Continuous mode");
+      _logger.Log.Debug("[UpdaterService] :: UpdateAssetsAsync() called! {Mode}", marketHours ? "Mode market hours" : "Continuous mode");
 
       if (TWELVE_DATA_KEYS is null || TWELVE_DATA_KEYS.Length == 0 || TWELVE_DATA_KEYS.All(string.IsNullOrWhiteSpace))
       {
@@ -76,7 +76,7 @@ namespace BetsTrading_Service.Services
       {
         keyIndex = (keyIndex + 1) % TWELVE_DATA_KEYS.Length;
         callsWithThisKey = 0;
-        _logger.Log.Information("[UpdaterService] :: Switching to next TwelveDataKey (index {Index})", keyIndex);
+        _logger.Log.Debug("[UpdaterService] :: Switching to next TwelveDataKey (index {Index})", keyIndex);
         if (string.IsNullOrWhiteSpace(CurrentKey()))
           _logger.Log.Error("[UpdaterService] :: Current TwelveDataKey is EMPTY, check environment variables!");
       }
@@ -91,7 +91,7 @@ namespace BetsTrading_Service.Services
           NextKeyLocal();
           if (wrapped)
           {
-            _logger.Log.Information("[UpdaterService] :: Sleeping 35 seconds to bypass rate limit");
+            _logger.Log.Debug("[UpdaterService] :: Sleeping 35 seconds to bypass rate limit");
             await Task.Delay(TimeSpan.FromSeconds(35), ct);
           }
         }
@@ -225,6 +225,7 @@ namespace BetsTrading_Service.Services
             {
               usdCandles.Add(new AssetCandleUSD
               {
+                
                 AssetId = c.AssetId,
                 Exchange = c.Exchange,
                 Interval = c.Interval,
@@ -273,12 +274,12 @@ namespace BetsTrading_Service.Services
         }
       }
 
-      _logger.Log.Information("[UpdaterService] :: UpdateAssetsAsync() completed successfully! ({Mode})", marketHours ? "Mode market hours" : "Continuous mode");
+      _logger.Log.Debug("[UpdaterService] :: UpdateAssetsAsync() completed successfully! ({Mode})", marketHours ? "Mode market hours" : "Continuous mode");
     }
 
     public async Task CreateBetZones(bool marketHoursMode)
     {
-      _logger.Log.Information("[UpdaterService] :: CreateBetZones() called with mode market-Hours = {0}", marketHoursMode.ToString());
+      _logger.Log.Debug("[UpdaterService] :: CreateBetZones() called with mode market-Hours = {0}", marketHoursMode.ToString());
       using var transaction = await _dbContext.Database.BeginTransactionAsync();
       try
       {
@@ -287,9 +288,22 @@ namespace BetsTrading_Service.Services
              : _dbContext.FinancialAssets;
 
         var financialAssets = await query.ToListAsync();
+        
+        _logger.Log.Debug("[UpdaterService] :: Found {Count} financial assets to process", financialAssets.Count);
+        
+        if (financialAssets.Count == 0)
+        {
+          _logger.Log.Warning("[UpdaterService] :: No financial assets found! Query returned empty list.");
+          await transaction.RollbackAsync();
+          return;
+        }
 
+        int assetsProcessed = 0;
         foreach (var currentAsset in financialAssets)
         {
+          assetsProcessed++;
+          _logger.Log.Debug("[UpdaterService] :: Processing asset {Index}/{Total}: {Ticker} (ID: {Id})", 
+            assetsProcessed, financialAssets.Count, currentAsset.ticker, currentAsset.id);
           var now = DateTime.UtcNow;
 
           // DESACTIVAR ZONAS EXISTENTES ANTES DE CREAR NUEVAS
@@ -304,9 +318,11 @@ namespace BetsTrading_Service.Services
 
           if (existingZones > 0 || existingZonesUSD > 0)
           {
-            _logger.Log.Information("[UpdaterService] :: Deactivated {Count} existing zones (EUR: {EurCount}, USD: {UsdCount}) for {Ticker} before creating new ones", 
+            _logger.Log.Debug("[UpdaterService] :: Deactivated {Count} existing zones (EUR: {EurCount}, USD: {UsdCount}) for {Ticker} before creating new ones", 
               existingZones + existingZonesUSD, existingZones, existingZonesUSD, currentAsset.ticker);
           }
+          
+          _logger.Log.Debug("[UpdaterService] :: Starting zone creation process for {Ticker}", currentAsset.ticker);
 
           // Definir múltiples columnas temporales para cada timeframe
           // Cada timeframe tendrá al menos 3 períodos temporales de diferentes tamaños
@@ -344,31 +360,58 @@ namespace BetsTrading_Service.Services
             (now.AddHours(74), now.AddHours(146))  // Largo: 72 horas (3 días)
           };
 
+          _logger.Log.Debug("[UpdaterService] :: Starting to process {TimeframeCount} timeframes for {Ticker}", 
+            horizons.Count, currentAsset.ticker);
+          
           foreach (var timeframeEntry in horizons)
           {
             int timeframe = timeframeEntry.Key;
             var timePeriods = timeframeEntry.Value;
             
+            _logger.Log.Debug("[UpdaterService] :: Processing timeframe {Timeframe} for {Ticker}", 
+              timeframe, currentAsset.ticker);
+            
             // Las zonas existentes ya fueron desactivadas arriba para evitar solapamientos
             // Solo verificar que tengamos datos suficientes
 
             // Obtener más candles para análisis técnico robusto
+            _logger.Log.Debug("[UpdaterService] :: Fetching candles for {Ticker} (AssetId: {Id})", 
+              currentAsset.ticker, currentAsset.id);
+            
             var candles = await _dbContext.AssetCandles
                 .Where(c => c.AssetId == currentAsset.id && c.Interval == "1h")
                 .OrderByDescending(c => c.DateTime)
                 .Take(100) // Más datos para análisis técnico
                 .ToListAsync();
+            
+            _logger.Log.Debug("[UpdaterService] :: Retrieved {Count} candles for {Ticker} timeframe {Timeframe}", 
+              candles.Count, currentAsset.ticker, timeframe);
 
-            if (candles.Count < 50) continue; // Mínimo 50 candles para análisis confiable
+            if (candles.Count < 50)
+            {
+              _logger.Log.Warning("[UpdaterService] :: Insufficient candles for {Ticker} timeframe {Timeframe}. Found: {Count}, Required: 50", 
+                currentAsset.ticker, timeframe, candles.Count);
+              continue; // Mínimo 50 candles para análisis confiable
+            }
+            
+            _logger.Log.Debug("[UpdaterService] :: Processing {Ticker} timeframe {Timeframe} with {CandleCount} candles", 
+              currentAsset.ticker, timeframe, candles.Count);
 
             // Preparar datos
             var closes = candles.Select(c => (double)c.Close).Reverse().ToList(); // Invertir para orden cronológico
             var highs = candles.Select(c => (double)c.High).Reverse().ToList();
             var lows = candles.Select(c => (double)c.Low).Reverse().ToList();
             double currentPrice = closes.Last(); // Precio más reciente
+            
+            if (currentPrice <= 0 || double.IsNaN(currentPrice) || double.IsInfinity(currentPrice))
+            {
+              _logger.Log.Error("[UpdaterService] :: Invalid current price for {Ticker} timeframe {Timeframe}: {Price}", 
+                currentAsset.ticker, timeframe, currentPrice);
+              continue;
+            }
 
             // Análisis exhaustivo de las últimas 10xT velas para calcular márgenes máximos
-            int candlesToAnalyze = 10 * timeframe; // 10xT velas de 1h
+            int candlesToAnalyze = 30 * timeframe; // 10xT velas de 1h
             var timeframeCandles = candles.Take(Math.Min(candlesToAnalyze, candles.Count)).Reverse().ToList();
             double maxVariationPercent = CalculateMaxVariationForTimeframe(timeframeCandles, currentPrice);
 
@@ -377,11 +420,20 @@ namespace BetsTrading_Service.Services
 
             // Calcular volatilidad EWMA (más reactiva que stdDev simple)
             double volatility = CalculateEWMAVolatility(returns);
-            if (volatility == 0 || double.IsNaN(volatility))
+            if (volatility == 0 || double.IsNaN(volatility) || double.IsInfinity(volatility))
             {
               // Fallback a desviación estándar si EWMA falla
               double avgClose = closes.Average();
               volatility = Math.Sqrt(closes.Average(c => Math.Pow(c - avgClose, 2))) / avgClose;
+              _logger.Log.Debug("[UpdaterService] :: Using fallback volatility calculation for {Ticker} timeframe {Timeframe}: {Vol}", 
+                currentAsset.ticker, timeframe, volatility);
+            }
+            
+            if (volatility <= 0 || double.IsNaN(volatility) || double.IsInfinity(volatility))
+            {
+              _logger.Log.Warning("[UpdaterService] :: Invalid volatility for {Ticker} timeframe {Timeframe}: {Vol}. Skipping.", 
+                currentAsset.ticker, timeframe, volatility);
+              continue;
             }
 
             // Calcular drift (tendencia)
@@ -392,7 +444,22 @@ namespace BetsTrading_Service.Services
             var bollinger = CalculateBollingerBands(closes);
 
             // Detectar soportes y resistencias
-            var (supports, resistances) = DetectSupportResistance(highs, lows, closes);
+            List<double> supports;
+            List<double> resistances;
+            try
+            {
+              var result = DetectSupportResistance(highs, lows, closes);
+              supports = result.Supports;
+              resistances = result.Resistances;
+              _logger.Log.Debug("[UpdaterService] :: Detected {SupportCount} supports and {ResistanceCount} resistances for {Ticker}", 
+                supports.Count, resistances.Count, currentAsset.ticker);
+            }
+            catch (Exception ex)
+            {
+              _logger.Log.Error(ex, "[UpdaterService] :: Error detecting support/resistance for {Ticker}", currentAsset.ticker);
+              supports = new List<double>();
+              resistances = new List<double>();
+            }
 
             // Obtener tipo de cambio EUR/USD
             var eurUsdAsset = _dbContext.AssetCandles
@@ -408,6 +475,9 @@ namespace BetsTrading_Service.Services
             int totalZonesCreated = 0;
             int maxPeriods = Math.Min(3, timePeriods.Count); // Limitar a máximo 3 períodos
             
+            _logger.Log.Debug("[UpdaterService] :: Generating zones for {Ticker} timeframe {Timeframe} with {PeriodCount} periods", 
+              currentAsset.ticker, timeframe, maxPeriods);
+            
             for (int periodIndex = 0; periodIndex < maxPeriods; periodIndex++)
             {
               var period = timePeriods[periodIndex];
@@ -417,10 +487,26 @@ namespace BetsTrading_Service.Services
               int zonesPerPeriod = 3;
               
               // Generar zonas para este período con márgenes máximos basados en variación real
-              var zones = GenerateIntelligentZones(
-                currentPrice, supports, resistances, volatility, 
-                timeToExpiry, rsi, bollinger, drift, zoneCount: zonesPerPeriod,
-                maxVariationPercent: maxVariationPercent);
+              _logger.Log.Debug("[UpdaterService] :: Calling GenerateIntelligentZones for {Ticker} timeframe {Timeframe} period {PeriodIndex}. Price: {Price}, Volatility: {Vol}, TimeToExpiry: {Hours}h", 
+                currentAsset.ticker, timeframe, periodIndex, currentPrice, volatility, timeToExpiry);
+              
+              List<(double Target, double Margin, double BaseProbability, string ZoneType)> zones;
+              try
+              {
+                zones = GenerateIntelligentZones(
+                  currentPrice, supports, resistances, volatility, 
+                  timeToExpiry, rsi, bollinger, drift, zoneCount: zonesPerPeriod,
+                  maxVariationPercent: maxVariationPercent);
+                
+                _logger.Log.Debug("[UpdaterService] :: GenerateIntelligentZones returned {Count} zones for {Ticker} timeframe {Timeframe} period {PeriodIndex}", 
+                  zones?.Count ?? 0, currentAsset.ticker, timeframe, periodIndex);
+              }
+              catch (Exception ex)
+              {
+                _logger.Log.Error(ex, "[UpdaterService] :: Error in GenerateIntelligentZones for {Ticker} timeframe {Timeframe} period {PeriodIndex}", 
+                  currentAsset.ticker, timeframe, periodIndex);
+                zones = new List<(double Target, double Margin, double BaseProbability, string ZoneType)>();
+              }
 
               // Validar que se generaron zonas
               if (zones == null || zones.Count == 0)
@@ -507,6 +593,9 @@ namespace BetsTrading_Service.Services
               totalZonesCreated, timePeriods.Count, currentAsset.ticker, timeframe);
           }
         }
+        
+        var totalZonesBeforeSave = _dbContext.BetZones.Local.Count + _dbContext.BetZonesUSD.Local.Count;
+        _logger.Log.Debug("[UpdaterService] :: About to save {Count} zones to database", totalZonesBeforeSave);
 
         await _dbContext.SaveChangesAsync();
         await transaction.CommitAsync();
@@ -515,8 +604,17 @@ namespace BetsTrading_Service.Services
       }
       catch (Exception ex)
       {
-        _logger.Log.Error(ex, "[UpdaterService] :: CreateBetZones() error");
-        await transaction.RollbackAsync();
+        _logger.Log.Error(ex, "[UpdaterService] :: CreateBetZones() error. Message: {Message}, StackTrace: {StackTrace}", 
+          ex.Message, ex.StackTrace);
+        try
+        {
+          await transaction.RollbackAsync();
+          _logger.Log.Debug("[UpdaterService] :: Transaction rolled back successfully");
+        }
+        catch (Exception rollbackEx)
+        {
+          _logger.Log.Error(rollbackEx, "[UpdaterService] :: Error rolling back transaction");
+        }
       }
     }
 
@@ -729,7 +827,14 @@ namespace BetsTrading_Service.Services
       (double Upper, double Middle, double Lower) bollinger, double drift, int zoneCount = 6,
       double maxVariationPercent = 0.0)
     {
+      // Log de entrada (necesitamos acceso al logger, pero es static, así que usaremos System.Diagnostics.Debug o simplemente retornar temprano si hay problemas)
       var zones = new List<(double Target, double Margin, double BaseProbability, string ZoneType)>();
+      
+      // Validación temprana
+      if (currentPrice <= 0 || double.IsNaN(currentPrice) || double.IsInfinity(currentPrice))
+      {
+        return zones; // Retornar lista vacía si el precio es inválido
+      }
 
       // Asegurar que la volatilidad tenga un mínimo razonable para generar zonas visibles
       double minVolatility = 0.01; // 1% mínimo
@@ -819,9 +924,15 @@ namespace BetsTrading_Service.Services
       }
 
       // Para cada porcentaje objetivo, buscar el nivel técnico más cercano o usar el porcentaje directamente
+      int maxZoneAttempts = zoneCount * 10; // Límite de intentos para evitar bucles infinitos
+      int zoneAttempts = 0;
       foreach (var targetPct in zonePercentages.Where(p => p != 0.0).OrderBy(p => Math.Abs(p)))
       {
         if (zones.Count >= zoneCount) break; // Ya tenemos suficientes zonas
+        if (zoneAttempts++ >= maxZoneAttempts)
+        {
+          break; // Protección contra demasiados intentos
+        }
 
         double targetPrice;
         string zoneType;
@@ -916,7 +1027,16 @@ namespace BetsTrading_Service.Services
           continue;
 
         // Calcular probabilidad real
-        double prob = CalculateReachProbability(currentPrice, targetPrice, effectiveVolatility, timeToExpiryHours, drift);
+        double prob = 0.5; // Valor por defecto
+        try
+        {
+          prob = CalculateReachProbability(currentPrice, targetPrice, effectiveVolatility, timeToExpiryHours, drift);
+        }
+        catch
+        {
+          // Si falla el cálculo, usar probabilidad por defecto
+          prob = 0.5;
+        }
         
         // Ajustar probabilidad según indicadores técnicos
         if (targetPct < 0 && rsi < 30) prob *= 1.15; // Más probable bajar si RSI sobrevendido
@@ -944,12 +1064,16 @@ namespace BetsTrading_Service.Services
       }
 
       // 3. Si aún no tenemos suficientes zonas, completar con zonas distribuidas uniformemente
-      while (zones.Count < zoneCount)
+      int maxIterations = 100; // Protección contra bucle infinito
+      int iterations = 0;
+      while (zones.Count < zoneCount && iterations < maxIterations)
       {
+        iterations++;
         // Generar zonas en incrementos uniformes
         int missingZones = zoneCount - zones.Count;
         double step = 0.075 / (missingZones + 1); // Distribuir en ±7.5%
         
+        int zonesAddedThisIteration = 0;
         for (int i = 1; i <= missingZones && zones.Count < zoneCount; i++)
         {
           // Alternar entre arriba y abajo
@@ -1001,14 +1125,30 @@ namespace BetsTrading_Service.Services
           if (overlaps)
             continue;
 
-          double prob = CalculateReachProbability(currentPrice, targetPrice, effectiveVolatility, timeToExpiryHours, drift);
-          prob = Math.Max(0.20, Math.Min(0.60, prob * (1.0 - Math.Abs(pct) * 0.4)));
+          double prob = 0.5; // Valor por defecto
+          try
+          {
+            prob = CalculateReachProbability(currentPrice, targetPrice, effectiveVolatility, timeToExpiryHours, drift);
+            prob = Math.Max(0.20, Math.Min(0.60, prob * (1.0 - Math.Abs(pct) * 0.4)));
+          }
+          catch
+          {
+            // Si falla el cálculo, usar probabilidad por defecto
+            prob = 0.5;
+          }
           
           // Usar el margen ya calculado (tempMargin) que ya verificó no solaparse
           double margin = tempMargin;
           
           zones.Add((targetPrice, margin, prob, isUp ? "above" : "below"));
           usedPercentages.Add(pct);
+          zonesAddedThisIteration++;
+        }
+        
+        // Si no se agregaron zonas en esta iteración, salir del bucle para evitar infinito
+        if (zonesAddedThisIteration == 0)
+        {
+          break; // No se pueden generar más zonas, usar las que tenemos
         }
         
         // Si aún no tenemos suficientes después de varios intentos, usar las zonas que tenemos
@@ -1347,7 +1487,7 @@ namespace BetsTrading_Service.Services
 
     public async Task SetInactiveBetZones()
     {
-      _logger.Log.Information("[UpdaterService] :: SetInactiveBetZones() called");
+      _logger.Log.Debug("[UpdaterService] :: SetInactiveBetZones() called");
 
       var now = DateTime.UtcNow;
 
@@ -1360,12 +1500,12 @@ namespace BetsTrading_Service.Services
         .ExecuteUpdateAsync(s => s.SetProperty(bz => bz.active, _ => false));
 
 
-      _logger.Log.Information("[UpdaterService] :: SetInactiveBetZones() -> {Count} deactivated zones", affected);
+      _logger.Log.Debug("[UpdaterService] :: SetInactiveBetZones() -> {Count} deactivated zones", affected);
     }
 
     public async Task SetFinishedBets()
     {
-      _logger.Log.Information("[UpdaterService] :: SetFinishedBets() called");
+      _logger.Log.Debug("[UpdaterService] :: SetFinishedBets() called");
 
       var betsZonesToCheck = await _dbContext.BetZones
           .Where(bz => DateTime.UtcNow >= bz.end_date)
@@ -1395,7 +1535,7 @@ namespace BetsTrading_Service.Services
 
     public async Task SetFinishedUSDBets()
     {
-      _logger.Log.Information("[UpdaterService] :: SetFinishedUSDBets() called");
+      _logger.Log.Debug("[UpdaterService] :: SetFinishedUSDBets() called");
 
       var betsZonesToCheck = await _dbContext.BetZonesUSD
           .Where(bz => DateTime.UtcNow >= bz.end_date)
@@ -1425,7 +1565,7 @@ namespace BetsTrading_Service.Services
 
     public async Task CheckBets(bool marketHours)
     {
-      _logger.Log.Information("[UpdaterService] :: CheckBets() called with market hours mode = {0}", marketHours);
+      _logger.Log.Debug("[UpdaterService] :: CheckBets() called with market hours mode = {0}", marketHours);
 
       var now = DateTime.UtcNow;
 
@@ -1508,7 +1648,7 @@ namespace BetsTrading_Service.Services
 
     public async Task CheckUSDBets(bool marketHours)
     {
-      _logger.Log.Information("[UpdaterService] :: CheckUSDBets() called with market hours mode = {0}", marketHours);
+      _logger.Log.Debug("[UpdaterService] :: CheckUSDBets() called with market hours mode = {0}", marketHours);
 
       var now = DateTime.UtcNow;
 
@@ -1591,7 +1731,7 @@ namespace BetsTrading_Service.Services
 
     public async Task PayBets(bool marketHours)
     {
-      _logger.Log.Information("[UpdaterService] :: PayBets() called with mode market hours = {0}", marketHours);
+      _logger.Log.Debug("[UpdaterService] :: PayBets() called with mode market hours = {0}", marketHours);
 
       var betsToPay = (marketHours) ?
         await _dbContext.Bets
@@ -1767,7 +1907,7 @@ namespace BetsTrading_Service.Services
         _dbContext.SaveChanges();
 
         transaction.Commit();
-        _logger.Log.Information("[UpdaterService] :: UpdateTrends() synced with Favorites()");
+        _logger.Log.Debug("[UpdaterService] :: UpdateTrends() synced with Favorites()");
       }
       catch (Exception ex)
       {
@@ -1860,7 +2000,7 @@ namespace BetsTrading_Service.Services
 
     public async Task CheckAndPayUSDPriceBets(bool marketHoursMode)
     {
-      _logger.Log.Information("[UpdaterService] :: CheckAndPayUSDPriceBets() called with market hours mode = {0}", marketHoursMode);
+      _logger.Log.Debug("[UpdaterService] :: CheckAndPayUSDPriceBets() called with market hours mode = {0}", marketHoursMode);
       using var transaction = await _dbContext.Database.BeginTransactionAsync();
       try
       {
@@ -1931,7 +2071,7 @@ namespace BetsTrading_Service.Services
 
         await _dbContext.SaveChangesAsync();
         await transaction.CommitAsync();
-        _logger.Log.Information("[UpdaterService] :: CheckAndPayUSDPriceBets ended successfully!");
+        _logger.Log.Debug("[UpdaterService] :: CheckAndPayUSDPriceBets ended successfully!");
       }
       catch (Exception ex)
       {
@@ -2064,7 +2204,7 @@ namespace BetsTrading_Service.Services
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-      _customLogger.Log.Information("[UpdaterHostedService] :: Service started");
+      _customLogger.Log.Debug("[UpdaterHostedService] :: Service started");
       _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
       _backgroundTask = Task.Run(() => RunAsync(_cts.Token), _cts.Token);
       return Task.CompletedTask;
@@ -2097,10 +2237,19 @@ namespace BetsTrading_Service.Services
 
     private async Task ExecuteCreateBets(bool marketHoursMode)
     {
-      using var scope = _serviceProvider.CreateScope();
-      var updaterService = scope.ServiceProvider.GetRequiredService<UpdaterService>();
-      _customLogger.Log.Information("[UpdaterHostedService] :: Executing CreateBets with mode {0}", (marketHoursMode ? "Market Hours" : "continue mode"));
-      await updaterService.CreateBetZones(marketHoursMode);
+      try
+      {
+        using var scope = _serviceProvider.CreateScope();
+        var updaterService = scope.ServiceProvider.GetRequiredService<UpdaterService>();
+        _customLogger.Log.Information("[UpdaterHostedService] :: Executing CreateBets with mode {0}", (marketHoursMode ? "Market Hours" : "continue mode"));
+        await updaterService.CreateBetZones(marketHoursMode);
+        _customLogger.Log.Information("[UpdaterHostedService] :: CreateBets execution completed");
+      }
+      catch (Exception ex)
+      {
+        _customLogger.Log.Error(ex, "[UpdaterHostedService] :: Error in ExecuteCreateBets. Message: {Message}", ex.Message);
+        throw; // Re-lanzar para que el catch del RunAsync también lo capture
+      }
     }
 
     private async Task ExecuteCheckBets(bool marketHoursMode)
