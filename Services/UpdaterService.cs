@@ -91,8 +91,8 @@ namespace BetsTrading_Service.Services
           NextKeyLocal();
           if (wrapped)
           {
-            _logger.Log.Debug("[UpdaterService] :: Sleeping 35 seconds to bypass rate limit");
-            await Task.Delay(TimeSpan.FromSeconds(35), ct);
+            _logger.Log.Debug("[UpdaterService] :: Sleeping 45 seconds to bypass rate limit");
+            await Task.Delay(TimeSpan.FromSeconds(45), ct);
           }
         }
 
@@ -103,9 +103,32 @@ namespace BetsTrading_Service.Services
           continue;
         }
 
-        string url = asset.group == "Cryptos"
-            ? $"https://api.twelvedata.com/time_series?symbol={symbol}/{desiredQuote}&interval={interval}&timezone=UTC&outputsize={outputsize}&apikey={CurrentKey()}"
-            : $"https://api.twelvedata.com/time_series?symbol={symbol}&interval={interval}&timezone=UTC&outputsize={outputsize}&apikey={CurrentKey()}";
+        // Obtener la última fecha de la tabla EUR antes de hacer la llamada a la API
+        // Solo consultamos AssetCandles porque es la única tabla que se alimenta directamente de la API
+        // Las velas USD se generan después multiplicando las EUR por el tipo de cambio
+        var lastDate = await db.AssetCandles
+            .Where(c => c.AssetId == asset.id && c.Interval == interval)
+            .MaxAsync(c => (DateTime?)c.DateTime, ct) ?? DateTime.MinValue;
+
+        // Construir la URL con start_date si hay una última fecha válida
+        string baseUrl = asset.group == "Cryptos"
+            ? $"https://api.twelvedata.com/time_series?symbol={symbol}/{desiredQuote}&interval={interval}&timezone=UTC&apikey={CurrentKey()}"
+            : $"https://api.twelvedata.com/time_series?symbol={symbol}&interval={interval}&timezone=UTC&apikey={CurrentKey()}";
+
+        string url;
+        if (lastDate != DateTime.MinValue)
+        {
+          // Formato ISO 8601: 2006-01-02T15:04:05
+          string startDateParam = lastDate.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture);
+          url = $"{baseUrl}&start_date={startDateParam}";
+          _logger.Log.Debug("[UpdaterService] :: Using start_date={StartDate} for {Symbol}", startDateParam, symbol);
+        }
+        else
+        {
+          // Si no hay última fecha, usar outputsize para obtener datos históricos
+          url = $"{baseUrl}&outputsize={outputsize}";
+          _logger.Log.Debug("[UpdaterService] :: No previous candles found for {Symbol}, using outputsize={OutputSize}", symbol, outputsize);
+        }
 
         HttpResponseMessage resp;
         try
@@ -164,10 +187,6 @@ namespace BetsTrading_Service.Services
         }
 
         var exchange = parsed.Meta?.Exchange ?? "Unknown";
-
-        var lastDate = await db.AssetCandles
-            .Where(c => c.AssetId == asset.id && c.Interval == interval)
-            .MaxAsync(c => (DateTime?)c.DateTime, ct) ?? DateTime.MinValue;
 
         var newCandles = new List<AssetCandle>();
 
