@@ -453,17 +453,20 @@
                            System.Globalization.CultureInfo.InvariantCulture, out var rewardAmount))
         rewardAmount = 0;
 
+      // Usar el valor de coins guardado en el nonce, o el rewardAmount de AdMob como fallback
+      var coinsToAward = nonce.Coins ?? (int)rewardAmount;
+
       using var tx = await _dbContext.Database.BeginTransactionAsync();
       var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.id == userId);
       if (user == null) { await tx.RollbackAsync(); return NotFound(new { Message = "User not found" }); }
 
-      user.points += (double)rewardAmount;
+      user.points += coinsToAward;
       nonce.Used = true;
       _dbContext.RewardTransactions.Add(new RewardTransaction
       {
         TransactionId = transactionId,
         UserId = userId,
-        Coins = (decimal)rewardAmount,
+        Coins = coinsToAward,
         AdUnitId = adUnitIdStr,
         RewardItem = rewardItem,
         RewardAmountRaw = rewardAmount,

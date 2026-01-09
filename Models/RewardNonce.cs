@@ -23,6 +23,8 @@ public class RewardNonce
   [MaxLength(64)]
   public string? Purpose { get; set; }
   
+  public int? Coins { get; set; }
+  
   public bool Used { get; set; } = false;
   
   public DateTime ExpiresAt { get; set; }
@@ -38,6 +40,8 @@ public class RewardNonceRequest
   public string AdUnitId { get; set; } = default!;
   [JsonPropertyName("purpose")]
   public string? Purpose { get; set; }
+  [JsonPropertyName("coins")]
+  public int? Coins { get; set; }
 }
 
 public class RewardNonceResponse

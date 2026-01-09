@@ -53,6 +53,7 @@ namespace BetsTrading_Service.Controllers
         UserId = userId,
         AdUnitId = body.AdUnitId,
         Purpose = body.Purpose,
+        Coins = body.Coins,
         Used = false,
         CreatedAt = now,
         ExpiresAt = now.AddMinutes(5)
