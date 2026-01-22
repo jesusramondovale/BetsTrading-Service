@@ -1,4 +1,4 @@
-﻿namespace BetsTrading_Service.Models
+namespace BetsTrading_Service.Models
 {
   public class Trend(int id, double daily_gain, string ticker)
   {
@@ -8,7 +8,7 @@
 
   }
 
-  public class TrendDTO(int id, string name, string icon, double daily_gain, double close, double current, string ticker)
+  public class TrendDTO(int id, string name, string icon, double daily_gain, double close, double current, string ticker, double? current_max_odd = null, int? current_max_odd_direction = null)
   {
     public int id { get; private set; } = id;
     public string name { get; private set; } = name;
@@ -17,6 +17,8 @@
     public double close { get; private set; } = close;
     public double current { get; private set; } = current;
     public string ticker { get; private set; } = ticker;
+    public double? current_max_odd { get; private set; } = current_max_odd;
+    public int? current_max_odd_direction { get; private set; } = current_max_odd_direction;
 
 
   }

@@ -1,4 +1,4 @@
-﻿using BetsTrading_Service.Database;
+using BetsTrading_Service.Database;
 using BetsTrading_Service.Interfaces;
 using BetsTrading_Service.Models;
 using BetsTrading_Service.Requests;
@@ -435,7 +435,9 @@ namespace BetsTrading_Service.Controllers
              daily_gain: trend.daily_gain,
              close: prevClose,
              current: (userInfoRequest.currency == "EUR" ? tmpAsset.current_eur : tmpAsset.current_usd),
-             ticker: trend.ticker));
+             ticker: trend.ticker,
+             current_max_odd: tmpAsset.current_max_odd,
+             current_max_odd_direction: tmpAsset.current_max_odd_direction));
         }
 
         _logger.Log.Debug("[INFO] :: Trends :: success with ID: {msg}", userInfoRequest.id);

@@ -1,4 +1,4 @@
-﻿// UpdaterService.cs
+// UpdaterService.cs
 using Newtonsoft.Json.Linq;
 using BetsTrading_Service.Database;
 using BetsTrading_Service.Interfaces;
@@ -617,6 +617,9 @@ namespace BetsTrading_Service.Services
         _logger.Log.Debug("[UpdaterService] :: About to save {Count} zones to database", totalZonesBeforeSave);
 
         await _dbContext.SaveChangesAsync();
+        
+        // Actualizar current_max_odd y current_max_odd_direction para cada FinancialAsset
+        await UpdateCurrentMaxOddsAsync();
         await transaction.CommitAsync();
         _logger.Log.Information("[UpdaterService] :: CreateBetZones() completed successfully with technical analysis. ({0})", 
           (marketHoursMode ? "Mode market hours" : "Continuous mode"));
@@ -1837,7 +1840,83 @@ namespace BetsTrading_Service.Services
       }
 
       await tx.CommitAsync(ct);
+      
+      // Actualizar current_max_odd después de refrescar las odds
+      // Esto asegura que si alguna zona nueva tiene una odd mayor, se actualice el máximo
+      await UpdateCurrentMaxOddsAsync(ct);
+      
       _logger.Log.Debug("[UpdaterService] :: RefreshTargetOdds() completed successfully.");
+    }
+
+    /// <summary>
+    /// Actualiza current_max_odd y current_max_odd_direction para todos los FinancialAssets
+    /// basándose en las bet zones activas. Se ejecuta después de crear o refrescar bet zones.
+    /// </summary>
+    private async Task UpdateCurrentMaxOddsAsync(CancellationToken ct = default)
+    {
+      _logger.Log.Debug("[UpdaterService] :: Updating current_max_odd and current_max_odd_direction for all assets");
+      var allAssets = await _dbContext.FinancialAssets.ToListAsync(ct);
+      
+      foreach (var asset in allAssets)
+      {
+        // Obtener todas las betZones activas para este asset (EUR)
+        var activeBetZonesEUR = await _dbContext.BetZones
+          .Where(bz => bz.ticker == asset.ticker && bz.active)
+          .ToListAsync(ct);
+        
+        // Obtener todas las betZones activas para este asset (USD)
+        var activeBetZonesUSD = await _dbContext.BetZonesUSD
+          .Where(bz => bz.ticker == asset.ticker && bz.active)
+          .ToListAsync(ct);
+        
+        // Combinar ambas listas y encontrar la máxima odd
+        var allActiveZones = activeBetZonesEUR.Select(bz => new { bz.target_odds, bz.target_value, bz.bet_margin, Currency = "EUR" })
+          .Concat(activeBetZonesUSD.Select(bz => new { bz.target_odds, bz.target_value, bz.bet_margin, Currency = "USD" }))
+          .ToList();
+        
+        if (allActiveZones.Any())
+        {
+          // Encontrar la zona con la máxima odd
+          var maxOddZone = allActiveZones.OrderByDescending(z => z.target_odds).First();
+          
+          // Actualizar current_max_odd solo si la nueva odd es mayor que la actual (o si no hay valor actual)
+          // Esto asegura que se actualice cuando el nuevo cálculo de zona supere al máximo
+          if (!asset.current_max_odd.HasValue || maxOddZone.target_odds > asset.current_max_odd.Value)
+          {
+            asset.current_max_odd = maxOddZone.target_odds;
+            
+            // Calcular la dirección basada en la posición relativa al precio actual
+            double currentPrice = maxOddZone.Currency == "EUR" ? asset.current_eur : asset.current_usd;
+            double halfMargin = (maxOddZone.bet_margin / 200.0) * maxOddZone.target_value;
+            double upperBound = maxOddZone.target_value + halfMargin;
+            double lowerBound = maxOddZone.target_value - halfMargin;
+            
+            if (lowerBound > currentPrice)
+            {
+              asset.current_max_odd_direction = 1; // Verde: zona por encima
+            }
+            else if (upperBound < currentPrice)
+            {
+              asset.current_max_odd_direction = -1; // Rojo: zona por debajo
+            }
+            else
+            {
+              asset.current_max_odd_direction = 0; // Amarillo: zona en medio
+            }
+            
+            _logger.Log.Debug("[UpdaterService] :: Updated {Ticker}: max_odd={MaxOdd}, direction={Direction}", 
+              asset.ticker, asset.current_max_odd, asset.current_max_odd_direction);
+          }
+        }
+        else
+        {
+          // Si no hay zonas activas, establecer valores nulos
+          asset.current_max_odd = null;
+          asset.current_max_odd_direction = null;
+        }
+      }
+      
+      await _dbContext.SaveChangesAsync(ct);
     }
 
     public void UpdateTrends(bool marketHours)
@@ -1912,8 +1991,16 @@ namespace BetsTrading_Service.Services
           ));
         }
 
+        // Ordenar por current_max_odd descendente (mayor cuota primero)
+        // Solo incluir assets que tengan current_max_odd definido
+        // Crear diccionario para búsqueda eficiente
+        var assetDict = assets
+            .Where(a => a.current_max_odd.HasValue && a.current_max_odd.Value > 0)
+            .ToDictionary(a => a.ticker!, a => a.current_max_odd!.Value);
+        
         var top5 = trends
-            .OrderByDescending(x => Math.Abs(x.daily_gain))
+            .Where(x => assetDict.ContainsKey(x.ticker))
+            .OrderByDescending(x => assetDict[x.ticker])
             .Take(5)
             .ToList();
 

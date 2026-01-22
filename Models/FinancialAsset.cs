@@ -1,4 +1,4 @@
-﻿namespace BetsTrading_Service.Models
+namespace BetsTrading_Service.Models
 {
   public class FinancialAsset
   {
@@ -34,6 +34,8 @@
 
     public double current_eur { get; set; }
     public double current_usd { get; set; }
+    public double? current_max_odd { get; set; }
+    public int? current_max_odd_direction { get; set; }
 
     public ICollection<AssetCandle> Candles { get; set; } = new List<AssetCandle>();
 
