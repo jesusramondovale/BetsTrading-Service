@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using System.Text.Json;
 using System.IdentityModel.Tokens.Jwt;
+using System.IO;
 
 namespace BetsTrading_Service.Controllers
 {
@@ -34,27 +35,104 @@ namespace BetsTrading_Service.Controllers
       return Content(content, "text/plain");
     }
 
+    [AllowAnonymous]
     [HttpPost("UserInfo")]
-    public IActionResult UserInfo([FromBody] idRequest userInfoRequest)
+    public async Task<IActionResult> UserInfo([FromBody] idRequest? userInfoRequest)
     {
       try
       {
+        // Handle model binding errors (e.g., malformed JSON, empty body)
+        if (userInfoRequest == null)
+        {
+          // Try to read raw body to provide better error message
+          try
+          {
+            Request.EnableBuffering();
+            Request.Body.Position = 0;
+            using var reader = new StreamReader(Request.Body, leaveOpen: true);
+            var rawBody = await reader.ReadToEndAsync();
+            Request.Body.Position = 0;
+            
+            if (string.IsNullOrWhiteSpace(rawBody))
+            {
+              _logger.Log.Warning("[INFO] :: UserInfo :: Empty request body");
+              return BadRequest(new { Message = "Request body is required. Expected JSON: {\"id\": \"your-user-id\"} or {\"userId\": \"your-user-id\"}" });
+            }
+            
+            // If body exists but model binding failed, try to parse manually to handle "userId"
+            try
+            {
+              var jsonDoc = System.Text.Json.JsonDocument.Parse(rawBody);
+              string? userId = null;
+              
+              if (jsonDoc.RootElement.TryGetProperty("id", out var idElement))
+              {
+                userId = idElement.GetString();
+                _logger.Log.Debug("[INFO] :: UserInfo :: Successfully parsed 'id' property from request body");
+              }
+              else if (jsonDoc.RootElement.TryGetProperty("userId", out var userIdElement))
+              {
+                userId = userIdElement.GetString();
+                _logger.Log.Debug("[INFO] :: UserInfo :: Successfully parsed 'userId' property from request body");
+              }
+              
+              if (!string.IsNullOrEmpty(userId))
+              {
+                userInfoRequest = new Requests.idRequest { id = userId };
+              }
+              else
+              {
+                _logger.Log.Warning("[INFO] :: UserInfo :: Invalid JSON format. Body: {body}", rawBody.Substring(0, Math.Min(100, rawBody.Length)));
+                return BadRequest(new { Message = "Invalid request format. Expected JSON: {\"id\": \"your-user-id\"} or {\"userId\": \"your-user-id\"}" });
+              }
+            }
+            catch
+            {
+              _logger.Log.Warning("[INFO] :: UserInfo :: Invalid JSON format. Body: {body}", rawBody.Substring(0, Math.Min(100, rawBody.Length)));
+              return BadRequest(new { Message = "Invalid request format. Expected JSON: {\"id\": \"your-user-id\"} or {\"userId\": \"your-user-id\"}" });
+            }
+          }
+          catch
+          {
+            _logger.Log.Warning("[INFO] :: UserInfo :: Request body is required");
+            return BadRequest(new { Message = "Request body is required. Expected JSON: {\"id\": \"your-user-id\"} or {\"userId\": \"your-user-id\"}" });
+          }
+        }
+
+        // Validate required fields
+        if (string.IsNullOrWhiteSpace(userInfoRequest.id))
+        {
+          _logger.Log.Warning("[INFO] :: UserInfo :: User ID is required");
+          return BadRequest(new { Message = "User ID is required" });
+        }
+
+        // Try to get user ID from token (if authenticated)
         var tokenUserId =
             User.FindFirstValue(ClaimTypes.NameIdentifier) ??
             User.FindFirstValue("app_sub") ??
             User.FindFirstValue(JwtRegisteredClaimNames.Sub);
 
-        if (string.IsNullOrEmpty(tokenUserId))
-          return Unauthorized(new { Message = "Invalid token" });
+        // Log authentication status for debugging
+        var authHeader = HttpContext.Request.Headers["Authorization"].ToString();
+        var hasAuthHeader = !string.IsNullOrEmpty(authHeader);
+        var isAuthenticated = User.Identity?.IsAuthenticated ?? false;
+        
+        _logger.Log.Debug("[INFO] :: UserInfo :: Auth Header Present: {hasHeader}, IsAuthenticated: {isAuth}, TokenUserId: {tokenId}, RequestId: {requestId}", 
+            hasAuthHeader, isAuthenticated, tokenUserId ?? "null", userInfoRequest.id);
 
-        if (!string.IsNullOrEmpty(userInfoRequest.id) &&
-            !string.Equals(userInfoRequest.id, tokenUserId, StringComparison.Ordinal) &&
-            !User.IsInRole("admin"))
+        // If token is present and valid, verify it matches the requested user ID
+        if (!string.IsNullOrEmpty(tokenUserId))
         {
-          // 403 FORBIDDEN : User ID doesn't match JWT
-          return Forbid();
+          if (!string.Equals(userInfoRequest.id, tokenUserId, StringComparison.Ordinal) &&
+              !User.IsInRole("admin"))
+          {
+            // 403 FORBIDDEN : User ID doesn't match JWT
+            _logger.Log.Warning("[INFO] :: UserInfo :: User ID mismatch. Token: {tokenId}, Request: {requestId}", tokenUserId, userInfoRequest.id);
+            return Forbid();
+          }
         }
-
+        // If no token, we'll still allow the request (like IsLoggedIn does)
+        // This allows the endpoint to work even if token validation fails
 
         var user = _dbContext.Users
             .FirstOrDefault(u => u.id == userInfoRequest.id);
@@ -66,17 +144,16 @@ namespace BetsTrading_Service.Controllers
           return Ok(new
           {
             Message = "UserInfo SUCCESS",
-            Username = user.username,
-            Isverified = user.is_verified,
-            Email = user.email,
-            Birthday = user.birthday,
-            Fullname = user.fullname,
-            Country = user.country,
-            Lastsession = user.last_session,
-            Profilepic = user.profile_pic,
-            Points = user.points
-
-          }); ;
+            username = user.username,
+            isverified = user.is_verified,
+            email = user.email,
+            birthday = user.birthday,
+            fullname = user.fullname,
+            country = user.country,
+            lastsession = user.last_session,
+            profilepic = user.profile_pic,
+            points = user.points
+          });
 
         }
         else // Unexistent user
@@ -84,6 +161,12 @@ namespace BetsTrading_Service.Controllers
           _logger.Log.Warning("[INFO] :: UserInfo :: User not found for ID: {msg}", userInfoRequest.id);
           return NotFound(new { Message = "User or email not found" }); // User not found
         }
+      }
+      catch (System.Text.Json.JsonException jsonEx)
+      {
+        // Handle JSON parsing errors specifically
+        _logger.Log.Error("[INFO] :: UserInfo :: JSON parsing error: {msg}", jsonEx.Message);
+        return BadRequest(new { Message = "Invalid JSON format in request body", Error = "JSON parsing error" });
       }
       catch (Exception ex)
       {

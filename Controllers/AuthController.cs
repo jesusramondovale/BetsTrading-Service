@@ -1,4 +1,4 @@
-﻿using BetsTrading_Service.Database;
+using BetsTrading_Service.Database;
 using BetsTrading_Service.Interfaces;
 using BetsTrading_Service.Models;
 using BetsTrading_Service.Requests;
@@ -13,6 +13,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using System.IO;
 
 namespace BetsTrading_Service.Controllers
 {
@@ -513,10 +514,46 @@ namespace BetsTrading_Service.Controllers
     }
 
     [HttpPost("GoogleLogIn")]
-    public async Task<IActionResult> GoogleLogIn([FromBody] Requests.LoginRequest loginRequest)
+    public async Task<IActionResult> GoogleLogIn([FromBody] Requests.LoginRequest? loginRequest)
     {    
       try
       {
+        // Handle model binding errors (e.g., malformed JSON, empty body)
+        if (loginRequest == null)
+        {
+          // Try to read raw body to provide better error message
+          try
+          {
+            Request.EnableBuffering();
+            Request.Body.Position = 0;
+            using var reader = new StreamReader(Request.Body, leaveOpen: true);
+            var rawBody = await reader.ReadToEndAsync();
+            Request.Body.Position = 0;
+            
+            if (string.IsNullOrWhiteSpace(rawBody))
+            {
+              _logger.Log.Warning("[AUTH] :: Google LogIn :: Empty request body");
+              return BadRequest(new { Message = "Request body is required. Expected JSON: {\"Username\": \"your-google-user-id\"}" });
+            }
+            
+            // If body exists but model binding failed, it's likely malformed JSON
+            _logger.Log.Warning("[AUTH] :: Google LogIn :: Invalid JSON format. Body: {body}", rawBody.Substring(0, Math.Min(100, rawBody.Length)));
+            return BadRequest(new { Message = "Invalid request format. Expected JSON: {\"Username\": \"your-google-user-id\"}" });
+          }
+          catch
+          {
+            _logger.Log.Warning("[AUTH] :: Google LogIn :: Request body is required");
+            return BadRequest(new { Message = "Request body is required. Expected JSON: {\"Username\": \"your-google-user-id\"}" });
+          }
+        }
+
+        // Validate required fields
+        if (string.IsNullOrWhiteSpace(loginRequest.Username))
+        {
+          _logger.Log.Warning("[AUTH] :: Google LogIn :: Username is required");
+          return BadRequest(new { Message = "Username is required" });
+        }
+
         string? ip = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault() ?? HttpContext.Connection.RemoteIpAddress?.ToString();
         var geo = await GetGeoLocationFromIp(ip!);
         var user = _dbContext.Users
@@ -529,15 +566,21 @@ namespace BetsTrading_Service.Controllers
           user.token_expiration = DateTime.UtcNow.AddDays(SESSION_EXP_DAYS);
           user.is_active = true;
           _dbContext.SaveChanges();
-          _logger.Log.Debug("[AUTH] :: Google LogIn :: Sucess. User ID: {userId} from {city} , {region} , {country}. ISP: {isp}", user.id, geo!.City, geo.RegionName, geo.Country , geo.ISP);
+          _logger.Log.Debug("[AUTH] :: Google LogIn :: Sucess. User ID: {userId} from {city} , {region} , {country}. ISP: {isp}", user.id, geo?.City ?? "Unknown", geo?.RegionName ?? "Unknown", geo?.Country ?? "Unknown", geo?.ISP ?? "Unknown");
           return Ok(new { Message = "Google LogIn SUCCESS", UserId = user.id });
 
         }
         else // Unexistent user
         {
           _logger.Log.Warning("[AUTH] :: Google LogIn :: Unexistent user : {userRequest} ", loginRequest.Username);
-          return NotFound(new { Message = "User found" }); // User not found
+          return NotFound(new { Message = "User not found" }); // User not found
         }
+      }
+      catch (System.Text.Json.JsonException jsonEx)
+      {
+        // Handle JSON parsing errors specifically
+        _logger.Log.Error("[AUTH] :: Google LogIn :: JSON parsing error: {msg}", jsonEx.Message);
+        return BadRequest(new { Message = "Invalid JSON format in request body", Error = "JSON parsing error" });
       }
       catch (Exception ex)
       {

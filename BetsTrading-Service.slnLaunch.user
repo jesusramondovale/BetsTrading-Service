@@ -1,0 +1,27 @@
+[
+  {
+    "Name": "Nuevo perfil",
+    "Projects": [
+      {
+        "Path": "..\\Load test\\Load test.csproj",
+        "Action": "Start"
+      },
+      {
+        "Path": "BetsTrading.Domain\\BetsTrading.Domain.csproj",
+        "Action": "Start"
+      },
+      {
+        "Path": "BetsTrading.Application\\BetsTrading.Application.csproj",
+        "Action": "Start"
+      },
+      {
+        "Path": "BetsTrading.Infrastructure\\BetsTrading.Infrastructure.csproj",
+        "Action": "Start"
+      },
+      {
+        "Path": "BetsTrading.API\\BetsTrading.API.csproj",
+        "Action": "Start"
+      }
+    ]
+  }
+]
