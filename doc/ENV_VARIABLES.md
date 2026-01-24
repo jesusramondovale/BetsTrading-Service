@@ -33,6 +33,11 @@ Este documento lista todas las variables de entorno necesarias para ejecutar la 
 
 **Nota**: El servicio UpdaterService rota entre estas claves para evitar límites de rate limiting. Se recomienda configurar al menos 2-3 claves.
 
+### Firebase (notificaciones push, p. ej. "otro dispositivo")
+- **Archivo `betrader-v1-firebase.json`**: credenciales de Service Account de Firebase. No hay variable de entorno estándar; la ruta se configura en `appsettings.json` como `Firebase:CredentialsPath` (por defecto `betrader-v1-firebase.json` en el directorio de ejecución).
+- Opcional: `Firebase__CredentialsPath` para sobrescribir la ruta (p. ej. `/opt/betstrading/betrader-v1-firebase.json`).
+- El archivo está en **`.gitignore`**. Si existe en la raíz del repo, **se copia al compilar/publicar** (csproj con `Condition="Exists(...)"`). Si no, colócalo manualmente en la carpeta de despliegue. Ver `doc/FIREBASE_README.md`.
+
 ## Variables Opcionales
 
 ### Base de Datos

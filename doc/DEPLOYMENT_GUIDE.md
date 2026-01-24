@@ -85,6 +85,8 @@ TWELVE_DATA_KEY0=tu_api_key_0
 TWELVE_DATA_KEY1=tu_api_key_1
 ```
 
+**Firebase (notificaciones "otro dispositivo"):** Si existe `betrader-v1-firebase.json` en la raíz del repo, se **incluye al publicar** (está en `.gitignore`; el csproj lo copia solo cuando existe). Si no está, súbelo manualmente a `/opt/betstrading/` y dale permisos restrictivos. Ver `doc/FIREBASE_README.md`.
+
 **Seguridad:** Asegúrate de que el archivo `.env` tenga permisos restrictivos:
 ```bash
 sudo chmod 600 /opt/betstrading/.env

@@ -535,7 +535,8 @@ builder.Services.Configure<BetsTrading.Infrastructure.Services.FirebaseSettings>
 builder.Services.AddSingleton<BetsTrading.Application.Interfaces.IFirebaseNotificationService>(sp =>
 {
     var settings = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<BetsTrading.Infrastructure.Services.FirebaseSettings>>().Value;
-    return new BetsTrading.Infrastructure.Services.FirebaseNotificationService(settings);
+    var logger = sp.GetRequiredService<BetsTrading.Application.Interfaces.IApplicationLogger>();
+    return new BetsTrading.Infrastructure.Services.FirebaseNotificationService(settings, logger);
 });
 
 // Rate Limiting

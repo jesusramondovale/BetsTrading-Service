@@ -25,6 +25,10 @@ public class RefreshFcmCommand : IRequest<RefreshFcmResult>
     // Internal property for PascalCase (will be set manually if needed)
     [System.Text.Json.Serialization.JsonIgnore]
     public string? Fcm { get; set; }
+
+    /// <summary>IP del cliente (CF-Connecting-IP / X-Forwarded-For / RemoteIpAddress). Para geo en notificación "otro dispositivo".</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? ClientIp { get; set; }
     
     // Computed property that returns the actual user ID from either property
     public string GetUserId()

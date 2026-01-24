@@ -10,13 +10,19 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResult>
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly IJwtTokenService _jwtTokenService;
+    private readonly IFirebaseNotificationService _firebaseNotification;
     private readonly IApplicationLogger _logger;
     private const int SESSION_EXP_DAYS = 15;
 
-    public LoginCommandHandler(IUnitOfWork unitOfWork, IJwtTokenService jwtTokenService, IApplicationLogger logger)
+    private readonly IIpGeoService _ipGeoService;
+
+    public LoginCommandHandler(IUnitOfWork unitOfWork, IJwtTokenService jwtTokenService,
+        IFirebaseNotificationService firebaseNotification, IIpGeoService ipGeoService, IApplicationLogger logger)
     {
         _unitOfWork = unitOfWork;
         _jwtTokenService = jwtTokenService;
+        _firebaseNotification = firebaseNotification;
+        _ipGeoService = ipGeoService;
         _logger = logger;
     }
 
@@ -52,7 +58,49 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResult>
         
         if (!string.IsNullOrEmpty(request.Fcm))
         {
-            user.UpdateFcm(request.Fcm);
+            var fcmNuevo = request.Fcm.Trim();
+            var fcmAnterior = (user.Fcm ?? string.Empty).Trim();
+            var esOtroDispositivo = !string.IsNullOrEmpty(fcmAnterior) && fcmAnterior != fcmNuevo;
+
+            _logger.Debug("[OTRO_DISPOSITIVO] Login :: UserId={0}, FCM_anterior={1}, FCM_nuevo={2}, esOtroDispositivo={3}",
+                user.Id,
+                string.IsNullOrEmpty(fcmAnterior) ? "(vacío)" : fcmAnterior[..Math.Min(20, fcmAnterior.Length)] + "...",
+                fcmNuevo[..Math.Min(20, fcmNuevo.Length)] + "...",
+                esOtroDispositivo);
+
+            if (esOtroDispositivo)
+            {
+                _logger.Debug("[OTRO_DISPOSITIVO] Login :: Enviando notificación 'otro dispositivo' al token anterior (UserId={0})", user.Id);
+                try
+                {
+                    var clientIp = request.ClientIp;
+                    if (!string.IsNullOrEmpty(clientIp) && clientIp.Contains(','))
+                        clientIp = clientIp.Split(',')[0].Trim();
+                    var geo = await _ipGeoService.GetGeoFromIpAsync(clientIp, cancellationToken);
+
+                    var logoutData = new Dictionary<string, string>
+                    {
+                        { "type", "LOGOUT" },
+                        { "userId", user.Id },
+                        { "ip", string.IsNullOrEmpty(clientIp) ? "Unknown IP" : clientIp },
+                        { "city", geo?.City ?? "Unknown city" },
+                        { "country", geo?.Country ?? "Unknown country" }
+                    };
+                    await _firebaseNotification.SendNotificationToUserAsync(
+                        fcmAnterior,
+                        "Sesión nueva",
+                        "Has iniciado sesión desde otro dispositivo",
+                        logoutData);
+                    _logger.Debug("[OTRO_DISPOSITIVO] Login :: Notificación enviada OK al dispositivo anterior (UserId={0})", user.Id);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Debug("[OTRO_DISPOSITIVO] Login :: Error enviando notificación al dispositivo anterior: {0}. UserId={1}", ex.Message, user.Id);
+                }
+            }
+
+            user.UpdateFcm(fcmNuevo);
+            _logger.Debug("[OTRO_DISPOSITIVO] Login :: FCM actualizado a nuevo dispositivo (UserId={0})", user.Id);
         }
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);

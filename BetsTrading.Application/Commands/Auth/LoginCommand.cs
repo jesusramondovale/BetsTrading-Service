@@ -7,6 +7,8 @@ public class LoginCommand : IRequest<LoginResult>
     public string Username { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
     public string? Fcm { get; set; }
+    /// <summary>IP del cliente (CF-Connecting-IP / X-Forwarded-For / RemoteIpAddress). Para geo en notificación "otro dispositivo".</summary>
+    public string? ClientIp { get; set; }
 }
 
 public class LoginResult

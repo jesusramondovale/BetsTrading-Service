@@ -24,6 +24,9 @@ public class AuthController : ControllerBase
     [HttpPost("LogIn")]
     public async Task<IActionResult> LogIn([FromBody] LoginCommand command, CancellationToken cancellationToken)
     {
+        command.ClientIp = HttpContext.Request.Headers["CF-Connecting-IP"].FirstOrDefault()
+            ?? HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault()
+            ?? HttpContext.Connection.RemoteIpAddress?.ToString();
         var result = await _mediator.Send(command, cancellationToken);
         
         if (!result.Success)
@@ -486,6 +489,10 @@ public class AuthController : ControllerBase
 
             // Always use user ID from token (security)
             command.UserId = tokenUserId;
+
+            command.ClientIp = HttpContext.Request.Headers["CF-Connecting-IP"].FirstOrDefault()
+                ?? HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault()
+                ?? HttpContext.Connection.RemoteIpAddress?.ToString();
 
             var result = await _mediator.Send(command, cancellationToken);
             
