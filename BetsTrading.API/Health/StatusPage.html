@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BetsTrading Service — OK</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2rem;
+            font-family: 'Outfit', sans-serif;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+            color: #e8e8ed;
+            overflow-x: hidden;
+            padding: 2rem 1rem;
+        }
+        .grid-bg {
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(34, 211, 238, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(34, 211, 238, 0.03) 1px, transparent 1px);
+            background-size: 48px 48px;
+            pointer-events: none;
+        }
+        .card {
+            position: relative;
+            text-align: center;
+            padding: 3rem 4rem;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(34, 211, 238, 0.2);
+            border-radius: 24px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5),
+                        0 0 0 1px rgba(255, 255, 255, 0.05),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+        }
+        .logo-wrap {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 1.5rem;
+        }
+        .logo-wrap img {
+            width: 216px;
+            height: auto;
+            max-height: 216px;
+            object-fit: contain;
+            display: block;
+        }
+        h1 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin-bottom: 0.35rem;
+            background: linear-gradient(90deg, #fff, #a5f3fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .ok {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #22d3ee;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+        }
+        .running {
+            color: #10b981;
+        }
+        .clocks-row {
+            position: relative;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 2rem;
+        }
+        .clock-box {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .clock-label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #a5f3fc;
+            letter-spacing: 0.05em;
+        }
+        .clock {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: linear-gradient(145deg, rgba(15, 15, 35, 0.9), rgba(26, 26, 46, 0.95));
+            border: 2px solid rgba(34, 211, 238, 0.3);
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.4), 0 0 15px rgba(34, 211, 238, 0.1);
+            position: relative;
+            flex-shrink: 0;
+        }
+        .clock-face {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            border-radius: 50%;
+        }
+        .hand {
+            position: absolute;
+            left: 50%;
+            bottom: 50%;
+            transform-origin: 50% 100%;
+            border-radius: 2px;
+        }
+        .hand.hour {
+            width: 4px;
+            height: 28px;
+            margin-left: -2px;
+            background: linear-gradient(to top, #22d3ee, #67e8f9);
+        }
+        .hand.minute {
+            width: 3px;
+            height: 36px;
+            margin-left: -1.5px;
+            background: linear-gradient(to top, #a5f3fc, #cffafe);
+        }
+        .hand.second {
+            width: 2px;
+            height: 40px;
+            margin-left: -1px;
+            background: #22d3ee;
+        }
+        .digital {
+            font-size: 0.7rem;
+            font-variant-numeric: tabular-nums;
+            color: rgba(165, 243, 252, 0.8);
+        }
+    </style>
+</head>
+<body>
+    <div class="grid-bg"></div>
+    <div class="card">
+        <div class="logo-wrap">
+            <img src="/logo" alt="BetsTrading Logo">
+        </div>
+        <h1>BetsTrading service</h1>
+        <p class="ok">API Status: <span class="running">Running</span></p>
+    </div>
+    <div class="clocks-row">
+        <div class="clock-box">
+            <span class="clock-label">New York</span>
+            <div class="clock"><div class="clock-face">
+                <div class="hand hour" id="h-ny"></div>
+                <div class="hand minute" id="m-ny"></div>
+                <div class="hand second" id="s-ny"></div>
+            </div></div>
+            <span class="digital" id="d-ny">--:--:--</span>
+        </div>
+        <div class="clock-box">
+            <span class="clock-label">Server (UTC)</span>
+            <div class="clock"><div class="clock-face">
+                <div class="hand hour" id="h-utc"></div>
+                <div class="hand minute" id="m-utc"></div>
+                <div class="hand second" id="s-utc"></div>
+            </div></div>
+            <span class="digital" id="d-utc">--:--:--</span>
+        </div>
+        <div class="clock-box">
+            <span class="clock-label">Madrid</span>
+            <div class="clock"><div class="clock-face">
+                <div class="hand hour" id="h-mad"></div>
+                <div class="hand minute" id="m-mad"></div>
+                <div class="hand second" id="s-mad"></div>
+            </div></div>
+            <span class="digital" id="d-mad">--:--:--</span>
+        </div>
+    </div>
+    <script>
+        const serverTimeIso = "__SERVER_TIME_ISO__";
+        const zones = [
+            { id: 'ny', tz: 'America/New_York' },
+            { id: 'utc', tz: 'UTC' },
+            { id: 'mad', tz: 'Europe/Madrid' },
+            { id: 'pek', tz: 'Asia/Shanghai' }
+        ];
+        let base = new Date(serverTimeIso);
+        const fmt = (d, tz) => {
+            const p = new Intl.DateTimeFormat('en-CA', { timeZone: tz, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).formatToParts(d);
+            const get = (k) => parseInt(p.find(x => x.type === k)?.value ?? 0, 10);
+            return { h: get('hour'), m: get('minute'), s: get('second') };
+        };
+        const pad = n => (n < 10 ? '0' : '') + n;
+        const digital = (h, m, s) => pad(h) + ':' + pad(m) + ':' + pad(s);
+        const deg = (h, m, s) => ({
+            hour: (h % 12) * 30 + m * 0.5 + s * (0.5 / 60),
+            minute: m * 6 + s * 0.1,
+            second: s * 6
+        });
+        function tick() {
+            zones.forEach(z => {
+                const { h, m, s } = fmt(base, z.tz);
+                const d = deg(h, m, s);
+                ['h','m','s'].forEach((hand) => {
+                    const el = document.getElementById(hand + '-' + z.id);
+                    if (el) el.style.transform = 'rotate(' + (hand === 'h' ? d.hour : hand === 'm' ? d.minute : d.second) + 'deg)';
+                });
+                const del = document.getElementById('d-' + z.id);
+                if (del) del.textContent = digital(h, m, s);
+            });
+            base = new Date(base.getTime() + 1000);
+        }
+        tick();
+        setInterval(tick, 1000);
+    </script>
+</body>
+</html>

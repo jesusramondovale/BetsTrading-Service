@@ -28,7 +28,7 @@ public class FirebaseNotificationService : IFirebaseNotificationService
 
             if (!File.Exists(credentialsPath))
             {
-                _logger.Warning("[OTRO_DISPOSITIVO] Firebase :: Credentials no encontradas en {0}. Notificaciones 'otro dispositivo' deshabilitadas.", credentialsPath);
+                _logger.Debug("[OTRO_DISPOSITIVO] Firebase :: Credentials no encontradas en {0}. Notificaciones 'otro dispositivo' deshabilitadas.", credentialsPath);
                 return;
             }
 
@@ -37,7 +37,7 @@ public class FirebaseNotificationService : IFirebaseNotificationService
                 Credential = GoogleCredential.FromFile(credentialsPath)
             });
             _firebaseAvailable = true;
-            _logger.Information("[OTRO_DISPOSITIVO] Firebase :: Inicializado OK. Credentials={0}", credentialsPath);
+            _logger.Debug("[OTRO_DISPOSITIVO] Firebase :: Inicializado OK. Credentials={0}", credentialsPath);
         }
         else
         {
@@ -47,7 +47,7 @@ public class FirebaseNotificationService : IFirebaseNotificationService
 
     public async Task SendNotificationToUserAsync(string deviceToken, string title, string body, Dictionary<string, string>? additionalData = null)
     {
-        _logger.Information("[OTRO_DISPOSITIVO] Firebase :: Inicio envío. Token={0}..., Title={1}, Body={2}, type={3}, FirebaseAvailable={4}",
+        _logger.Debug("[OTRO_DISPOSITIVO] Firebase :: Inicio envío. Token={0}..., Title={1}, Body={2}, type={3}, FirebaseAvailable={4}",
             deviceToken.Length > 20 ? deviceToken[..20] + "..." : deviceToken,
             title,
             body,
@@ -56,7 +56,7 @@ public class FirebaseNotificationService : IFirebaseNotificationService
 
         if (!_firebaseAvailable)
         {
-            _logger.Information("[OTRO_DISPOSITIVO] Firebase :: Credentials no configuradas, omitiendo envío.");
+            _logger.Debug("[OTRO_DISPOSITIVO] Firebase :: Credentials no configuradas, omitiendo envío.");
             await Task.CompletedTask;
             return;
         }
@@ -92,13 +92,13 @@ public class FirebaseNotificationService : IFirebaseNotificationService
 
         try
         {
-            _logger.Information("[OTRO_DISPOSITIVO] Firebase :: Llamando FirebaseMessaging.SendAsync");
+            _logger.Debug("[OTRO_DISPOSITIVO] Firebase :: Llamando FirebaseMessaging.SendAsync");
             string response = await FirebaseMessaging.DefaultInstance.SendAsync(message);
-            _logger.Information("[OTRO_DISPOSITIVO] Firebase :: Mensaje enviado OK. Response={0}", response);
+            _logger.Debug("[OTRO_DISPOSITIVO] Firebase :: Mensaje enviado OK. Response={0}", response);
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "[OTRO_DISPOSITIVO] Firebase :: Error enviando mensaje: {0}", ex.Message);
+            _logger.Debug("[OTRO_DISPOSITIVO] Firebase :: Error enviando mensaje: {0}", ex.Message);
             throw; // Re-throw para que el logger pueda capturarlo
         }
     }

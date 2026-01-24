@@ -63,7 +63,7 @@ public class RefreshFcmCommandHandler : IRequestHandler<RefreshFcmCommand, Refre
             var fcmAnterior = (user.Fcm ?? string.Empty).Trim();
             var esOtroDispositivo = !string.IsNullOrEmpty(fcmAnterior) && fcmAnterior != fcmNuevo;
 
-            _logger.Information("[OTRO_DISPOSITIVO] RefreshFCM :: UserId={0}, FCM_anterior={1}, FCM_nuevo={2}, esOtroDispositivo={3}",
+            _logger.Debug("[OTRO_DISPOSITIVO] RefreshFCM :: UserId={0}, FCM_anterior={1}, FCM_nuevo={2}, esOtroDispositivo={3}",
                 userId,
                 string.IsNullOrEmpty(fcmAnterior) ? "(vacío)" : fcmAnterior[..Math.Min(20, fcmAnterior.Length)] + "...",
                 fcmNuevo[..Math.Min(20, fcmNuevo.Length)] + "...",
@@ -71,7 +71,7 @@ public class RefreshFcmCommandHandler : IRequestHandler<RefreshFcmCommand, Refre
 
             if (esOtroDispositivo)
             {
-                _logger.Information("[OTRO_DISPOSITIVO] RefreshFCM :: Enviando notificación 'otro dispositivo' al token anterior (UserId={0})", userId);
+                _logger.Debug("[OTRO_DISPOSITIVO] RefreshFCM :: Enviando notificación 'otro dispositivo' al token anterior (UserId={0})", userId);
                 try
                 {
                     var clientIp = request.ClientIp;
@@ -92,16 +92,16 @@ public class RefreshFcmCommandHandler : IRequestHandler<RefreshFcmCommand, Refre
                         "Sesión nueva",
                         "Has iniciado sesión desde otro dispositivo",
                         logoutData);
-                    _logger.Information("[OTRO_DISPOSITIVO] RefreshFCM :: Notificación enviada OK al dispositivo anterior (UserId={0})", userId);
+                    _logger.Debug("[OTRO_DISPOSITIVO] RefreshFCM :: Notificación enviada OK al dispositivo anterior (UserId={0})", userId);
                 }
                 catch (Exception ex)
                 {
-                    _logger.Warning("[OTRO_DISPOSITIVO] RefreshFCM :: Error enviando notificación al dispositivo anterior: {0}. UserId={1}", ex.Message, userId);
+                    _logger.Debug("[OTRO_DISPOSITIVO] RefreshFCM :: Error enviando notificación al dispositivo anterior: {0}. UserId={1}", ex.Message, userId);
                 }
             }
 
             user.UpdateFcm(fcmNuevo);
-            _logger.Information("[OTRO_DISPOSITIVO] RefreshFCM :: FCM actualizado a nuevo dispositivo (UserId={0})", userId);
+            _logger.Debug("[OTRO_DISPOSITIVO] RefreshFCM :: FCM actualizado a nuevo dispositivo (UserId={0})", userId);
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
@@ -113,7 +113,7 @@ public class RefreshFcmCommandHandler : IRequestHandler<RefreshFcmCommand, Refre
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "[OTRO_DISPOSITIVO] RefreshFCM :: Excepción: {0}", ex.Message);
+            _logger.Debug("[OTRO_DISPOSITIVO] RefreshFCM :: Excepción: {0}", ex.Message);
             return new RefreshFcmResult
             {
                 Success = false,

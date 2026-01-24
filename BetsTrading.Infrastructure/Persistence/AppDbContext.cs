@@ -188,21 +188,21 @@ public class AppDbContext : DbContext
             entity.HasIndex(e => e.UserId);
         });
 
-        // Configuración de RewardTransaction
+        // Configuración de RewardTransaction (columnas PascalCase según esquema en PostgreSQL)
         modelBuilder.Entity<RewardTransaction>(entity =>
         {
             entity.ToTable("RewardTransactions", "BetsTrading");
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.Id).HasColumnName("id");
-            entity.Property(e => e.TransactionId).HasColumnName("transaction_id").IsRequired().HasMaxLength(128);
-            entity.Property(e => e.UserId).HasColumnName("user_id").IsRequired().HasMaxLength(128);
-            entity.Property(e => e.Coins).HasColumnName("coins").HasColumnType("decimal(18,2)");
-            entity.Property(e => e.AdUnitId).HasColumnName("ad_unit_id").HasMaxLength(128);
-            entity.Property(e => e.RewardItem).HasColumnName("reward_item").HasMaxLength(64);
-            entity.Property(e => e.RewardAmountRaw).HasColumnName("reward_amount_raw");
-            entity.Property(e => e.SsvKeyId).HasColumnName("ssv_key_id");
-            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
-            entity.Property(e => e.RawQuery).HasColumnName("raw_query");
+            entity.Property(e => e.Id).HasColumnName("Id");
+            entity.Property(e => e.TransactionId).HasColumnName("TransactionId").IsRequired().HasMaxLength(128);
+            entity.Property(e => e.UserId).HasColumnName("UserId").IsRequired().HasMaxLength(128);
+            entity.Property(e => e.Coins).HasColumnName("Coins").HasColumnType("decimal(18,2)");
+            entity.Property(e => e.AdUnitId).HasColumnName("AdUnitId").HasMaxLength(128);
+            entity.Property(e => e.RewardItem).HasColumnName("RewardItem").HasMaxLength(64);
+            entity.Property(e => e.RewardAmountRaw).HasColumnName("RewardAmountRaw");
+            entity.Property(e => e.SsvKeyId).HasColumnName("SsvKeyId");
+            entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt");
+            entity.Property(e => e.RawQuery).HasColumnName("RawQuery");
             entity.HasIndex(e => e.TransactionId).IsUnique();
             entity.HasIndex(e => e.UserId);
         });

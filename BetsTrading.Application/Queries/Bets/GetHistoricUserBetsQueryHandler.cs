@@ -36,6 +36,7 @@ public class GetHistoricUserBetsQueryHandler : IRequestHandler<GetHistoricUserBe
             // Calcular margen de tiempo
             TimeSpan timeMargin = betZone.EndDate - betZone.StartDate;
 
+            var profitLoss = bet.TargetWon ? bet.BetAmount * bet.OriginOdds : -bet.BetAmount;
             var betDto = new BetDto
             {
                 Id = bet.Id,
@@ -57,7 +58,8 @@ public class GetHistoricUserBetsQueryHandler : IRequestHandler<GetHistoricUserBe
                 Type = betZone.BetType,
                 DateMargin = timeMargin.Days,
                 BetZone = bet.BetZoneId,
-                Archived = bet.Archived
+                Archived = bet.Archived,
+                ProfitLoss = profitLoss
             };
 
             betDtos.Add(betDto);

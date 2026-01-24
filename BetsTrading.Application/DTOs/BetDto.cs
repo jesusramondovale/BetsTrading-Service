@@ -22,4 +22,6 @@ public class BetDto
     public int DateMargin { get; set; }
     public int BetZone { get; set; }
     public bool Archived { get; set; }
+    /// <summary>Ganancia/pérdida: ganada = BetAmount * TargetOdds, perdida = -BetAmount.</summary>
+    public double ProfitLoss { get; set; }
 }

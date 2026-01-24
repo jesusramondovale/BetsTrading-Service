@@ -21,6 +21,7 @@ using Stripe;
 using Npgsql;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Hosting;
+using BetsTrading.API.Health;
 
 try
 {
@@ -390,8 +391,8 @@ builder.Services.AddAuthentication(options =>
             customLogger.Log.Debug("[AUTH] :: LocalJwt CHALLENGE :: Path: {path}, Error: {error}, Description: {description}, HasToken: {hasToken}, IsAuthenticated: {isAuth}, HasRealError: {hasError}", 
                 path, ctx.Error ?? "null", ctx.ErrorDescription ?? "null", hasToken, isAuthenticated, hasRealError);
             
-            // Skip challenge for health check endpoint
-            if (ctx.Request.Path.StartsWithSegments("/health"))
+            // Skip challenge for health/status check endpoints
+            if (ctx.Request.Path.StartsWithSegments("/health") || ctx.Request.Path.StartsWithSegments("/status"))
             {
                 ctx.HandleResponse();
                 return Task.CompletedTask;
@@ -650,106 +651,10 @@ app.MapGet("/logo", (IWebHostEnvironment env) =>
     return Results.NotFound();
 }).AllowAnonymous();
 
-// Health y test - accesibles sin auth para load balancers y curl local
-app.MapGet("/health", () =>
+// Status y test - accesibles sin auth para load balancers y curl local
+app.MapGet("/status", () =>
 {
-    var html = """
-        <!DOCTYPE html>
-        <html lang="es">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>BetsTrading Service — OK</title>
-            <link rel="preconnect" href="https://fonts.googleapis.com">
-            <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-            <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
-            <style>
-                * { margin: 0; padding: 0; box-sizing: border-box; }
-                body {
-                    min-height: 100vh;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    font-family: 'Outfit', sans-serif;
-                    background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
-                    color: #e8e8ed;
-                    overflow: hidden;
-                }
-                .grid-bg {
-                    position: fixed;
-                    inset: 0;
-                    background-image:
-                        linear-gradient(rgba(34, 211, 238, 0.03) 1px, transparent 1px),
-                        linear-gradient(90deg, rgba(34, 211, 238, 0.03) 1px, transparent 1px);
-                    background-size: 48px 48px;
-                    pointer-events: none;
-                }
-                .card {
-                    position: relative;
-                    text-align: center;
-                    padding: 3rem 4rem;
-                    background: rgba(255, 255, 255, 0.03);
-                    border: 1px solid rgba(34, 211, 238, 0.2);
-                    border-radius: 24px;
-                    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5),
-                                0 0 0 1px rgba(255, 255, 255, 0.05),
-                                inset 0 1px 0 rgba(255, 255, 255, 0.05);
-                    backdrop-filter: blur(12px);
-                }
-                .icon-wrap {
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                    width: 88px;
-                    height: 88px;
-                    margin-bottom: 1.5rem;
-                    background: linear-gradient(135deg, rgba(34, 211, 238, 0.2), rgba(6, 182, 212, 0.1));
-                    border: 1px solid rgba(34, 211, 238, 0.35);
-                    border-radius: 50%;
-                    animation: pulse 2.5s ease-in-out infinite;
-                    overflow: hidden;
-                }
-                .icon-wrap img {
-                    width: 100%;
-                    height: 100%;
-                    object-fit: contain;
-                    padding: 8px;
-                }
-                @keyframes pulse {
-                    0%, 100% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.3); }
-                    50% { box-shadow: 0 0 0 12px rgba(34, 211, 238, 0); }
-                }
-                h1 {
-                    font-size: 1.75rem;
-                    font-weight: 700;
-                    letter-spacing: -0.02em;
-                    margin-bottom: 0.35rem;
-                    background: linear-gradient(90deg, #fff, #a5f3fc);
-                    -webkit-background-clip: text;
-                    -webkit-text-fill-color: transparent;
-                    background-clip: text;
-                }
-                .ok {
-                    font-size: 1rem;
-                    font-weight: 600;
-                    color: #22d3ee;
-                    letter-spacing: 0.2em;
-                    text-transform: uppercase;
-                }
-            </style>
-        </head>
-        <body>
-            <div class="grid-bg"></div>
-            <div class="card">
-                <div class="icon-wrap">
-                    <img src="/logo" alt="BetsTrading Logo">
-                </div>
-                <h1>BetsTrading service</h1>
-                <p class="ok">OK</p>
-            </div>
-        </body>
-        </html>
-        """;
+    var html = StatusView.GetHtml(DateTime.UtcNow.ToString("o"));
     return Results.Content(html, "text/html; charset=utf-8");
 }).AllowAnonymous();
 
