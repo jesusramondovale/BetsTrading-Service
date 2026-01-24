@@ -20,6 +20,7 @@ using AspNetCoreRateLimit;
 using Stripe;
 using Npgsql;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Hosting;
 
 try
 {
@@ -623,6 +624,31 @@ app.UseIpRateLimiting();
 #endif
 app.UseResponseCompression();
 
+// Endpoint para servir el logo
+app.MapGet("/logo", (IWebHostEnvironment env) =>
+{
+    // Intentar múltiples rutas posibles
+    var logoPaths = new[]
+    {
+        Path.Combine(AppContext.BaseDirectory, "betstrading_logo.png"),
+        Path.Combine(env.ContentRootPath, "betstrading_logo.png"),
+        Path.Combine(Directory.GetCurrentDirectory(), "betstrading_logo.png"),
+        Path.Combine(AppContext.BaseDirectory, "BetsTrading.API", "betstrading_logo.png"),
+        Path.Combine(env.ContentRootPath, "BetsTrading.API", "betstrading_logo.png")
+    };
+
+    foreach (var logoPath in logoPaths)
+    {
+        if (System.IO.File.Exists(logoPath))
+        {
+            var imageBytes = System.IO.File.ReadAllBytes(logoPath);
+            return Results.File(imageBytes, "image/png");
+        }
+    }
+    
+    return Results.NotFound();
+}).AllowAnonymous();
+
 // Health y test - accesibles sin auth para load balancers y curl local
 app.MapGet("/health", () =>
 {
@@ -680,11 +706,13 @@ app.MapGet("/health", () =>
                     border: 1px solid rgba(34, 211, 238, 0.35);
                     border-radius: 50%;
                     animation: pulse 2.5s ease-in-out infinite;
+                    overflow: hidden;
                 }
-                .icon-wrap svg {
-                    width: 44px;
-                    height: 44px;
-                    color: #22d3ee;
+                .icon-wrap img {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: contain;
+                    padding: 8px;
                 }
                 @keyframes pulse {
                     0%, 100% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.3); }
@@ -713,7 +741,7 @@ app.MapGet("/health", () =>
             <div class="grid-bg"></div>
             <div class="card">
                 <div class="icon-wrap">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    <img src="/logo" alt="BetsTrading Logo">
                 </div>
                 <h1>BetsTrading service</h1>
                 <p class="ok">OK</p>
