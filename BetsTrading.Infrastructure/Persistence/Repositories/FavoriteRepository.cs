@@ -19,7 +19,10 @@ public class FavoriteRepository : Repository<Favorite>, IFavoriteRepository
 
     public async Task<Favorite?> GetByUserIdAndTickerAsync(string userId, string ticker, CancellationToken cancellationToken = default)
     {
+        // Comparación insensible a mayúsculas para que añadir/quitar funcione
+        // aunque el cliente envíe "aapl" o "AAPL" (el handler ya normaliza a mayúsculas)
+        var tickerUpper = (ticker ?? string.Empty).Trim().ToUpperInvariant();
         return await _context.Set<Favorite>()
-            .FirstOrDefaultAsync(f => f.UserId == userId && f.Ticker == ticker, cancellationToken);
+            .FirstOrDefaultAsync(f => f.UserId == userId && f.Ticker.ToUpper() == tickerUpper, cancellationToken);
     }
 }

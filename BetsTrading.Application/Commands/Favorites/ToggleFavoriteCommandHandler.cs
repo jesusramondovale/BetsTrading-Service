@@ -20,9 +20,22 @@ public class ToggleFavoriteCommandHandler : IRequestHandler<ToggleFavoriteComman
         try
         {
             var userId = request.GetUserId();
+            // Normalizar ticker para evitar duplicados por diferencias de mayúsculas/minúsculas
+            var ticker = (request.Ticker ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(ticker))
+            {
+                return new ToggleFavoriteResult
+                {
+                    Success = false,
+                    Message = "Ticker is required",
+                    IsFavorite = false
+                };
+            }
+            ticker = ticker.ToUpperInvariant();
+
             var existingFavorite = await _unitOfWork.Favorites.GetByUserIdAndTickerAsync(
-                userId, 
-                request.Ticker, 
+                userId,
+                ticker,
                 cancellationToken);
 
             if (existingFavorite != null)
@@ -41,11 +54,11 @@ public class ToggleFavoriteCommandHandler : IRequestHandler<ToggleFavoriteComman
             }
             else
             {
-                // Add favorite
+                // Add favorite (siempre guardamos en mayúsculas para consistencia)
                 var newFavorite = new Favorite(
                     Guid.NewGuid().ToString(),
                     userId,
-                    request.Ticker);
+                    ticker);
 
                 await _unitOfWork.Favorites.AddAsync(newFavorite, cancellationToken);
                 await _unitOfWork.SaveChangesAsync(cancellationToken);

@@ -1,27 +1,15 @@
 using MediatR;
-using System.Text.Json.Serialization;
 
 namespace BetsTrading.Application.Commands.Favorites;
 
 public class ToggleFavoriteCommand : IRequest<ToggleFavoriteResult>
 {
-    [JsonPropertyName("UserId")]
+    /// <summary>User ID. Binds from "userId" (camelCase) via API options. Controller overwrites with JWT sub.</summary>
     public string? UserId { get; set; }
-    
-    [JsonPropertyName("userId")]
-    [System.Text.Json.Serialization.JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? UserIdLower { get; set; }
-    
+
     public string Ticker { get; set; } = string.Empty;
-    
-    public string GetUserId()
-    {
-        if (!string.IsNullOrEmpty(UserId))
-            return UserId;
-        if (!string.IsNullOrEmpty(UserIdLower))
-            return UserIdLower;
-        return string.Empty;
-    }
+
+    public string GetUserId() => UserId ?? string.Empty;
 }
 
 public class ToggleFavoriteResult

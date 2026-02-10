@@ -240,10 +240,16 @@ public class InfoController : ControllerBase
     }
 
     [HttpPost("NewFavorite")]
-    public async Task<IActionResult> NewFavorite([FromBody] ToggleFavoriteCommand command, CancellationToken cancellationToken)
+    public async Task<IActionResult> NewFavorite([FromBody] ToggleFavoriteCommand? command, CancellationToken cancellationToken)
     {
         try
         {
+            if (command == null)
+            {
+                _logger.Error(null, "[INFO] :: NewFavorite :: Request body null or invalid");
+                return StatusCode(500, new { Message = "Invalid request body" });
+            }
+
             var tokenUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) 
                 ?? User.FindFirstValue("app_sub") 
                 ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub);
@@ -274,6 +280,7 @@ public class InfoController : ControllerBase
         }
         catch (Exception ex)
         {
+            _logger.Error(ex, "[INFO] :: NewFavorite :: Exception: {Message}", ex.Message);
             return StatusCode(500, new { Message = "Server error", Error = ex.Message });
         }
     }

@@ -584,6 +584,9 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+// Exception handling primero: cualquier excepción no controlada devuelve 500 con cuerpo JSON (evita respuesta vacía)
+app.UseMiddleware<BetsTrading.API.Middleware.ExceptionHandlingMiddleware>();
+
 // Middleware - Matching legacy Program.cs order exactly
 // ForwardedHeaders DEBE ir primero para que otros middlewares vean el protocolo/esquema correcto
 app.UseForwardedHeaders();

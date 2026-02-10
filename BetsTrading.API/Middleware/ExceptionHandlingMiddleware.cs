@@ -56,7 +56,7 @@ public class ExceptionHandlingMiddleware
                 result = JsonSerializer.Serialize(new { Message = "Invalid JSON format in request body." });
                 break;
             default:
-                result = JsonSerializer.Serialize(new { Message = "An error occurred while processing your request." });
+                result = JsonSerializer.Serialize(new { Message = "An error occurred while processing your request.", Error = exception?.Message ?? "" });
                 break;
         }
 
