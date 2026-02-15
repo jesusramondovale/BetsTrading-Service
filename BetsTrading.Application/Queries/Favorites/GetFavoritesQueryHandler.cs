@@ -1,6 +1,7 @@
 using MediatR;
 using BetsTrading.Domain.Interfaces;
 using BetsTrading.Application.DTOs;
+using BetsTrading.Application.Interfaces;
 using BetsTrading.Domain.Entities;
 
 namespace BetsTrading.Application.Queries.Favorites;
@@ -8,10 +9,12 @@ namespace BetsTrading.Application.Queries.Favorites;
 public class GetFavoritesQueryHandler : IRequestHandler<GetFavoritesQuery, GetFavoritesResult>
 {
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ITickerMaxOddsService _tickerMaxOddsService;
 
-    public GetFavoritesQueryHandler(IUnitOfWork unitOfWork)
+    public GetFavoritesQueryHandler(IUnitOfWork unitOfWork, ITickerMaxOddsService tickerMaxOddsService)
     {
         _unitOfWork = unitOfWork;
+        _tickerMaxOddsService = tickerMaxOddsService;
     }
 
     public async Task<GetFavoritesResult> Handle(GetFavoritesQuery request, CancellationToken cancellationToken)
@@ -104,6 +107,9 @@ public class GetFavoritesQueryHandler : IRequestHandler<GetFavoritesQuery, GetFa
                 }
             }
 
+            var currency = string.Equals(request.Currency, "USD", StringComparison.OrdinalIgnoreCase) ? "USD" : "EUR";
+            var maxOddData = _tickerMaxOddsService.GetMaxOddForTicker(currency, fav.Ticker);
+
             favoritesDto.Add(new FavoriteDto
             {
                 Id = fav.Id,
@@ -113,7 +119,9 @@ public class GetFavoritesQueryHandler : IRequestHandler<GetFavoritesQuery, GetFa
                 Close = prevClose,
                 Current = candleClose,
                 UserId = request.UserId,
-                Ticker = fav.Ticker
+                Ticker = fav.Ticker,
+                CurrentMaxOdd = maxOddData?.MaxOdd,
+                CurrentMaxOddDirection = maxOddData?.Direction
             });
         }
 

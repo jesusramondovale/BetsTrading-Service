@@ -10,4 +10,6 @@ public class FavoriteDto
     public double Current { get; set; }
     public string UserId { get; set; } = string.Empty;
     public string Ticker { get; set; } = string.Empty;
+    public double? CurrentMaxOdd { get; set; }
+    public int? CurrentMaxOddDirection { get; set; }
 }
