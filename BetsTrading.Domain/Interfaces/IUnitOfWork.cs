@@ -13,7 +13,6 @@ public interface IUnitOfWork : IDisposable
     IRewardTransactionRepository RewardTransactions { get; }
     IAssetCandleRepository AssetCandles { get; }
     IAssetCandleUsdRepository AssetCandlesUSD { get; }
-    ITrendRepository Trends { get; }
     IBetZoneUsdRepository BetZonesUSD { get; }
     IPriceBetRepository PriceBets { get; }
     IPriceBetUsdRepository PriceBetsUSD { get; }

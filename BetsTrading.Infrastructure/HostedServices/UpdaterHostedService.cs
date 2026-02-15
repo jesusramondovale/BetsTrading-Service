@@ -43,6 +43,9 @@ public class UpdaterHostedService : BackgroundService
         // Esperar 30 segundos antes de la primera ejecución para que la API esté lista
         await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
 
+        // Rellenar max odds desde BD al arranque para que la API Trends tenga datos de inmediato (sin esperar a CreateBets)
+        await ExecuteRefreshMaxOdds(stoppingToken);
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -55,7 +58,6 @@ public class UpdaterHostedService : BackgroundService
                     && nyTime.TimeOfDay <= close;
 
                 await ExecuteUpdateAssets(marketOpen, stoppingToken);
-                await ExecuteUpdateTrends(marketOpen, stoppingToken);
                 await ExecuteCheckBets(marketOpen, stoppingToken);
                 await ExecuteCreateBets(marketOpen, stoppingToken);
             }
@@ -66,6 +68,22 @@ public class UpdaterHostedService : BackgroundService
 
             // Wait 1 hour before next iteration
             await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
+        }
+    }
+
+    private async Task ExecuteRefreshMaxOdds(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var updaterService = scope.ServiceProvider.GetRequiredService<IUpdaterService>();
+            _logger.Debug("[UpdaterHostedService] :: Populating max odds from database at startup");
+            await updaterService.RefreshMaxOddsFromDatabaseAsync(cancellationToken);
+            _logger.Debug("[UpdaterHostedService] :: Max odds populated");
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "[UpdaterHostedService] :: RefreshMaxOdds at startup failed (Trends may be empty until CreateBets runs)");
         }
     }
 
@@ -125,21 +143,6 @@ public class UpdaterHostedService : BackgroundService
         finally
         {
             Volatile.Write(ref _assetsBusy, 0);
-        }
-    }
-
-    private async Task ExecuteUpdateTrends(bool marketHours, CancellationToken cancellationToken)
-    {
-        try
-        {
-            using var scope = _serviceProvider.CreateScope();
-            var updaterService = scope.ServiceProvider.GetRequiredService<IUpdaterService>();
-            _logger.Debug("[UpdaterHostedService] :: Executing TrendUpdater service");
-            await updaterService.UpdateTrendsAsync(marketHours, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            _logger.Error(ex, "[UpdaterHostedService] :: Error in ExecuteUpdateTrends");
         }
     }
 }

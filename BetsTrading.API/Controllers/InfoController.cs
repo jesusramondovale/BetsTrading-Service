@@ -22,12 +22,14 @@ public class InfoController : ControllerBase
     private readonly IMediator _mediator;
     private readonly IWebHostEnvironment _env;
     private readonly IApplicationLogger _logger;
+    private readonly ITickerMaxOddsService _tickerMaxOddsService;
 
-    public InfoController(IMediator mediator, IWebHostEnvironment env, IApplicationLogger logger)
+    public InfoController(IMediator mediator, IWebHostEnvironment env, IApplicationLogger logger, ITickerMaxOddsService tickerMaxOddsService)
     {
         _mediator = mediator;
         _env = env;
         _logger = logger;
+        _tickerMaxOddsService = tickerMaxOddsService;
     }
 
     [AllowAnonymous]
@@ -281,6 +283,38 @@ public class InfoController : ControllerBase
         catch (Exception ex)
         {
             _logger.Error(ex, "[INFO] :: NewFavorite :: Exception: {Message}", ex.Message);
+            return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+        }
+    }
+
+    [HttpPost("MaxOdds")]
+    public IActionResult MaxOdds([FromBody] GetMaxOddsQuery? query)
+    {
+        try
+        {
+            var currency = (query?.Currency ?? "EUR").ToUpperInvariant();
+            if (currency != "EUR" && currency != "USD")
+                currency = "EUR";
+
+            var all = _tickerMaxOddsService.GetAllMaxOdds(currency);
+            var maxOdds = new Dictionary<string, Dictionary<string, object>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in all)
+            {
+                var byTf = new Dictionary<string, object>();
+                foreach (var tf in kv.Value)
+                    byTf[tf.Key.ToString()] = new { maxOdd = tf.Value.MaxOdd, direction = tf.Value.Direction };
+                maxOdds[kv.Key] = byTf;
+            }
+
+            return Ok(new
+            {
+                Message = "MaxOdds SUCCESS",
+                maxOdds
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.Debug("[INFO] :: MaxOdds error: {0}", ex.Message);
             return StatusCode(500, new { Message = "Server error", Error = ex.Message });
         }
     }

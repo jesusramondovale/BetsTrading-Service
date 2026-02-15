@@ -20,7 +20,6 @@ public class AppDbContext : DbContext
     public DbSet<RewardTransaction> RewardTransactions { get; set; }
     public DbSet<AssetCandle> AssetCandles { get; set; }
     public DbSet<AssetCandleUSD> AssetCandlesUSD { get; set; }
-    public DbSet<Trend> Trends { get; set; }
     public DbSet<BetZoneUSD> BetZonesUSD { get; set; }
     public DbSet<PriceBet> PriceBets { get; set; }
     public DbSet<PriceBetUSD> PriceBetsUSD { get; set; }
@@ -120,8 +119,6 @@ public class AppDbContext : DbContext
             entity.Property(e => e.Ticker).HasColumnName("ticker").IsRequired();
             entity.Property(e => e.CurrentEur).HasColumnName("current_eur");
             entity.Property(e => e.CurrentUsd).HasColumnName("current_usd");
-            entity.Property(e => e.CurrentMaxOdd).HasColumnName("current_max_odd");
-            entity.Property(e => e.CurrentMaxOddDirection).HasColumnName("current_max_odd_direction");
             entity.HasIndex(e => e.Ticker).IsUnique();
         });
 
@@ -235,16 +232,6 @@ public class AppDbContext : DbContext
             entity.Property(e => e.High).HasColumnName("high");
             entity.Property(e => e.Low).HasColumnName("low");
             entity.Property(e => e.Close).HasColumnName("close");
-        });
-
-        // Configuración de Trend
-        modelBuilder.Entity<Trend>(entity =>
-        {
-            entity.ToTable("Trends", "BetsTrading");
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Id).HasColumnName("id");
-            entity.Property(e => e.DailyGain).HasColumnName("daily_gain");
-            entity.Property(e => e.Ticker).HasColumnName("ticker").IsRequired();
         });
 
         // Configuración de BetZoneUSD

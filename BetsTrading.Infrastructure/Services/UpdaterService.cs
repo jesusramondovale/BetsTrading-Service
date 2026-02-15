@@ -14,6 +14,8 @@ public class UpdaterService : IUpdaterService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IApplicationLogger _logger;
     private readonly AppDbContext _dbContext;
+    private readonly ITickerMaxOddsService _tickerMaxOddsService;
+    private static readonly int[] Timeframes = { 1, 2, 4, 24 };
     private static readonly string[] TWELVE_DATA_KEYS = Enumerable.Range(0, 11)
         .Select(i => Environment.GetEnvironmentVariable($"TWELVE_DATA_KEY{i}") ?? "")
         .ToArray();
@@ -22,11 +24,13 @@ public class UpdaterService : IUpdaterService
     public UpdaterService(
         IUnitOfWork unitOfWork,
         IApplicationLogger logger,
-        AppDbContext dbContext)
+        AppDbContext dbContext,
+        ITickerMaxOddsService tickerMaxOddsService)
     {
         _unitOfWork = unitOfWork;
         _logger = logger;
         _dbContext = dbContext;
+        _tickerMaxOddsService = tickerMaxOddsService;
     }
 
     public async Task UpdateAssetsAsync(bool marketHours, CancellationToken cancellationToken = default)
@@ -748,6 +752,10 @@ public class UpdaterService : IUpdaterService
         }
     }
 
+    /// <summary>Rellena el servicio en memoria desde las zonas activas en BD. Llamar al arranque para que la API Trends devuelva datos de inmediato.</summary>
+    public Task RefreshMaxOddsFromDatabaseAsync(CancellationToken cancellationToken = default) =>
+        UpdateCurrentMaxOddsAsync(cancellationToken);
+
     private async Task UpdateCurrentMaxOddsAsync(CancellationToken cancellationToken = default)
     {
         _logger.Debug("[UpdaterService] :: UpdateCurrentMaxOddsAsync called");
@@ -755,72 +763,52 @@ public class UpdaterService : IUpdaterService
         try
         {
             var allAssets = await _unitOfWork.FinancialAssets.GetAllAsync(cancellationToken);
+            var eurData = new Dictionary<string, Dictionary<int, (double MaxOdd, int Direction)>>(StringComparer.OrdinalIgnoreCase);
+            var usdData = new Dictionary<string, Dictionary<int, (double MaxOdd, int Direction)>>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var asset in allAssets)
             {
-                // Obtener todas las betZones activas para este asset (EUR)
                 var ticker = asset.Ticker ?? string.Empty;
-                var activeBetZonesEUR = await _unitOfWork.BetZones
-                    .GetActiveBetZonesByTickerAsync(ticker, 0, cancellationToken);
+                if (string.IsNullOrEmpty(ticker)) continue;
 
-                // Obtener todas las betZones activas para este asset (USD)
-                var activeBetZonesUSD = await _unitOfWork.BetZonesUSD
-                    .GetActiveBetZonesByTickerAsync(ticker, 0, cancellationToken);
+                var activeBetZonesEUR = await _unitOfWork.BetZones.GetActiveBetZonesByTickerAsync(ticker, 0, cancellationToken);
+                var activeBetZonesUSD = await _unitOfWork.BetZonesUSD.GetActiveBetZonesByTickerAsync(ticker, 0, cancellationToken);
 
-                // Combinar ambas listas y encontrar la máxima odd
-                var allActiveZones = activeBetZonesEUR
-                    .Select(bz => new { bz.TargetOdds, bz.TargetValue, bz.BetMargin, Currency = "EUR" })
-                    .Concat(activeBetZonesUSD
-                        .Select(bz => new { TargetOdds = bz.TargetOdds, TargetValue = bz.TargetValue, BetMargin = bz.BetMargin, Currency = "USD" }))
-                    .ToList();
-
-                if (allActiveZones.Any())
+                foreach (var tf in Timeframes)
                 {
-                    // Encontrar la zona con la máxima odd
-                    var maxOddZone = allActiveZones.OrderByDescending(z => z.TargetOdds).First();
+                    var zonesEur = activeBetZonesEUR.Where(z => z.Timeframe == tf).ToList();
+                    var zonesUsd = activeBetZonesUSD.Where(z => z.Timeframe == tf).ToList();
 
-                    // Actualizar current_max_odd solo si la nueva odd es mayor que la actual
-                    if (!asset.CurrentMaxOdd.HasValue || maxOddZone.TargetOdds > asset.CurrentMaxOdd.Value)
+                    if (zonesEur.Any())
                     {
-                        // Calcular la dirección basada en la posición relativa al precio actual
-                        double currentPrice = maxOddZone.Currency == "EUR" ? asset.CurrentEur : asset.CurrentUsd;
-                        double halfMargin = (maxOddZone.BetMargin / 200.0) * maxOddZone.TargetValue;
-                        double upperBound = maxOddZone.TargetValue + halfMargin;
-                        double lowerBound = maxOddZone.TargetValue - halfMargin;
-
-                        int direction;
-                        if (lowerBound > currentPrice)
-                        {
-                            direction = 1; // Verde: zona por encima
-                        }
-                        else if (upperBound < currentPrice)
-                        {
-                            direction = -1; // Rojo: zona por debajo
-                        }
-                        else
-                        {
-                            direction = 0; // Amarillo: zona en medio
-                        }
-
-                        asset.UpdateCurrentMaxOdd(maxOddZone.TargetOdds, direction);
-                        _unitOfWork.FinancialAssets.Update(asset);
-
-                        _logger.Debug("[UpdaterService] :: Updated {Ticker}: max_odd={MaxOdd}, direction={Direction}",
-                            asset.Ticker ?? "Unknown", 
-                            asset.CurrentMaxOdd ?? 0.0, 
-                            asset.CurrentMaxOddDirection ?? 0);
+                        var maxZoneEur = zonesEur.OrderByDescending(z => z.TargetOdds).First();
+                        var direction = ComputeDirection(asset.CurrentEur, maxZoneEur.TargetValue, maxZoneEur.BetMargin);
+                        if (!eurData.ContainsKey(ticker))
+                            eurData[ticker] = new Dictionary<int, (double, int)>();
+                        eurData[ticker][tf] = (maxZoneEur.TargetOdds, direction);
                     }
-                }
-                else
-                {
-                    // Si no hay zonas activas, limpiar valores
-                    asset.ClearCurrentMaxOdd();
-                    _unitOfWork.FinancialAssets.Update(asset);
+
+                    if (zonesUsd.Any())
+                    {
+                        var maxZoneUsd = zonesUsd.OrderByDescending(z => z.TargetOdds).First();
+                        var direction = ComputeDirection(asset.CurrentUsd, maxZoneUsd.TargetValue, maxZoneUsd.BetMargin);
+                        if (!usdData.ContainsKey(ticker))
+                            usdData[ticker] = new Dictionary<int, (double, int)>();
+                        usdData[ticker][tf] = (maxZoneUsd.TargetOdds, direction);
+                    }
                 }
             }
 
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-            _logger.Debug("[UpdaterService] :: UpdateCurrentMaxOddsAsync completed successfully");
+            var eurReadOnly = eurData.ToDictionary(
+                kv => kv.Key,
+                kv => (IReadOnlyDictionary<int, (double MaxOdd, int Direction)>)new Dictionary<int, (double MaxOdd, int Direction)>(kv.Value));
+            var usdReadOnly = usdData.ToDictionary(
+                kv => kv.Key,
+                kv => (IReadOnlyDictionary<int, (double MaxOdd, int Direction)>)new Dictionary<int, (double MaxOdd, int Direction)>(kv.Value));
+            _tickerMaxOddsService.ReplaceAllEur(eurReadOnly);
+            _tickerMaxOddsService.ReplaceAllUsd(usdReadOnly);
+            _logger.Debug("[UpdaterService] :: UpdateCurrentMaxOddsAsync completed successfully (EUR: {EurTickers} tickers, USD: {UsdTickers} tickers)",
+                eurData.Count, usdData.Count);
         }
         catch (Exception ex)
         {
@@ -829,109 +817,20 @@ public class UpdaterService : IUpdaterService
         }
     }
 
-    public async Task UpdateTrendsAsync(bool marketHours, CancellationToken cancellationToken = default)
+    private static int ComputeDirection(double currentPrice, double targetValue, double betMargin)
     {
-        _logger.Debug("[UpdaterService] :: UpdateTrends called (MarketHours: {0})", marketHours);
-        
-        try
-        {
-            // Obtener activos según el modo
-            var allAssets = await _unitOfWork.FinancialAssets.GetAllAsync(cancellationToken);
-            var assetsQuery = marketHours
-                ? allAssets.Where(a => a.CurrentEur > 0)
-                : allAssets.Where(a => a.CurrentEur > 0 && 
-                               (a.Group.Equals("Cryptos", StringComparison.OrdinalIgnoreCase) || 
-                                a.Group.Equals("Forex", StringComparison.OrdinalIgnoreCase)));
-
-            var assets = assetsQuery.ToList();
-            var trends = new List<Domain.Entities.Trend>();
-
-            foreach (var asset in assets)
-            {
-                var lastCandle = await _unitOfWork.AssetCandles
-                    .GetLatestCandleAsync(asset.Id, "1h", cancellationToken);
-
-                if (lastCandle == null)
-                    continue;
-
-                var lastDay = lastCandle.DateTime.Date;
-                Domain.Entities.AssetCandle? prevCandle;
-
-                if (asset.Group.Equals("Cryptos", StringComparison.OrdinalIgnoreCase) || 
-                    asset.Group.Equals("Forex", StringComparison.OrdinalIgnoreCase))
-                {
-                    var candles = (await _unitOfWork.AssetCandles
-                        .GetCandlesByAssetAsync(asset.Id, "1h", 25, cancellationToken))
-                        .OrderByDescending(c => c.DateTime)
-                        .ToList();
-                    
-                    prevCandle = candles.Count > 24 ? candles[24] : null;
-                }
-                else
-                {
-                    var candles = await _unitOfWork.AssetCandles
-                        .GetCandlesByAssetAsync(asset.Id, "1h", 100, cancellationToken);
-                    
-                    prevCandle = candles
-                        .Where(c => c.DateTime.Date < lastDay)
-                        .OrderByDescending(c => c.DateTime)
-                        .FirstOrDefault();
-                }
-
-                double prevClose;
-                double dailyGain;
-
-                if (prevCandle != null)
-                {
-                    prevClose = (double)prevCandle.Close;
-                    dailyGain = prevClose == 0 ? 0 : ((asset.CurrentEur - prevClose) / prevClose) * 100.0;
-                }
-                else
-                {
-                    prevClose = asset.CurrentEur * 0.95;
-                    dailyGain = ((asset.CurrentEur - prevClose) / prevClose) * 100.0;
-                }
-
-                trends.Add(new Domain.Entities.Trend(0, dailyGain, asset.Ticker));
-            }
-
-            // Ordenar por current_max_odd descendente y tomar top 5
-            var assetDict = assets
-                .Where(a => a.CurrentMaxOdd.HasValue && a.CurrentMaxOdd.Value > 0)
-                .ToDictionary(a => a.Ticker, a => a.CurrentMaxOdd!.Value);
-
-            var top5 = trends
-                .Where(x => assetDict.ContainsKey(x.Ticker))
-                .OrderByDescending(x => assetDict[x.Ticker])
-                .Take(5)
-                .ToList();
-
-            for (int i = 0; i < top5.Count; i++)
-            {
-                top5[i].Id = i + 1;
-            }
-
-            // Reemplazar todas las tendencias existentes
-            var existing = await _unitOfWork.Trends.GetAllAsync(cancellationToken);
-            foreach (var trend in existing)
-            {
-                _unitOfWork.Trends.Remove(trend);
-            }
-
-            foreach (var trend in top5)
-            {
-                await _unitOfWork.Trends.AddAsync(trend, cancellationToken);
-            }
-
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-            _logger.Debug("[UpdaterService] :: UpdateTrends completed successfully");
-        }
-        catch (Exception ex)
-        {
-            _logger.Debug("[UpdaterService] :: UpdateTrends error: {0}", ex.Message);
-            throw;
-        }
+        double halfMargin = (betMargin / 200.0) * targetValue;
+        double upperBound = targetValue + halfMargin;
+        double lowerBound = targetValue - halfMargin;
+        if (lowerBound > currentPrice) return 1;   // Verde: zona por encima
+        if (upperBound < currentPrice) return -1;   // Rojo: zona por debajo
+        return 0;   // Amarillo: zona en medio
     }
+
+    /// <summary>Obsoleto: ya no se usa tabla Trends; la API calcula los 5 con mayor odd en tiempo real.</summary>
+    [Obsolete("Trends are computed on-demand in the API.")]
+    public Task UpdateTrendsAsync(bool marketHours, CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
 
     // ========== MÉTODOS AUXILIARES DE ANÁLISIS TÉCNICO ==========
 

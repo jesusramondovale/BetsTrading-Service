@@ -501,13 +501,17 @@ builder.Services.AddSingleton<BetsTrading.Application.Interfaces.ILocalizationSe
 // IP Geo Service (ip-api.com, igual que legacy GetGeoLocationFromIp)
 builder.Services.AddSingleton<BetsTrading.Application.Interfaces.IIpGeoService, BetsTrading.Infrastructure.Services.IpGeoService>();
 
+// Max odds por ticker/timeframe en memoria (EUR y USD)
+builder.Services.AddSingleton<BetsTrading.Application.Interfaces.ITickerMaxOddsService, BetsTrading.Infrastructure.Services.TickerMaxOddsService>();
+
 // Updater Service - Necesita DbContext para BulkExtensions
 builder.Services.AddScoped<BetsTrading.Application.Interfaces.IUpdaterService>(sp =>
 {
     var unitOfWork = sp.GetRequiredService<BetsTrading.Domain.Interfaces.IUnitOfWork>();
     var logger = sp.GetRequiredService<BetsTrading.Application.Interfaces.IApplicationLogger>();
     var dbContext = sp.GetRequiredService<BetsTrading.Infrastructure.Persistence.AppDbContext>();
-    return new BetsTrading.Infrastructure.Services.UpdaterService(unitOfWork, logger, dbContext);
+    var tickerMaxOddsService = sp.GetRequiredService<BetsTrading.Application.Interfaces.ITickerMaxOddsService>();
+    return new BetsTrading.Infrastructure.Services.UpdaterService(unitOfWork, logger, dbContext, tickerMaxOddsService);
 });
 
 // Odds Adjuster Options

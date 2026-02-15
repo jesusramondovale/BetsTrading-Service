@@ -21,7 +21,6 @@ public class UnitOfWork : IUnitOfWork
     private IRewardTransactionRepository? _rewardTransactions;
     private IAssetCandleRepository? _assetCandles;
     private IAssetCandleUsdRepository? _assetCandlesUSD;
-    private ITrendRepository? _trends;
     private IBetZoneUsdRepository? _betZonesUSD;
     private IPriceBetRepository? _priceBets;
     private IPriceBetUsdRepository? _priceBetsUSD;
@@ -46,7 +45,6 @@ public class UnitOfWork : IUnitOfWork
     public IRewardTransactionRepository RewardTransactions => _rewardTransactions ??= new RewardTransactionRepository(_context);
     public IAssetCandleRepository AssetCandles => _assetCandles ??= new AssetCandleRepository(_context);
     public IAssetCandleUsdRepository AssetCandlesUSD => _assetCandlesUSD ??= new AssetCandleUsdRepository(_context);
-    public ITrendRepository Trends => _trends ??= new TrendRepository(_context);
     public IBetZoneUsdRepository BetZonesUSD => _betZonesUSD ??= new BetZoneUsdRepository(_context);
     public IPriceBetRepository PriceBets => _priceBets ??= new PriceBetRepository(_context);
     public IPriceBetUsdRepository PriceBetsUSD => _priceBetsUSD ??= new PriceBetUsdRepository(_context);
