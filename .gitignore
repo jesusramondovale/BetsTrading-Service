@@ -7,3 +7,4 @@ betrader-v1-firebase.json
 appsettings.json
 .env.txt
 *pubxml.user
+*.pubxml

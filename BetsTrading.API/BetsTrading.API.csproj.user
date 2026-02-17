@@ -2,6 +2,6 @@
 <Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
     <ActiveDebugProfile>https</ActiveDebugProfile>
-    <NameOfLastUsedPublishProfile>C:\dev\BetsTrading-Service\BetsTrading.API\Properties\PublishProfiles\FolderProfile.pubxml</NameOfLastUsedPublishProfile>
+    <NameOfLastUsedPublishProfile>C:\dev\BetsTrading-Service\BetsTrading.API\Properties\PublishProfiles\Win x86.pubxml</NameOfLastUsedPublishProfile>
   </PropertyGroup>
 </Project>
