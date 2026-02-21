@@ -763,8 +763,8 @@ public class UpdaterService : IUpdaterService
         try
         {
             var allAssets = await _unitOfWork.FinancialAssets.GetAllAsync(cancellationToken);
-            var eurData = new Dictionary<string, Dictionary<int, (double MaxOdd, int Direction)>>(StringComparer.OrdinalIgnoreCase);
-            var usdData = new Dictionary<string, Dictionary<int, (double MaxOdd, int Direction)>>(StringComparer.OrdinalIgnoreCase);
+            var eurData = new Dictionary<string, Dictionary<int, (double MaxOdd, int Direction, int ZoneId)>>(StringComparer.OrdinalIgnoreCase);
+            var usdData = new Dictionary<string, Dictionary<int, (double MaxOdd, int Direction, int ZoneId)>>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var asset in allAssets)
             {
@@ -784,8 +784,8 @@ public class UpdaterService : IUpdaterService
                         var maxZoneEur = zonesEur.OrderByDescending(z => z.TargetOdds).First();
                         var direction = ComputeDirection(asset.CurrentEur, maxZoneEur.TargetValue, maxZoneEur.BetMargin);
                         if (!eurData.ContainsKey(ticker))
-                            eurData[ticker] = new Dictionary<int, (double, int)>();
-                        eurData[ticker][tf] = (maxZoneEur.TargetOdds, direction);
+                            eurData[ticker] = new Dictionary<int, (double, int, int)>();
+                        eurData[ticker][tf] = (maxZoneEur.TargetOdds, direction, maxZoneEur.Id);
                     }
 
                     if (zonesUsd.Any())
@@ -793,18 +793,18 @@ public class UpdaterService : IUpdaterService
                         var maxZoneUsd = zonesUsd.OrderByDescending(z => z.TargetOdds).First();
                         var direction = ComputeDirection(asset.CurrentUsd, maxZoneUsd.TargetValue, maxZoneUsd.BetMargin);
                         if (!usdData.ContainsKey(ticker))
-                            usdData[ticker] = new Dictionary<int, (double, int)>();
-                        usdData[ticker][tf] = (maxZoneUsd.TargetOdds, direction);
+                            usdData[ticker] = new Dictionary<int, (double, int, int)>();
+                        usdData[ticker][tf] = (maxZoneUsd.TargetOdds, direction, maxZoneUsd.Id);
                     }
                 }
             }
 
             var eurReadOnly = eurData.ToDictionary(
                 kv => kv.Key,
-                kv => (IReadOnlyDictionary<int, (double MaxOdd, int Direction)>)new Dictionary<int, (double MaxOdd, int Direction)>(kv.Value));
+                kv => (IReadOnlyDictionary<int, (double MaxOdd, int Direction, int ZoneId)>)new Dictionary<int, (double MaxOdd, int Direction, int ZoneId)>(kv.Value));
             var usdReadOnly = usdData.ToDictionary(
                 kv => kv.Key,
-                kv => (IReadOnlyDictionary<int, (double MaxOdd, int Direction)>)new Dictionary<int, (double MaxOdd, int Direction)>(kv.Value));
+                kv => (IReadOnlyDictionary<int, (double MaxOdd, int Direction, int ZoneId)>)new Dictionary<int, (double MaxOdd, int Direction, int ZoneId)>(kv.Value));
             _tickerMaxOddsService.ReplaceAllEur(eurReadOnly);
             _tickerMaxOddsService.ReplaceAllUsd(usdReadOnly);
             _logger.Debug("[UpdaterService] :: UpdateCurrentMaxOddsAsync completed successfully (EUR: {EurTickers} tickers, USD: {UsdTickers} tickers)",

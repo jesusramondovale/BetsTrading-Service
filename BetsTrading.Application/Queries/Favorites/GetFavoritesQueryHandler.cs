@@ -121,7 +121,9 @@ public class GetFavoritesQueryHandler : IRequestHandler<GetFavoritesQuery, GetFa
                 UserId = request.UserId,
                 Ticker = fav.Ticker,
                 CurrentMaxOdd = maxOddData?.MaxOdd,
-                CurrentMaxOddDirection = maxOddData?.Direction
+                CurrentMaxOddDirection = maxOddData?.Direction,
+                CurrentMaxOddZoneId = maxOddData?.ZoneId,
+                CurrentMaxOddTimeframe = maxOddData?.Timeframe
             });
         }
 

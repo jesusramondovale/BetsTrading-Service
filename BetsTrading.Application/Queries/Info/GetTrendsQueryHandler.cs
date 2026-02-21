@@ -38,7 +38,7 @@ public class GetTrendsQueryHandler : IRequestHandler<GetTrendsQuery, GetTrendsRe
         var trendDtos = new List<TrendDto>();
         for (int i = 0; i < top5.Count; i++)
         {
-            var (ticker, maxOdd, direction) = top5[i];
+            var (ticker, maxOdd, direction, zoneId, timeframe) = top5[i];
             var asset = await _unitOfWork.FinancialAssets.GetByTickerAsync(ticker, cancellationToken);
             if (asset == null) continue;
 
@@ -55,7 +55,9 @@ public class GetTrendsQueryHandler : IRequestHandler<GetTrendsQuery, GetTrendsRe
                 Current = currentPrice,
                 Ticker = ticker,
                 CurrentMaxOdd = maxOdd,
-                CurrentMaxOddDirection = direction
+                CurrentMaxOddDirection = direction,
+                CurrentMaxOddZoneId = zoneId,
+                CurrentMaxOddTimeframe = timeframe
             });
         }
 

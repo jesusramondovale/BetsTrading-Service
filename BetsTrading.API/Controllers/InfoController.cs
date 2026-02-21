@@ -302,7 +302,7 @@ public class InfoController : ControllerBase
             {
                 var byTf = new Dictionary<string, object>();
                 foreach (var tf in kv.Value)
-                    byTf[tf.Key.ToString()] = new { maxOdd = tf.Value.MaxOdd, direction = tf.Value.Direction };
+                    byTf[tf.Key.ToString()] = new { maxOdd = tf.Value.MaxOdd, direction = tf.Value.Direction, zoneId = tf.Value.ZoneId };
                 maxOdds[kv.Key] = byTf;
             }
 
