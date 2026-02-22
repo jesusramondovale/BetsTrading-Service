@@ -534,9 +534,8 @@ builder.Services.Configure<BetsTrading.Infrastructure.HostedServices.OddsAdjuste
     // Si necesitas cambiarlo, puedes hacerlo desde appsettings.json
 });
 
-// Hosted Services
+// Hosted Services (odds se actualizan al hacer NewBet, no con job periódico)
 builder.Services.AddHostedService<BetsTrading.Infrastructure.HostedServices.UpdaterHostedService>();
-builder.Services.AddHostedService<BetsTrading.Infrastructure.HostedServices.OddsAdjusterHostedService>();
 
 builder.Services.AddSingleton<BetsTrading.Application.Interfaces.IEmailService>(sp =>
 {

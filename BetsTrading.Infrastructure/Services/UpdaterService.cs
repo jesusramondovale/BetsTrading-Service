@@ -756,6 +756,74 @@ public class UpdaterService : IUpdaterService
         }
     }
 
+    /// <inheritdoc />
+    public async Task UpdateOddsForBetZoneAsync(int betZoneId, string currency, CancellationToken cancellationToken = default)
+    {
+        const double k = 1.0;
+        const double margin = 0.98;
+
+        if (currency == "USD")
+        {
+            var zone = await _unitOfWork.BetZonesUSD.GetByIdAsync(betZoneId, cancellationToken);
+            if (zone == null) return;
+
+            var zonesSameTickerTf = await _unitOfWork.BetZonesUSD.GetActiveBetZonesByTickerAsync(zone.Ticker, zone.Timeframe, cancellationToken);
+            var group = zonesSameTickerTf.Where(z => z.StartDate == zone.StartDate).ToList();
+            if (group.Count == 0) return;
+
+            var zoneIds = group.Select(z => z.Id).ToList();
+            var volumes = await _unitOfWork.Bets.GetBetVolumesByZoneIdsAsync(zoneIds, cancellationToken);
+            if (volumes.Count == 0) return;
+
+            double total = volumes.Values.Sum(v => v + k);
+            foreach (var volEntry in volumes)
+            {
+                double prob = (volEntry.Value + k) / total;
+                double odds = Math.Max(1.1, Math.Round((1.0 / prob) * margin, 2));
+                var z = group.FirstOrDefault(x => x.Id == volEntry.Key);
+                if (z != null)
+                {
+                    z.UpdateTargetOdds(odds);
+                    _unitOfWork.BetZonesUSD.Update(z);
+                }
+            }
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            _logger.Debug("[UpdaterService] :: UpdateOddsForBetZoneAsync (USD) completed for zone {0}, ticker {1}", betZoneId, zone.Ticker);
+        }
+        else
+        {
+            var zone = await _unitOfWork.BetZones.GetByIdAsync(betZoneId, cancellationToken);
+            if (zone == null) return;
+
+            var zonesSameTickerTf = await _unitOfWork.BetZones.GetActiveBetZonesByTickerAsync(zone.Ticker, zone.Timeframe, cancellationToken);
+            var group = zonesSameTickerTf.Where(z => z.StartDate == zone.StartDate).ToList();
+            if (group.Count == 0) return;
+
+            var zoneIds = group.Select(z => z.Id).ToList();
+            var volumes = await _unitOfWork.Bets.GetBetVolumesByZoneIdsAsync(zoneIds, cancellationToken);
+            if (volumes.Count == 0) return;
+
+            double total = volumes.Values.Sum(v => v + k);
+            foreach (var volEntry in volumes)
+            {
+                double prob = (volEntry.Value + k) / total;
+                double odds = Math.Max(1.1, Math.Round((1.0 / prob) * margin, 2));
+                var z = group.FirstOrDefault(x => x.Id == volEntry.Key);
+                if (z != null)
+                {
+                    z.UpdateTargetOdds(odds);
+                    _unitOfWork.BetZones.Update(z);
+                }
+            }
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            _logger.Debug("[UpdaterService] :: UpdateOddsForBetZoneAsync (EUR) completed for zone {0}, ticker {1}", betZoneId, zone.Ticker);
+        }
+
+        await UpdateCurrentMaxOddsAsync(cancellationToken);
+    }
+
     /// <summary>Rellena el servicio en memoria desde las zonas activas en BD. Llamar al arranque para que la API Trends devuelva datos de inmediato.</summary>
     public Task RefreshMaxOddsFromDatabaseAsync(CancellationToken cancellationToken = default) =>
         UpdateCurrentMaxOddsAsync(cancellationToken);

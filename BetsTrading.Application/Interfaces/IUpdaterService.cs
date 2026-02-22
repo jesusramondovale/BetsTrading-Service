@@ -7,6 +7,9 @@ public interface IUpdaterService
     Task CheckBetsAsync(bool marketHours, CancellationToken cancellationToken = default);
     Task RefreshTargetOddsAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>Recalcula y actualiza los odds solo de la zona (y su grupo ticker+timeframe+startDate) tras una Nueva apuesta. Event-driven en lugar de polling.</summary>
+    Task UpdateOddsForBetZoneAsync(int betZoneId, string currency, CancellationToken cancellationToken = default);
+
     /// <summary>Rellena max odds en memoria desde las BetZones activas en BD. Llamar al arranque para que Trends tenga datos de inmediato.</summary>
     Task RefreshMaxOddsFromDatabaseAsync(CancellationToken cancellationToken = default);
 

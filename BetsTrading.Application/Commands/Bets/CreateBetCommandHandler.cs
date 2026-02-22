@@ -1,17 +1,21 @@
 using MediatR;
+using Microsoft.Extensions.DependencyInjection;
 using BetsTrading.Domain.Entities;
 using BetsTrading.Domain.Interfaces;
 using BetsTrading.Domain.Exceptions;
+using BetsTrading.Application.Interfaces;
 
 namespace BetsTrading.Application.Commands.Bets;
 
 public class CreateBetCommandHandler : IRequestHandler<CreateBetCommand, CreateBetResult>
 {
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IServiceScopeFactory _scopeFactory;
 
-    public CreateBetCommandHandler(IUnitOfWork unitOfWork)
+    public CreateBetCommandHandler(IUnitOfWork unitOfWork, IServiceScopeFactory scopeFactory)
     {
         _unitOfWork = unitOfWork;
+        _scopeFactory = scopeFactory;
     }
 
     public async Task<CreateBetResult> Handle(CreateBetCommand request, CancellationToken cancellationToken)
@@ -94,6 +98,25 @@ public class CreateBetCommandHandler : IRequestHandler<CreateBetCommand, CreateB
             await _unitOfWork.RollbackTransactionAsync(cancellationToken);
             throw;
         }
+
+        // Ajuste de odds en segundo plano: respuesta al cliente inmediata tras grabar la apuesta
+        var betZoneId = request.BetZoneId;
+        var currency = request.Currency ?? "EUR";
+        _ = Task.Run(async () =>
+        {
+            using (var scope = _scopeFactory.CreateScope())
+            {
+                var updater = scope.ServiceProvider.GetRequiredService<IUpdaterService>();
+                try
+                {
+                    await updater.UpdateOddsForBetZoneAsync(betZoneId, currency, CancellationToken.None);
+                }
+                catch
+                {
+                    // No afecta al cliente; el ajuste se puede reintentar después si hace falta
+                }
+            }
+        });
 
         return new CreateBetResult
         {
