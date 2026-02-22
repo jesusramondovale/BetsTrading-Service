@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Globalization;
 using EFCore.BulkExtensions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Http;
 
 namespace BetsTrading.Infrastructure.Services;
 
@@ -15,6 +16,7 @@ public class UpdaterService : IUpdaterService
     private readonly IApplicationLogger _logger;
     private readonly AppDbContext _dbContext;
     private readonly ITickerMaxOddsService _tickerMaxOddsService;
+    private readonly IHttpClientFactory _httpClientFactory;
     private static readonly int[] Timeframes = { 1, 2, 4, 24 };
     private static readonly string[] TWELVE_DATA_KEYS = Enumerable.Range(0, 11)
         .Select(i => Environment.GetEnvironmentVariable($"TWELVE_DATA_KEY{i}") ?? "")
@@ -25,12 +27,14 @@ public class UpdaterService : IUpdaterService
         IUnitOfWork unitOfWork,
         IApplicationLogger logger,
         AppDbContext dbContext,
-        ITickerMaxOddsService tickerMaxOddsService)
+        ITickerMaxOddsService tickerMaxOddsService,
+        IHttpClientFactory httpClientFactory)
     {
         _unitOfWork = unitOfWork;
         _logger = logger;
         _dbContext = dbContext;
         _tickerMaxOddsService = tickerMaxOddsService;
+        _httpClientFactory = httpClientFactory;
     }
 
     public async Task UpdateAssetsAsync(bool marketHours, CancellationToken cancellationToken = default)
@@ -64,7 +68,7 @@ public class UpdaterService : IUpdaterService
 
         var eurToUsd = eurUsdCandle != null ? (decimal)eurUsdCandle.Close : FIXED_EUR_USD;
 
-        using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+        var httpClient = _httpClientFactory.CreateClient("TwelveData");
 
         const string interval = "1h";
         const string outputsize = "1000";

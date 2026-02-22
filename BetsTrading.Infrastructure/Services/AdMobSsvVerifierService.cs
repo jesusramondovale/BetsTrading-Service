@@ -1,14 +1,25 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using BetsTrading.Application.Interfaces;
+using Microsoft.Extensions.Http;
 
-namespace BetsTrading.Application.Services;
+namespace BetsTrading.Infrastructure.Services;
 
-public class AdMobSsvVerifier
+/// <summary>
+/// Verifica la firma SSV de recompensas de AdMob usando IHttpClientFactory.
+/// </summary>
+public class AdMobSsvVerifierService : IAdMobSsvVerifier
 {
     private const string VerifierKeysUrl = "https://www.gstatic.com/admob/reward/verifier-keys.json";
+    private readonly IHttpClientFactory _httpClientFactory;
 
-    public static async Task<bool> VerifySignatureAsync(string queryString, string signatureB64u, string keyIdText, CancellationToken cancellationToken = default)
+    public AdMobSsvVerifierService(IHttpClientFactory httpClientFactory)
+    {
+        _httpClientFactory = httpClientFactory;
+    }
+
+    public async Task<bool> VerifySignatureAsync(string queryString, string signatureB64u, string keyIdText, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(signatureB64u) || string.IsNullOrEmpty(keyIdText))
             return false;
@@ -20,12 +31,11 @@ public class AdMobSsvVerifier
         var query = queryString.TrimStart('?');
         var iSig = query.IndexOf("signature=", StringComparison.Ordinal);
         if (iSig < 0) return false;
-        
+
         var toVerify = query[..(iSig - 1)];
         var data = Encoding.UTF8.GetBytes(toVerify);
 
-        // Get public key from AdMob
-        using var http = new HttpClient();
+        var http = _httpClientFactory.CreateClient("AdMob");
         HttpResponseMessage response;
         try
         {
@@ -33,15 +43,11 @@ public class AdMobSsvVerifier
         }
         catch (Exception)
         {
-            // Network error - cannot verify signature
             return false;
         }
 
         if (!response.IsSuccessStatusCode)
-        {
-            // HTTP error (e.g., 521 from Cloudflare) - cannot verify signature
             return false;
-        }
 
         string json;
         try
@@ -50,7 +56,6 @@ public class AdMobSsvVerifier
         }
         catch (Exception)
         {
-            // Error reading response - cannot verify signature
             return false;
         }
 
@@ -61,35 +66,30 @@ public class AdMobSsvVerifier
         }
         catch (JsonException)
         {
-            // Invalid JSON response (e.g., HTML error page from Cloudflare) - cannot verify signature
             return false;
         }
 
         using (doc)
         {
             if (!doc.RootElement.TryGetProperty("keys", out var keysElement))
-            {
                 return false;
-            }
 
             var keys = keysElement;
-
-        string? pem = null;
-        foreach (var k in keys.EnumerateArray())
-        {
-            if (k.TryGetProperty("keyId", out var kid) &&
-                (kid.TryGetUInt64(out var kidU) ? kidU == keyId
-                 : kid.ValueKind == JsonValueKind.String && kid.GetString() == keyIdText))
+            string? pem = null;
+            foreach (var k in keys.EnumerateArray())
             {
-                pem = k.GetProperty("pem").GetString();
-                break;
+                if (k.TryGetProperty("keyId", out var kid) &&
+                    (kid.TryGetUInt64(out var kidU) ? kidU == keyId
+                     : kid.ValueKind == JsonValueKind.String && kid.GetString() == keyIdText))
+                {
+                    pem = k.GetProperty("pem").GetString();
+                    break;
+                }
             }
-        }
 
             if (string.IsNullOrEmpty(pem))
                 return false;
 
-            // Verify signature
             using var ecdsa = ECDsa.Create();
             try
             {

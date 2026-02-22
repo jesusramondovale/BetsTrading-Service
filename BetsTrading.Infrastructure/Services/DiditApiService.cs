@@ -1,24 +1,25 @@
 using System.Text;
 using System.Text.Json;
 using BetsTrading.Application.Interfaces;
+using Microsoft.Extensions.Http;
 
 namespace BetsTrading.Infrastructure.Services;
 
 public class DiditApiService : IDiditApiService
 {
     private readonly string _apiKey;
-    private readonly string _baseUrl = "https://verification.didit.me/v2";
+    private readonly IHttpClientFactory _httpClientFactory;
+    private const string BaseUrl = "https://verification.didit.me/v2";
 
-    public DiditApiService()
+    public DiditApiService(IHttpClientFactory httpClientFactory)
     {
         _apiKey = Environment.GetEnvironmentVariable("DIDIT_API_KEY") ?? "";
+        _httpClientFactory = httpClientFactory;
     }
 
     public async Task<DiditSessionResponse> CreateSessionAsync(string workflowId, string vendorData, string callbackUrl, CancellationToken cancellationToken = default)
     {
-        using var http = new HttpClient();
-        http.DefaultRequestHeaders.Add("x-api-key", _apiKey);
-
+        var http = _httpClientFactory.CreateClient("Didit");
         var payload = new
         {
             workflow_id = workflowId,
@@ -26,10 +27,11 @@ public class DiditApiService : IDiditApiService
             callback = callbackUrl
         };
 
-        var response = await http.PostAsync(
-            $"{_baseUrl}/session/",
-            new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json"),
-            cancellationToken);
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/session/");
+        request.Headers.Add("x-api-key", _apiKey);
+        request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+        var response = await http.SendAsync(request, cancellationToken);
 
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
 
@@ -50,10 +52,11 @@ public class DiditApiService : IDiditApiService
 
     public async Task<DiditDecisionResponse?> GetSessionDecisionAsync(string sessionId, CancellationToken cancellationToken = default)
     {
-        using var http = new HttpClient();
-        http.DefaultRequestHeaders.Add("x-api-key", _apiKey);
+        var http = _httpClientFactory.CreateClient("Didit");
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"{BaseUrl}/session/{sessionId}/decision");
+        request.Headers.Add("x-api-key", _apiKey);
 
-        var response = await http.GetAsync($"{_baseUrl}/session/{sessionId}/decision", cancellationToken);
+        var response = await http.SendAsync(request, cancellationToken);
 
         if (!response.IsSuccessStatusCode)
         {

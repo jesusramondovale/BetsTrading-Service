@@ -492,6 +492,18 @@ builder.Services.Configure<BetsTrading.Infrastructure.Services.SmtpSettings>(set
     if (!string.IsNullOrEmpty(envPass)) settings.Password = envPass;
 });
 
+// HttpClient factory and named clients (reuse connections, avoid socket exhaustion)
+builder.Services.AddHttpClient("TwelveData", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+builder.Services.AddHttpClient("IpGeo");
+builder.Services.AddHttpClient("Didit");
+builder.Services.AddHttpClient("AdMob");
+
+// AdMob SSV Verifier (usa IHttpClientFactory)
+builder.Services.AddSingleton<BetsTrading.Application.Interfaces.IAdMobSsvVerifier, BetsTrading.Infrastructure.Services.AdMobSsvVerifierService>();
+
 // Didit API Service
 builder.Services.AddSingleton<BetsTrading.Application.Interfaces.IDiditApiService, BetsTrading.Infrastructure.Services.DiditApiService>();
 
@@ -511,7 +523,8 @@ builder.Services.AddScoped<BetsTrading.Application.Interfaces.IUpdaterService>(s
     var logger = sp.GetRequiredService<BetsTrading.Application.Interfaces.IApplicationLogger>();
     var dbContext = sp.GetRequiredService<BetsTrading.Infrastructure.Persistence.AppDbContext>();
     var tickerMaxOddsService = sp.GetRequiredService<BetsTrading.Application.Interfaces.ITickerMaxOddsService>();
-    return new BetsTrading.Infrastructure.Services.UpdaterService(unitOfWork, logger, dbContext, tickerMaxOddsService);
+    var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
+    return new BetsTrading.Infrastructure.Services.UpdaterService(unitOfWork, logger, dbContext, tickerMaxOddsService, httpClientFactory);
 });
 
 // Odds Adjuster Options

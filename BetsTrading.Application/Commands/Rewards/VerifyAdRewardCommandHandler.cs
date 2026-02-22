@@ -2,7 +2,6 @@ using MediatR;
 using BetsTrading.Domain.Interfaces;
 using BetsTrading.Domain.Entities;
 using BetsTrading.Application.Interfaces;
-using BetsTrading.Application.Services;
 
 namespace BetsTrading.Application.Commands.Rewards;
 
@@ -10,13 +9,16 @@ public class VerifyAdRewardCommandHandler : IRequestHandler<VerifyAdRewardComman
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly IApplicationLogger _logger;
+    private readonly IAdMobSsvVerifier _adMobSsvVerifier;
 
     public VerifyAdRewardCommandHandler(
         IUnitOfWork unitOfWork,
-        IApplicationLogger logger)
+        IApplicationLogger logger,
+        IAdMobSsvVerifier adMobSsvVerifier)
     {
         _unitOfWork = unitOfWork;
         _logger = logger;
+        _adMobSsvVerifier = adMobSsvVerifier;
     }
 
     public async Task<VerifyAdRewardResult> Handle(VerifyAdRewardCommand request, CancellationToken cancellationToken)
@@ -24,7 +26,7 @@ public class VerifyAdRewardCommandHandler : IRequestHandler<VerifyAdRewardComman
         // Verify SSV signature if provided
         if (!string.IsNullOrEmpty(request.Signature) && !string.IsNullOrEmpty(request.KeyId))
         {
-            var isValid = await AdMobSsvVerifier.VerifySignatureAsync(
+            var isValid = await _adMobSsvVerifier.VerifySignatureAsync(
                 request.RawQuery ?? string.Empty,
                 request.Signature,
                 request.KeyId,

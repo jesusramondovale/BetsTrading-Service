@@ -1,5 +1,6 @@
 using System.Text.Json;
 using BetsTrading.Application.Interfaces;
+using Microsoft.Extensions.Http;
 
 namespace BetsTrading.Infrastructure.Services;
 
@@ -8,10 +9,16 @@ namespace BetsTrading.Infrastructure.Services;
 /// </summary>
 public class IpGeoService : IIpGeoService
 {
+    private readonly IHttpClientFactory _httpClientFactory;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
     };
+
+    public IpGeoService(IHttpClientFactory httpClientFactory)
+    {
+        _httpClientFactory = httpClientFactory;
+    }
 
     public async Task<IpGeoResult?> GetGeoFromIpAsync(string? ip, CancellationToken cancellationToken = default)
     {
@@ -20,7 +27,7 @@ public class IpGeoService : IIpGeoService
 
         try
         {
-            using var http = new HttpClient();
+            var http = _httpClientFactory.CreateClient("IpGeo");
             var response = await http.GetAsync($"http://ip-api.com/json/{ip}", cancellationToken);
 
             if (!response.IsSuccessStatusCode)
