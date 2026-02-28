@@ -30,13 +30,14 @@ try
 // Systemd integration (Type=notify) - no-op when not running under systemd
 builder.Host.UseSystemd();
 
-// Configure Serilog - EXACTAMENTE como en el proyecto legacy
-var logPath = "Logs/BetsTrading_API_.log";
+// Configure Serilog - logs next to the executable (bin\Release\net8.0\Logs or publish folder)
 var loggingInterval = Serilog.RollingInterval.Day;
+var baseDir = AppContext.BaseDirectory ?? Directory.GetCurrentDirectory();
+var logDirectory = Path.Combine(baseDir, "Logs");
+var logFileName = "BetsTrading_API_.log";
+var logPath = Path.Combine(logDirectory, logFileName);
 
-// Ensure Logs directory exists (important for Linux/EC2 in /opt/betstrading)
-var logDirectory = Path.GetDirectoryName(logPath);
-if (!string.IsNullOrEmpty(logDirectory) && !Directory.Exists(logDirectory))
+if (!Directory.Exists(logDirectory))
 {
     try
     {
@@ -44,24 +45,17 @@ if (!string.IsNullOrEmpty(logDirectory) && !Directory.Exists(logDirectory))
     }
     catch (Exception)
     {
-        // If it fails, try with absolute path based on working directory
-        var workingDir = Directory.GetCurrentDirectory();
-        var absoluteLogDir = Path.Combine(workingDir, logDirectory);
-        if (!Directory.Exists(absoluteLogDir))
-        {
-            Directory.CreateDirectory(absoluteLogDir);
-        }
-        logPath = Path.Combine(absoluteLogDir, Path.GetFileName(logPath));
+        logDirectory = Path.Combine(Directory.GetCurrentDirectory(), "Logs");
+        if (!Directory.Exists(logDirectory))
+            Directory.CreateDirectory(logDirectory);
+        logPath = Path.Combine(logDirectory, logFileName);
     }
 }
 
-// Get full path for logging
-var fullLogPath = Path.IsPathRooted(logPath) 
-    ? logPath 
-    : Path.Combine(Directory.GetCurrentDirectory(), logPath);
+var fullLogPath = Path.GetFullPath(logPath);
 
 var logger = new LoggerConfiguration()
-    .MinimumLevel.Information()
+    .MinimumLevel.Is(builder.Environment.IsDevelopment() ? Serilog.Events.LogEventLevel.Debug : Serilog.Events.LogEventLevel.Information)
     .MinimumLevel.Override("Microsoft.EntityFrameworkCore", Serilog.Events.LogEventLevel.Warning)
     .MinimumLevel.Override("Microsoft.EntityFrameworkCore.Database.Command", Serilog.Events.LogEventLevel.Fatal)
     .MinimumLevel.Override("Microsoft", Serilog.Events.LogEventLevel.Warning)

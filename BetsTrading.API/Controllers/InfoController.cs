@@ -7,6 +7,8 @@ using BetsTrading.Application.Commands.Favorites;
 using BetsTrading.Application.Commands.WithdrawalMethods;
 using BetsTrading.Application.Commands.Raffles;
 using BetsTrading.Application.Commands.Info;
+using BetsTrading.Application.Queries.DailyReward;
+using BetsTrading.Application.Commands.DailyReward;
 using System.Security.Claims;
 using System.IdentityModel.Tokens.Jwt;
 using BetsTrading.Application.DTOs;
@@ -182,11 +184,89 @@ public class InfoController : ControllerBase
         }
         catch (System.Text.Json.JsonException)
         {
-            // Handle JSON parsing errors specifically
             return BadRequest(new { Message = "Invalid JSON format in request body", Error = "JSON parsing error" });
         }
         catch (Exception ex)
         {
+            return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+        }
+    }
+
+    [HttpPost("DailyRewardStatus")]
+    public async Task<IActionResult> DailyRewardStatus([FromBody] GetDailyRewardStatusQuery? query, CancellationToken cancellationToken)
+    {
+        _logger.Debug("[DAILY_REWARD] DailyRewardStatus REQUEST query={@Q}", new { UserId = query?.UserId ?? "(null)" });
+        try
+        {
+            query ??= new GetDailyRewardStatusQuery();
+            var tokenUserId = User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? User.FindFirstValue("app_sub")
+                ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+            _logger.Debug("[DAILY_REWARD] DailyRewardStatus tokenUserId={TokenUserId} query.UserId before={QueryUserId}", tokenUserId ?? "null", query.UserId ?? "null");
+            if (!string.IsNullOrEmpty(tokenUserId) && string.IsNullOrEmpty(query.UserId))
+                query.UserId = tokenUserId;
+            if (string.IsNullOrEmpty(query.UserId))
+            {
+                _logger.Debug("[DAILY_REWARD] DailyRewardStatus ABORT User ID is required");
+                return BadRequest(new { Message = "User ID is required" });
+            }
+            var result = await _mediator.Send(query, cancellationToken);
+            _logger.Debug("[DAILY_REWARD] DailyRewardStatus RESULT ShowDialog={ShowDialog} CanClaim={CanClaim} CurrentDay={CurrentDay} CoinsForCurrentDay={Coins}", result.ShowDialog, result.CanClaim, result.CurrentDay, result.CoinsForCurrentDay);
+            return Ok(new
+            {
+                showDialog = result.ShowDialog,
+                currentDay = result.CurrentDay,
+                canClaim = result.CanClaim,
+                coinsForCurrentDay = result.CoinsForCurrentDay,
+                nextAvailableAtUtc = result.NextAvailableAtUtc,
+                rewardsByDay = result.RewardsByDay,
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "[DAILY_REWARD] DailyRewardStatus EXCEPTION {Error}", ex.Message);
+            return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+        }
+    }
+
+    [HttpPost("ClaimDailyReward")]
+    public async Task<IActionResult> ClaimDailyReward([FromBody] ClaimDailyRewardCommand? command, CancellationToken cancellationToken)
+    {
+        _logger.Debug("[DAILY_REWARD] ClaimDailyReward REQUEST command.UserId={UserId}", command?.UserId ?? "null");
+        try
+        {
+            command ??= new ClaimDailyRewardCommand();
+            var tokenUserId = User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? User.FindFirstValue("app_sub")
+                ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+            _logger.Debug("[DAILY_REWARD] ClaimDailyReward tokenUserId={TokenUserId} command.UserId before={CmdUserId}", tokenUserId ?? "null", command.UserId ?? "null");
+            if (!string.IsNullOrEmpty(tokenUserId) && string.IsNullOrEmpty(command.UserId))
+                command.UserId = tokenUserId;
+            if (string.IsNullOrEmpty(command.UserId))
+            {
+                _logger.Debug("[DAILY_REWARD] ClaimDailyReward ABORT User ID is required");
+                return BadRequest(new { Message = "User ID is required" });
+            }
+            _logger.Debug("[DAILY_REWARD] ClaimDailyReward sending command to mediator UserId={UserId}", command.UserId);
+            var result = await _mediator.Send(command, cancellationToken);
+            _logger.Debug("[DAILY_REWARD] ClaimDailyReward RESULT Success={Success} CoinsAwarded={Coins} NewStreakDay={Day} Message={Msg}", result.Success, result.CoinsAwarded, result.NewStreakDay, result.Message ?? "null");
+            if (!result.Success)
+            {
+                _logger.Debug("[DAILY_REWARD] ClaimDailyReward returning BadRequest Message={Msg}", result.Message ?? "");
+                return BadRequest(new { Message = result.Message ?? "Claim failed" });
+            }
+            _logger.Debug("[DAILY_REWARD] ClaimDailyReward returning Ok 200");
+            return Ok(new
+            {
+                success = true,
+                coinsAwarded = result.CoinsAwarded,
+                newStreakDay = result.NewStreakDay,
+                message = result.Message,
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "[DAILY_REWARD] ClaimDailyReward EXCEPTION {Error} StackTrace={Stack}", ex.Message, ex.StackTrace ?? "");
             return StatusCode(500, new { Message = "Server error", Error = ex.Message });
         }
     }

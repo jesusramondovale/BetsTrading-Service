@@ -28,6 +28,7 @@ public class UnitOfWork : IUnitOfWork
     private IWithdrawalMethodRepository? _withdrawalMethods;
     private IRaffleRepository? _raffles;
     private IRaffleItemRepository? _raffleItems;
+    private IDailyLoginStreakRepository? _dailyLoginStreaks;
 
     public UnitOfWork(AppDbContext context)
     {
@@ -52,6 +53,7 @@ public class UnitOfWork : IUnitOfWork
     public IWithdrawalMethodRepository WithdrawalMethods => _withdrawalMethods ??= new WithdrawalMethodRepository(_context);
     public IRaffleRepository Raffles => _raffles ??= new RaffleRepository(_context);
     public IRaffleItemRepository RaffleItems => _raffleItems ??= new RaffleItemRepository(_context);
+    public IDailyLoginStreakRepository DailyLoginStreaks => _dailyLoginStreaks ??= new DailyLoginStreakRepository(_context);
 
     public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {

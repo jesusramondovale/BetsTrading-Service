@@ -27,6 +27,7 @@ public class AppDbContext : DbContext
     public DbSet<Raffle> Raffles { get; set; }
     public DbSet<RaffleItem> RaffleItems { get; set; }
     public DbSet<WithdrawalMethod> WithdrawalMethods { get; set; }
+    public DbSet<DailyLoginStreak> DailyLoginStreaks { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -345,6 +346,20 @@ public class AppDbContext : DbContext
             entity.Property(e => e.Verified).HasColumnName("verified");
             entity.Property(e => e.CreatedAt).HasColumnName("created_at");
             entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+        });
+
+        // Configuración de DailyLoginStreak
+        modelBuilder.Entity<DailyLoginStreak>(entity =>
+        {
+            entity.ToTable("DailyLoginStreak", "BetsTrading");
+            entity.HasKey(e => e.UserId);
+            entity.Property(e => e.UserId).HasColumnName("user_id").IsRequired();
+            entity.Property(e => e.LastClaimedAt).HasColumnName("last_claimed_at").HasColumnType("timestamp without time zone");
+            entity.Property(e => e.StreakDay).HasColumnName("streak_day").IsRequired();
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         base.OnModelCreating(modelBuilder);

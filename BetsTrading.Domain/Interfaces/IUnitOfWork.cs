@@ -20,6 +20,7 @@ public interface IUnitOfWork : IDisposable
     IWithdrawalMethodRepository WithdrawalMethods { get; }
     IRaffleRepository Raffles { get; }
     IRaffleItemRepository RaffleItems { get; }
+    IDailyLoginStreakRepository DailyLoginStreaks { get; }
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     Task BeginTransactionAsync(CancellationToken cancellationToken = default);
     Task CommitTransactionAsync(CancellationToken cancellationToken = default);
