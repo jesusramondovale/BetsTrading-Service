@@ -10,12 +10,18 @@ public class ClaimDailyRewardCommandHandler : IRequestHandler<ClaimDailyRewardCo
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly IApplicationLogger _logger;
+    private readonly IAdminRuntimeConfig _adminConfig;
 
-    public ClaimDailyRewardCommandHandler(IUnitOfWork unitOfWork, IApplicationLogger logger)
+    public ClaimDailyRewardCommandHandler(IUnitOfWork unitOfWork, IApplicationLogger logger, IAdminRuntimeConfig adminConfig)
     {
         _unitOfWork = unitOfWork;
         _logger = logger;
+        _adminConfig = adminConfig;
     }
+
+    private int[] CoinsByDay => _adminConfig.DailyRewardCoinsByDay ?? DailyRewardConstants.CoinsByDay;
+    private TimeSpan WindowToClaim => _adminConfig.DailyRewardWindowToClaimHours.HasValue ? TimeSpan.FromHours(_adminConfig.DailyRewardWindowToClaimHours.Value) : DailyRewardConstants.WindowToClaim;
+    private TimeSpan WindowUntilStreakLost => _adminConfig.DailyRewardWindowUntilStreakLostHours.HasValue ? TimeSpan.FromHours(_adminConfig.DailyRewardWindowUntilStreakLostHours.Value) : DailyRewardConstants.WindowUntilStreakLost;
 
     public async Task<ClaimDailyRewardResult> Handle(ClaimDailyRewardCommand request, CancellationToken cancellationToken)
     {
@@ -39,15 +45,15 @@ public class ClaimDailyRewardCommandHandler : IRequestHandler<ClaimDailyRewardCo
         else
         {
             var elapsed = now - (streak.LastClaimedAt ?? now);
-            _logger.Debug("[DAILY_REWARD HANDLER] elapsed since last claim = {0} (24h={1} 48h={2})", elapsed.TotalHours, DailyRewardConstants.WindowToClaim.TotalHours, DailyRewardConstants.WindowUntilStreakLost.TotalHours);
-            if (elapsed >= DailyRewardConstants.WindowUntilStreakLost)
+            _logger.Debug("[DAILY_REWARD HANDLER] elapsed since last claim = {0} (24h={1} 48h={2})", elapsed.TotalHours, WindowToClaim.TotalHours, WindowUntilStreakLost.TotalHours);
+            if (elapsed >= WindowUntilStreakLost)
             {
                 _logger.Debug("[DAILY_REWARD HANDLER] Branch: streak lost -> ResetStreak dayToClaim=1");
                 streak.ResetStreak();
                 _unitOfWork.DailyLoginStreaks.Update(streak);
                 dayToClaim = 1;
             }
-            else if (elapsed < DailyRewardConstants.WindowToClaim)
+            else if (elapsed < WindowToClaim)
             {
                 _logger.Debug("[DAILY_REWARD HANDLER] Branch: too early -> return Success=false");
                 return new ClaimDailyRewardResult
@@ -64,7 +70,7 @@ public class ClaimDailyRewardCommandHandler : IRequestHandler<ClaimDailyRewardCo
             }
         }
 
-        var coins = DailyRewardConstants.CoinsByDay[dayToClaim - 1];
+        var coins = CoinsByDay[Math.Min(dayToClaim - 1, CoinsByDay.Length - 1)];
         _logger.Debug("[DAILY_REWARD HANDLER] coins for day {0} = {1}", dayToClaim, coins);
         var user = await _unitOfWork.Users.GetByIdAsync(request.UserId, cancellationToken);
         if (user == null)

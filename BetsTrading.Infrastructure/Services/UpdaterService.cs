@@ -199,7 +199,8 @@ public class UpdaterService : IUpdaterService
             {
                 try
                 {
-                    var dtRaw = DateTime.Parse(v.Datetime!, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal);
+                    // Twelve Data devuelve datetimes en UTC (timezone=UTC en la request); interpretar como UTC, no como hora local
+                    var dtRaw = DateTime.Parse(v.Datetime!, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
                     var dt = new DateTime(dtRaw.Year, dtRaw.Month, dtRaw.Day, dtRaw.Hour, 0, 0, DateTimeKind.Utc);
 
                     if (dt <= lastDate)

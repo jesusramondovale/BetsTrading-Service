@@ -25,13 +25,15 @@ public class InfoController : ControllerBase
     private readonly IWebHostEnvironment _env;
     private readonly IApplicationLogger _logger;
     private readonly ITickerMaxOddsService _tickerMaxOddsService;
+    private readonly IAdminRuntimeConfig _adminConfig;
 
-    public InfoController(IMediator mediator, IWebHostEnvironment env, IApplicationLogger logger, ITickerMaxOddsService tickerMaxOddsService)
+    public InfoController(IMediator mediator, IWebHostEnvironment env, IApplicationLogger logger, ITickerMaxOddsService tickerMaxOddsService, IAdminRuntimeConfig adminConfig)
     {
         _mediator = mediator;
         _env = env;
         _logger = logger;
         _tickerMaxOddsService = tickerMaxOddsService;
+        _adminConfig = adminConfig;
     }
 
     [AllowAnonymous]
@@ -649,23 +651,34 @@ public class InfoController : ControllerBase
             var type = query?.Type ?? "buy";
             var fileName = $"exchange_options_{currency}.json";
 
-            var path = Path.Combine(AppContext.BaseDirectory, fileName);
-            if (!System.IO.File.Exists(path))
+            var json = _adminConfig.GetExchangeOptions(currency);
+            if (string.IsNullOrEmpty(json))
             {
-                path = Path.Combine(_env.ContentRootPath, fileName);
+                var path = Path.Combine(AppContext.BaseDirectory, fileName);
+                if (!System.IO.File.Exists(path))
+                    path = Path.Combine(_env.ContentRootPath, fileName);
+                if (!System.IO.File.Exists(path))
+                {
+                    _logger.Debug("StoreOptions: exchange options file not found. Tried BaseDirectory and ContentRootPath for {0}", fileName);
+                    return NotFound(new { Message = "Exchange options file not found", File = fileName });
+                }
+                json = System.IO.File.ReadAllText(path);
             }
-            if (!System.IO.File.Exists(path))
-            {
-                _logger.Debug("StoreOptions: exchange options file not found. Tried BaseDirectory and ContentRootPath for {0}", fileName);
-                return NotFound(new { Message = "Exchange options file not found", File = fileName });
-            }
-
-            var json = System.IO.File.ReadAllText(path);
             var options = new System.Text.Json.JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true,
             };
-            var parsed = System.Text.Json.JsonSerializer.Deserialize<List<StoreOptionDto>>(json, options);
+            List<StoreOptionDto>? parsed;
+            try
+            {
+                parsed = System.Text.Json.JsonSerializer.Deserialize<List<StoreOptionDto>>(json, options);
+            }
+            catch (System.Text.Json.JsonException ex)
+            {
+                _logger.Warning("StoreOptions: exchange options JSON inválido para {0}. {1}", currency, ex.Message);
+                return BadRequest(new { Message = "Exchange options file has invalid JSON. Fix it from the admin panel or restore the file.", Error = ex.Message });
+            }
+
             if (parsed == null)
             {
                 return Ok(new List<StoreOptionDto>());

@@ -86,7 +86,20 @@ public class RetireBalanceCommandHandler : IRequestHandler<RetireBalanceCommand,
 
             var optionsJson = await File.ReadAllTextAsync(path, cancellationToken);
             var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-            var options = JsonSerializer.Deserialize<List<ExchangeOption>>(optionsJson, opts);
+            List<ExchangeOption>? options;
+            try
+            {
+                options = JsonSerializer.Deserialize<List<ExchangeOption>>(optionsJson, opts);
+            }
+            catch (JsonException ex)
+            {
+                _logger.Warning("[PAYMENTS] :: RetireBalance :: Exchange options JSON inválido: {0}. {1}", path, ex.Message);
+                return new RetireBalanceResult
+                {
+                    Success = false,
+                    Message = "Exchange options are temporarily invalid. Please try again later."
+                };
+            }
 
             if (options == null || !options.Any(o => o.Type == "exchange" && o.Coins == request.Coins && o.Euros == request.CurrencyAmount))
             {

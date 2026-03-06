@@ -15,16 +15,19 @@ public class OddsAdjusterHostedService : BackgroundService
     private readonly IServiceProvider _serviceProvider;
     private readonly IApplicationLogger _logger;
     private readonly IOptionsMonitor<OddsAdjusterOptions> _options;
+    private readonly IAdminRuntimeConfig _adminConfig;
     private readonly SemaphoreSlim _mutex = new(1, 1);
 
     public OddsAdjusterHostedService(
         IServiceProvider serviceProvider,
         IApplicationLogger logger,
-        IOptionsMonitor<OddsAdjusterOptions> options)
+        IOptionsMonitor<OddsAdjusterOptions> options,
+        IAdminRuntimeConfig adminConfig)
     {
         _serviceProvider = serviceProvider;
         _logger = logger;
         _options = options;
+        _adminConfig = adminConfig;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -56,7 +59,9 @@ public class OddsAdjusterHostedService : BackgroundService
                 _mutex.Release();
             }
 
-            var wait = _options.CurrentValue.AdjustRefreshTime;
+            var wait = _adminConfig.OddsAdjusterRefreshTimeSeconds.HasValue
+                ? TimeSpan.FromSeconds(_adminConfig.OddsAdjusterRefreshTimeSeconds.Value)
+                : _options.CurrentValue.AdjustRefreshTime;
             try
             {
                 await Task.Delay(wait, stoppingToken);

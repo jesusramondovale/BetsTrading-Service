@@ -528,6 +528,11 @@ builder.Services.Configure<BetsTrading.Infrastructure.HostedServices.OddsAdjuste
     // Si necesitas cambiarlo, puedes hacerlo desde appsettings.json
 });
 
+// Admin panel: configuración en tiempo real (panel secreto en /status)
+builder.Services.AddSingleton<BetsTrading.Infrastructure.Services.AdminRuntimeConfig>();
+builder.Services.AddSingleton<BetsTrading.Application.Interfaces.IAdminRuntimeConfig>(sp =>
+    sp.GetRequiredService<BetsTrading.Infrastructure.Services.AdminRuntimeConfig>());
+
 // Hosted Services (odds se actualizan al hacer NewBet, no con job periódico)
 builder.Services.AddHostedService<BetsTrading.Infrastructure.HostedServices.UpdaterHostedService>();
 
@@ -665,10 +670,130 @@ app.MapGet("/logo", (IWebHostEnvironment env) =>
 }).AllowAnonymous();
 
 // Status y test - accesibles sin auth para load balancers y curl local
+var adminSecret = Environment.GetEnvironmentVariable("ADMIN_SECRET") ?? "";
+var adminSecretHash = string.IsNullOrEmpty(adminSecret)
+    ? ""
+    : Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(adminSecret))).ToLowerInvariant();
+
 app.MapGet("/status", () =>
 {
-    var html = StatusView.GetHtml(DateTime.UtcNow.ToString("o"));
+    var html = StatusView.GetHtml(DateTime.UtcNow.ToString("o"), adminSecretHash);
     return Results.Content(html, "text/html; charset=utf-8");
+}).AllowAnonymous();
+
+// Panel admin secreto: unlock con ADMIN_SECRET (cada letra seguida, sin espacios)
+app.MapPost("/status/admin/unlock", async (HttpContext ctx) =>
+{
+    customLogger.Log.Debug("[ADMIN] :: Unlock attempt");
+    using var reader = new StreamReader(ctx.Request.Body);
+    var body = await reader.ReadToEndAsync();
+    var json = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(body);
+    var secret = json.TryGetProperty("secret", out var p) ? p.GetString() ?? "" : "";
+    if (string.IsNullOrEmpty(adminSecret) || secret != adminSecret)
+    {
+        customLogger.Log.Warning("[ADMIN] :: Unlock failed: invalid or missing secret");
+        return Results.Json(new { error = "Invalid secret" }, statusCode: 401);
+    }
+
+    var keyBytes = System.Text.Encoding.UTF8.GetBytes(jwtLocalKey);
+    if (keyBytes.Length < 32)
+    {
+        customLogger.Log.Warning("[ADMIN] :: Unlock failed: JWT key too short ({Len} chars)", keyBytes.Length);
+        return Results.Json(new { error = "JWT key too short" }, statusCode: 500);
+    }
+    var handler = new JwtSecurityTokenHandler();
+    var now = DateTime.UtcNow;
+    var token = handler.WriteToken(new JwtSecurityToken(
+        issuer: localIssuer,
+        audience: "bets-trading-admin",
+        claims: new[] { new Claim("is_admin", "true"), new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()) },
+        notBefore: now,
+        expires: now.AddMinutes(5),
+        signingCredentials: new Microsoft.IdentityModel.Tokens.SigningCredentials(
+            new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(keyBytes),
+            Microsoft.IdentityModel.Tokens.SecurityAlgorithms.HmacSha256)));
+    customLogger.Log.Information("[ADMIN] :: Unlock successful, token issued");
+    return Results.Json(new { token });
+}).AllowAnonymous();
+
+// GET config (requiere Bearer token admin)
+app.MapGet("/status/admin/config", (HttpContext ctx, BetsTrading.Infrastructure.Services.AdminRuntimeConfig adminConfig, IWebHostEnvironment env) =>
+{
+    customLogger.Log.Debug("[ADMIN] :: GET config request");
+    if (!AdminAuthHelper.TryValidateAdminToken(ctx, jwtLocalKey, localIssuer, out _))
+    {
+        customLogger.Log.Warning("[ADMIN] :: GET config: Unauthorized (invalid or expired token)");
+        return Results.Json(new { error = "Unauthorized" }, statusCode: 401);
+    }
+
+    string? eurJson = null, usdJson = null;
+    foreach (var currency in new[] { "eur", "usd" })
+    {
+        var path = Path.Combine(AppContext.BaseDirectory ?? "", $"exchange_options_{currency}.json");
+        if (!System.IO.File.Exists(path)) path = Path.Combine(env.ContentRootPath, $"exchange_options_{currency}.json");
+        if (System.IO.File.Exists(path)) try { (currency == "eur" ? ref eurJson : ref usdJson) = System.IO.File.ReadAllText(path); } catch { }
+    }
+    var dto = adminConfig.ToDto(
+        adminConfig.ExchangeOptionsEur ?? eurJson,
+        adminConfig.ExchangeOptionsUsd ?? usdJson);
+    return Results.Json(dto);
+}).AllowAnonymous();
+
+// POST config (requiere Bearer token admin)
+app.MapPost("/status/admin/config", async (HttpContext ctx, BetsTrading.Infrastructure.Services.AdminRuntimeConfig adminConfig, IWebHostEnvironment env) =>
+{
+    if (!AdminAuthHelper.TryValidateAdminToken(ctx, jwtLocalKey, localIssuer, out _))
+        return Results.Json(new { error = "Unauthorized" }, statusCode: 401);
+
+    BetsTrading.Infrastructure.Services.AdminConfigDto? dto;
+    try
+    {
+        using var reader = new StreamReader(ctx.Request.Body);
+        var body = await reader.ReadToEndAsync();
+        var opts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        dto = System.Text.Json.JsonSerializer.Deserialize<BetsTrading.Infrastructure.Services.AdminConfigDto>(body, opts);
+    }
+    catch { return Results.Json(new { error = "Invalid JSON" }, statusCode: 400); }
+    if (dto == null) return Results.Json(new { error = "Invalid body" }, statusCode: 400);
+
+    // Validar que el JSON de exchange options es válido antes de guardar (evitar petar StoreOptions/RetireBalance)
+    var jsonOpts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+    if (!string.IsNullOrWhiteSpace(dto.ExchangeOptionsEur))
+    {
+        try
+        {
+            _ = System.Text.Json.JsonSerializer.Deserialize<List<BetsTrading.Application.DTOs.StoreOptionDto>>(dto.ExchangeOptionsEur, jsonOpts);
+        }
+        catch (System.Text.Json.JsonException ex)
+        {
+            customLogger.Log.Warning("[ADMIN] :: POST config: ExchangeOptionsEur JSON inválido: {0}", ex.Message);
+            return Results.Json(new { error = "Exchange options EUR: JSON inválido. Revisa la sintaxis.", detail = ex.Message }, statusCode: 400);
+        }
+    }
+    if (!string.IsNullOrWhiteSpace(dto.ExchangeOptionsUsd))
+    {
+        try
+        {
+            _ = System.Text.Json.JsonSerializer.Deserialize<List<BetsTrading.Application.DTOs.StoreOptionDto>>(dto.ExchangeOptionsUsd, jsonOpts);
+        }
+        catch (System.Text.Json.JsonException ex)
+        {
+            customLogger.Log.Warning("[ADMIN] :: POST config: ExchangeOptionsUsd JSON inválido: {0}", ex.Message);
+            return Results.Json(new { error = "Exchange options USD: JSON inválido. Revisa la sintaxis.", detail = ex.Message }, statusCode: 400);
+        }
+    }
+
+    adminConfig.SetFromDto(dto);
+
+    // Persistir exchange options a archivo si existe la ruta
+    var baseDir = AppContext.BaseDirectory ?? env.ContentRootPath;
+    if (!string.IsNullOrWhiteSpace(dto.ExchangeOptionsEur))
+        try { await System.IO.File.WriteAllTextAsync(Path.Combine(baseDir, "exchange_options_eur.json"), dto.ExchangeOptionsEur); } catch { }
+    if (!string.IsNullOrWhiteSpace(dto.ExchangeOptionsUsd))
+        try { await System.IO.File.WriteAllTextAsync(Path.Combine(baseDir, "exchange_options_usd.json"), dto.ExchangeOptionsUsd); } catch { }
+
+    customLogger.Log.Information("[ADMIN] :: POST config: OK (config updated)");
+    return Results.Ok();
 }).AllowAnonymous();
 
 // Endpoint JSON para health checks programáticos (load balancers, monitoreo)

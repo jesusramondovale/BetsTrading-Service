@@ -8,15 +8,18 @@ public class UpdaterHostedService : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly IApplicationLogger _logger;
+    private readonly IAdminRuntimeConfig _adminConfig;
     private readonly TimeZoneInfo _nyZone;
     private int _assetsBusy = 0;
 
     public UpdaterHostedService(
         IServiceProvider serviceProvider,
-        IApplicationLogger logger)
+        IApplicationLogger logger,
+        IAdminRuntimeConfig adminConfig)
     {
         _serviceProvider = serviceProvider;
         _logger = logger;
+        _adminConfig = adminConfig;
         
         // Try to get timezone, fallback to UTC if not available
         try
@@ -39,23 +42,27 @@ public class UpdaterHostedService : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.Debug("[UpdaterHostedService] :: Service started. Waiting 30 seconds before first execution to allow API to be ready...");
-        
-        // Esperar 30 segundos antes de la primera ejecución para que la API esté lista
+
         await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
 
-        // Rellenar max odds desde BD al arranque para que la API Trends tenga datos de inmediato (sin esperar a CreateBets)
         await ExecuteRefreshMaxOdds(stoppingToken);
 
+        // Un solo bucle: en XX:15 UTC primero datos nuevos, luego negocio con ese dataset (sin desincronización)
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                var nyTime = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _nyZone);
-                var open = new TimeSpan(9, 30, 0);
-                var close = new TimeSpan(16, 0, 0);
-                var marketOpen = nyTime.DayOfWeek is >= DayOfWeek.Monday and <= DayOfWeek.Friday 
-                    && nyTime.TimeOfDay >= open 
-                    && nyTime.TimeOfDay <= close;
+                var minute = _adminConfig.UpdaterMinute ?? 15;
+                var delay = GetDelayUntilNextXXMinuteUtc(minute);
+                if (delay > TimeSpan.Zero)
+                {
+                    _logger.Debug("[UpdaterHostedService] :: Next run at XX:{1:D2} UTC in {0:F0}s", delay.TotalSeconds, minute);
+                    await Task.Delay(delay, stoppingToken);
+                }
+
+                if (stoppingToken.IsCancellationRequested) break;
+
+                var marketOpen = IsMarketOpen();
 
                 await ExecuteUpdateAssets(marketOpen, stoppingToken);
                 await ExecuteCheckBets(marketOpen, stoppingToken);
@@ -63,12 +70,30 @@ public class UpdaterHostedService : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.Error(ex, "[UpdaterHostedService] :: Error in background loop");
+                _logger.Error(ex, "[UpdaterHostedService] :: Error in updater loop");
             }
-
-            // Wait 1 hour before next iteration
-            await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
         }
+    }
+
+    /// <summary>Espera hasta la próxima XX:MM UTC y devuelve el TimeSpan a esperar.</summary>
+    private static TimeSpan GetDelayUntilNextXXMinuteUtc(int minute)
+    {
+        var now = DateTime.UtcNow;
+        var m = Math.Clamp(minute, 0, 59);
+        var currentHourXX = new DateTime(now.Year, now.Month, now.Day, now.Hour, m, 0, DateTimeKind.Utc);
+        var next = now <= currentHourXX ? currentHourXX : currentHourXX.AddHours(1);
+        var delay = next - now;
+        return delay.TotalMilliseconds > 0 ? delay : TimeSpan.Zero;
+    }
+
+    private bool IsMarketOpen()
+    {
+        var nyTime = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _nyZone);
+        var open = new TimeSpan(9, 30, 0);
+        var close = new TimeSpan(16, 0, 0);
+        return nyTime.DayOfWeek is >= DayOfWeek.Monday and <= DayOfWeek.Friday
+            && nyTime.TimeOfDay >= open
+            && nyTime.TimeOfDay <= close;
     }
 
     private async Task ExecuteRefreshMaxOdds(CancellationToken cancellationToken)

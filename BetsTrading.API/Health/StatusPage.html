@@ -82,6 +82,7 @@
             flex-wrap: wrap;
             justify-content: center;
             gap: 2rem;
+            margin-top: 1.5rem;
         }
         .clock-box {
             display: flex;
@@ -94,6 +95,8 @@
             font-weight: 600;
             color: #a5f3fc;
             letter-spacing: 0.05em;
+            margin-top: 1rem;
+            margin-bottom: 0.75rem;
         }
         .clock {
             width: 100px;
@@ -140,17 +143,23 @@
             font-size: 0.7rem;
             font-variant-numeric: tabular-nums;
             color: rgba(165, 243, 252, 0.8);
+            margin-top: 0.75rem;
         }
     </style>
 </head>
 <body>
     <div class="grid-bg"></div>
+    <div id="status-view">
     <div class="card">
         <div class="logo-wrap">
             <img src="/logo" alt="BetsTrading Logo">
         </div>
         <h1>BetTrader service</h1>
-        <p class="ok">API Status: <span class="running">Running</span></p>
+        <p class="ok"><span id="api-tap-target" style="cursor:pointer; user-select:none;">API</span> Status: <span class="running">Running</span></p>
+        <div id="admin-secret-wrap" style="display:none; margin-top:0.5rem;">
+            <input type="password" id="admin-secret-input" placeholder="Secret ?" autocomplete="off"
+                style="width:100%; max-width:200px; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; font-size:0.9rem;">
+        </div>
     </div>
     <div class="clocks-row">
         <div class="clock-box">
@@ -181,8 +190,258 @@
             <span class="digital" id="d-mad">--:--:--</span>
         </div>
     </div>
+    </div>
+
+    <div id="admin-panel" style="display:none; position:relative; z-index:10; width:100%; max-width:720px; flex-shrink:0;">
+        <div class="card" style="text-align:left; padding:1.5rem;">
+            <h2 style="margin-bottom:1rem;">Configuración del servidor (tiempo real)</h2>
+            <p id="admin-status" style="font-size:0.85rem; color:#94a3b8; margin-bottom:1rem;">Los cambios se aplican de inmediato. Exchange options se guardan también en archivo.</p>
+            <form id="admin-form">
+                <fieldset style="margin-bottom:1.25rem; border:1px solid rgba(34,211,238,0.25); border-radius:12px; padding:1rem;">
+                    <legend style="color:#22d3ee;">Updater (carga de assets)</legend>
+                    <label>Minuto UTC (XX:MM) para ejecutar actualización</label>
+                    <input type="number" id="updaterMinute" name="updaterMinute" min="0" max="59" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:80px;">
+                </fieldset>
+                <fieldset style="margin-bottom:1.25rem; border:1px solid rgba(34,211,238,0.25); border-radius:12px; padding:1rem;">
+                    <legend style="color:#22d3ee;">Odds Adjuster</legend>
+                    <label>Intervalo entre refrescos (segundos)</label>
+                    <input type="number" id="oddsAdjusterRefreshTimeSeconds" name="oddsAdjusterRefreshTimeSeconds" min="1" max="120" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:80px;">
+                </fieldset>
+                <fieldset style="margin-bottom:1.25rem; border:1px solid rgba(34,211,238,0.25); border-radius:12px; padding:1rem;">
+                    <legend style="color:#22d3ee;">Recompensas diarias</legend>
+                    <label>Monedas por día (6 valores separados por coma)</label>
+                    <input type="text" id="dailyRewardCoinsByDay" name="dailyRewardCoinsByDay" placeholder="5,10,15,25,40,50" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:100%;">
+                    <label style="margin-top:0.5rem;">Ventana para reclamar (horas)</label>
+                    <input type="number" id="dailyRewardWindowToClaimHours" name="dailyRewardWindowToClaimHours" min="1" step="0.5" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:80px;">
+                    <label style="margin-top:0.5rem;">Horas sin reclamar para perder racha</label>
+                    <input type="number" id="dailyRewardWindowUntilStreakLostHours" name="dailyRewardWindowUntilStreakLostHours" min="24" step="1" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:80px;">
+                </fieldset>
+                <fieldset style="margin-bottom:1.25rem; border:1px solid rgba(34,211,238,0.25); border-radius:12px; padding:1rem;">
+                    <legend style="color:#22d3ee;">Exchange options EUR (JSON)</legend>
+                    <textarea id="exchangeOptionsEur" name="exchangeOptionsEur" rows="8" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:100%; font-family:monospace; font-size:0.8rem;"></textarea>
+                </fieldset>
+                <fieldset style="margin-bottom:1.25rem; border:1px solid rgba(34,211,238,0.25); border-radius:12px; padding:1rem;">
+                    <legend style="color:#22d3ee;">Exchange options USD (JSON)</legend>
+                    <textarea id="exchangeOptionsUsd" name="exchangeOptionsUsd" rows="8" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:100%; font-family:monospace; font-size:0.8rem;"></textarea>
+                </fieldset>
+                <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
+                    <button type="submit" style="padding:0.6rem 1.2rem; background:#22d3ee; color:#0f0f23; border:none; border-radius:8px; font-weight:600; cursor:pointer;">Guardar configuración</button>
+                    <button type="button" id="admin-close" style="padding:0.6rem 1.2rem; background:rgba(255,255,255,0.1); color:#e8e8ed; border:1px solid rgba(34,211,238,0.3); border-radius:8px; cursor:pointer;">Regresar a la vista original</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script>
         const serverTimeIso = "__SERVER_TIME_ISO__";
+        const ADMIN_SECRET_HASH = "__ADMIN_SECRET_HASH__";
+
+        (function adminShortcut() {
+            if (!ADMIN_SECRET_HASH) return;
+            let keyBuffer = [];
+            const maxLen = 64;
+            async function sha256Hex(str) {
+                const enc = new TextEncoder().encode(str);
+                const hash = await crypto.subtle.digest('SHA-256', enc);
+                return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2,'0')).join('');
+            }
+            document.addEventListener('keydown', async function(e) {
+                if (e.ctrlKey || e.metaKey || e.altKey) return;
+                if (e.key && e.key.length === 1) {
+                    keyBuffer.push(e.key);
+                    if (keyBuffer.length > maxLen) keyBuffer.shift();
+                    const typed = keyBuffer.join('');
+                    const hash = await sha256Hex(typed);
+                    if (hash === ADMIN_SECRET_HASH) {
+                        const secret = typed;
+                        try {
+                            console.log('[ADMIN] Hash match, calling unlock...');
+                            const r = await fetch('/status/admin/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ secret }) });
+                            const data = await r.json().catch(() => ({}));
+                            console.log('[ADMIN] Unlock response:', r.status, data);
+                            if (r.ok && data.token) {
+                                sessionStorage.setItem('status_admin_token', data.token);
+                                document.getElementById('status-view').style.display = 'none';
+                                document.getElementById('admin-panel').style.display = 'block';
+                                keyBuffer = [];
+                                setAdminStatus('');
+                                console.log('[ADMIN] Panel shown, loading config...');
+                                loadAdminConfig();
+                            } else {
+                                console.warn('[ADMIN] Unlock failed:', r.status, data);
+                            }
+                        } catch (err) {
+                            console.error('[ADMIN] Unlock error:', err);
+                        }
+                    }
+                }
+            });
+        })();
+
+        (function adminSecretMobile() {
+            if (!ADMIN_SECRET_HASH) return;
+            const wrap = document.getElementById('admin-secret-wrap');
+            const input = document.getElementById('admin-secret-input');
+            const target = document.getElementById('api-tap-target');
+            if (!wrap || !input || !target) return;
+
+            async function sha256Hex(str) {
+                const enc = new TextEncoder().encode(str);
+                const hash = await crypto.subtle.digest('SHA-256', enc);
+                return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2,'0')).join('');
+            }
+
+            function showAndFocus() {
+                wrap.style.display = 'block';
+                input.value = '';
+                input.focus();
+            }
+
+            function hide() {
+                wrap.style.display = 'none';
+                input.value = '';
+            }
+
+            let lastTap = 0;
+            target.addEventListener('click', function() {
+                const now = Date.now();
+                if (now - lastTap < 400) {
+                    lastTap = 0;
+                    showAndFocus();
+                } else {
+                    lastTap = now;
+                }
+            });
+            target.addEventListener('dblclick', function(e) {
+                e.preventDefault();
+                showAndFocus();
+            });
+
+            input.addEventListener('input', async function() {
+                const typed = input.value;
+                if (!typed) return;
+                const hash = await sha256Hex(typed);
+                if (hash === ADMIN_SECRET_HASH) {
+                    try {
+                        const r = await fetch('/status/admin/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ secret: typed }) });
+                        const data = await r.json().catch(() => ({}));
+                        if (r.ok && data.token) {
+                            sessionStorage.setItem('status_admin_token', data.token);
+                            hide();
+                            document.getElementById('status-view').style.display = 'none';
+                            document.getElementById('admin-panel').style.display = 'block';
+                            setAdminStatus('');
+                            loadAdminConfig();
+                        }
+                    } catch (err) {}
+                }
+            });
+            input.addEventListener('blur', function() {
+                if (!input.value) wrap.style.display = 'none';
+            });
+        })();
+
+        let adminToken = () => sessionStorage.getItem('status_admin_token');
+        function setAdminStatus(msg) {
+            const el = document.getElementById('admin-status');
+            if (el) el.textContent = msg || 'Los cambios se aplican de inmediato. Exchange options se guardan también en archivo.';
+        }
+        async function loadAdminConfig() {
+            const token = adminToken();
+            if (!token) {
+                console.log('[ADMIN] loadAdminConfig: no token');
+                return;
+            }
+            try {
+                setAdminStatus('Cargando configuración...');
+                console.log('[ADMIN] GET config...');
+                const r = await fetch('/status/admin/config', { headers: { 'Authorization': 'Bearer ' + token } });
+                console.log('[ADMIN] GET config response:', r.status);
+                if (!r.ok) {
+                    if (r.status === 401) {
+                        sessionStorage.removeItem('status_admin_token');
+                        setAdminStatus('Sesión expirada. Escribe de nuevo la clave secreta para recargar la configuración.');
+                        console.warn('[ADMIN] GET config: 401 Unauthorized (token invalid or expired)');
+                    } else {
+                        setAdminStatus('Error al cargar: ' + r.status);
+                    }
+                    return;
+                }
+                const d = await r.json();
+                document.getElementById('updaterMinute').value = d.updaterMinute ?? 15;
+                document.getElementById('oddsAdjusterRefreshTimeSeconds').value = d.oddsAdjusterRefreshTimeSeconds ?? 4;
+                document.getElementById('dailyRewardCoinsByDay').value = (d.dailyRewardCoinsByDay && d.dailyRewardCoinsByDay.length) ? d.dailyRewardCoinsByDay.join(',') : '5,10,15,25,40,50';
+                document.getElementById('dailyRewardWindowToClaimHours').value = d.dailyRewardWindowToClaimHours ?? 24;
+                document.getElementById('dailyRewardWindowUntilStreakLostHours').value = d.dailyRewardWindowUntilStreakLostHours ?? 48;
+                document.getElementById('exchangeOptionsEur').value = typeof d.exchangeOptionsEur === 'string' ? d.exchangeOptionsEur : JSON.stringify(d.exchangeOptionsEur || [], null, 2);
+                document.getElementById('exchangeOptionsUsd').value = typeof d.exchangeOptionsUsd === 'string' ? d.exchangeOptionsUsd : JSON.stringify(d.exchangeOptionsUsd || [], null, 2);
+                setAdminStatus('');
+                console.log('[ADMIN] Config loaded OK');
+            } catch (e) {
+                console.error('[ADMIN] loadAdminConfig error:', e);
+                setAdminStatus('Error de red al cargar. Comprueba la consola.');
+            }
+        }
+        document.getElementById('admin-form')?.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const token = adminToken();
+            if (!token) {
+                console.warn('[ADMIN] Submit: no token');
+                setAdminStatus('Sesión expirada. Escribe la clave de nuevo.');
+                return;
+            }
+            const payload = {
+                updaterMinute: parseInt(document.getElementById('updaterMinute').value, 10) || 15,
+                oddsAdjusterRefreshTimeSeconds: parseInt(document.getElementById('oddsAdjusterRefreshTimeSeconds').value, 10) || 4,
+                dailyRewardCoinsByDay: (document.getElementById('dailyRewardCoinsByDay').value || '5,10,15,25,40,50').split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n)),
+                dailyRewardWindowToClaimHours: parseFloat(document.getElementById('dailyRewardWindowToClaimHours').value) || 24,
+                dailyRewardWindowUntilStreakLostHours: parseFloat(document.getElementById('dailyRewardWindowUntilStreakLostHours').value) || 48,
+                exchangeOptionsEur: document.getElementById('exchangeOptionsEur').value.trim() || '[]',
+                exchangeOptionsUsd: document.getElementById('exchangeOptionsUsd').value.trim() || '[]'
+            };
+            if (payload.dailyRewardCoinsByDay.length === 0) payload.dailyRewardCoinsByDay = [5,10,15,25,40,50];
+            try {
+                console.log('[ADMIN] POST config...');
+                const r = await fetch('/status/admin/config', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify(payload) });
+                console.log('[ADMIN] POST config response:', r.status);
+                if (r.status === 401) {
+                    sessionStorage.removeItem('status_admin_token');
+                    setAdminStatus('Sesión expirada. Escribe la clave de nuevo para guardar.');
+                    return;
+                }
+                if (r.ok) {
+                    setAdminStatus('Configuración guardada.');
+                } else {
+                    const errBody = await r.json().catch(() => ({}));
+                    const msg = errBody.error || errBody.message || ('Error al guardar: ' + r.status);
+                    setAdminStatus(msg + (errBody.detail ? ' (' + errBody.detail + ')' : ''));
+                }
+            } catch (err) {
+                console.error('[ADMIN] POST config error:', err);
+                setAdminStatus('Error de red al guardar.');
+            }
+        });
+        document.getElementById('admin-close')?.addEventListener('click', function() {
+            document.getElementById('admin-panel').style.display = 'none';
+            document.getElementById('status-view').style.display = '';
+        });
+
+        if (adminToken()) {
+            console.log('[ADMIN] Page load: token present, checking...');
+            fetch('/status/admin/config', { headers: { 'Authorization': 'Bearer ' + adminToken() } })
+                .then(r => {
+                    console.log('[ADMIN] Page load GET config:', r.status);
+                    if (r.ok) {
+                        document.getElementById('status-view').style.display = 'none';
+                        document.getElementById('admin-panel').style.display = 'block';
+                        loadAdminConfig();
+                    } else if (r.status === 401) {
+                        sessionStorage.removeItem('status_admin_token');
+                    }
+                })
+                .catch(e => console.error('[ADMIN] Page load GET config error:', e));
+        }
+
         const zones = [
             { id: 'ny', tz: 'America/New_York' },
             { id: 'utc', tz: 'UTC' },
