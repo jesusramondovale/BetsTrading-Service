@@ -30,7 +30,7 @@ public class GetTopUsersByCountryQueryHandler : IRequestHandler<GetTopUsersByCou
         var userDtos = users.Select(u => new UserRankingDto
         {
             Id = u.Id,
-            Fullname = u.Fullname,
+            Fullname = u.IsPrivate ? u.Username : u.Fullname,
             Username = u.Username,
             Points = u.Points,
             ProfilePic = u.ProfilePic,
