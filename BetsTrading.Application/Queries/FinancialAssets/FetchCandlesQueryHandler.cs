@@ -16,6 +16,9 @@ public class FetchCandlesQueryHandler : IRequestHandler<FetchCandlesQuery, Fetch
     /// <summary>Límite alto de velas para alinear con legacy FetchCandles (sin límite). ~5.7 años de 1h.</summary>
     private const int MaxCandles = 50_000;
 
+    /// <summary>Normaliza a UTC para que la API devuelva siempre +00 (Npgsql con LegacyTimestampBehavior puede devolver Local).</summary>
+    private static DateTime ToUtc(DateTime d) => d.Kind == DateTimeKind.Utc ? d : d.ToUniversalTime();
+
     public async Task<FetchCandlesResult> Handle(FetchCandlesQuery request, CancellationToken cancellationToken)
     {
         try
@@ -51,7 +54,7 @@ public class FetchCandlesQueryHandler : IRequestHandler<FetchCandlesQuery, Fetch
                 var candles = await _unitOfWork.AssetCandles.GetCandlesByAssetAsync(asset.Id, "1h", MaxCandles, cancellationToken);
                 rawDtos = candles.Select(c => new CandleDto
                 {
-                    DateTime = c.DateTime,
+                    DateTime = ToUtc(c.DateTime),
                     Open = c.Open,
                     High = c.High,
                     Low = c.Low,
@@ -63,7 +66,7 @@ public class FetchCandlesQueryHandler : IRequestHandler<FetchCandlesQuery, Fetch
                 var candles = await _unitOfWork.AssetCandlesUSD.GetCandlesByAssetAsync(asset.Id, "1h", MaxCandles, cancellationToken);
                 rawDtos = candles.Select(c => new CandleDto
                 {
-                    DateTime = c.DateTime,
+                    DateTime = ToUtc(c.DateTime),
                     Open = c.Open,
                     High = c.High,
                     Low = c.Low,
