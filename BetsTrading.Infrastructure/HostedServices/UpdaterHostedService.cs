@@ -62,11 +62,16 @@ public class UpdaterHostedService : BackgroundService
 
                 if (stoppingToken.IsCancellationRequested) break;
 
+                var runStartedAtUtc = DateTime.UtcNow;
                 var marketOpen = IsMarketOpen();
 
                 await ExecuteUpdateAssets(marketOpen, stoppingToken);
                 await ExecuteCheckBets(marketOpen, stoppingToken);
                 await ExecuteCreateBets(marketOpen, stoppingToken);
+
+                var elapsed = DateTime.UtcNow - runStartedAtUtc;
+                if (elapsed.TotalMinutes > 50)
+                    _logger.Warning("[UpdaterHostedService] :: Cycle took {0:F0}s — if this often exceeds 1h, hourly runs can be skipped", elapsed.TotalSeconds);
             }
             catch (Exception ex)
             {

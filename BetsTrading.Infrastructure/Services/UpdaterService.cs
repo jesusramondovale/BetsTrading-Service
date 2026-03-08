@@ -71,11 +71,12 @@ public class UpdaterService : IUpdaterService
         var httpClient = _httpClientFactory.CreateClient("TwelveData");
 
         const string interval = "1h";
-        const string outputsize = "1000";
+        const int latestCandlesCount = 10;
         const string desiredQuote = "EUR";
 
         int keyIndex = 0;
         int callsWithThisKey = 0;
+        int totalCandlesSaved = 0;
 
         string CurrentKey() => TWELVE_DATA_KEYS[keyIndex] ?? string.Empty;
 
@@ -111,27 +112,11 @@ public class UpdaterService : IUpdaterService
                 continue;
             }
 
-            // Obtener la última fecha de candles
-            var lastDate = await _unitOfWork.AssetCandles
-                .GetLatestDateTimeAsync(asset.Id, interval, cancellationToken) ?? DateTime.MinValue;
-
-            // Construir URL
+            // Siempre pedir las últimas N velas; la BD evita duplicados con BulkInsertOrUpdate (clave AssetId, Exchange, Interval, DateTime)
             string baseUrl = asset.Group.Equals("Cryptos", StringComparison.OrdinalIgnoreCase)
                 ? $"https://api.twelvedata.com/time_series?symbol={symbol}/{desiredQuote}&interval={interval}&timezone=UTC&apikey={CurrentKey()}"
                 : $"https://api.twelvedata.com/time_series?symbol={symbol}&interval={interval}&timezone=UTC&apikey={CurrentKey()}";
-
-            string url;
-            if (lastDate != DateTime.MinValue)
-            {
-                string startDateParam = lastDate.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture);
-                url = $"{baseUrl}&start_date={startDateParam}";
-                _logger.Debug("[UpdaterService] :: Using start_date={0} for {1}", startDateParam, symbol);
-            }
-            else
-            {
-                url = $"{baseUrl}&outputsize={outputsize}";
-                _logger.Debug("[UpdaterService] :: No previous candles found for {0}, using outputsize={1}", symbol, outputsize);
-            }
+            string url = $"{baseUrl}&outputsize={latestCandlesCount}";
 
             // Llamar a la API
             HttpResponseMessage resp;
@@ -194,7 +179,7 @@ public class UpdaterService : IUpdaterService
             var exchange = parsed.Meta?.Exchange ?? "Unknown";
             var newCandles = new List<AssetCandle>();
 
-            // Procesar candles
+            // Procesar candles (BulkInsertOrUpdate evita duplicados por AssetId, Exchange, Interval, DateTime)
             foreach (var v in parsed.Values)
             {
                 try
@@ -202,9 +187,6 @@ public class UpdaterService : IUpdaterService
                     // Twelve Data devuelve datetimes en UTC (timezone=UTC en la request); interpretar como UTC, no como hora local
                     var dtRaw = DateTime.Parse(v.Datetime!, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
                     var dt = new DateTime(dtRaw.Year, dtRaw.Month, dtRaw.Day, dtRaw.Hour, 0, 0, DateTimeKind.Utc);
-
-                    if (dt <= lastDate)
-                        continue;
 
                     newCandles.Add(new AssetCandle
                     {
@@ -282,6 +264,7 @@ public class UpdaterService : IUpdaterService
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
                 await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
+                totalCandlesSaved += newCandles.Count;
                 _logger.Debug("[UpdaterService] :: Saved {0} new candles for {1}", newCandles.Count, symbol);
             }
             catch (Exception ex)
@@ -291,6 +274,8 @@ public class UpdaterService : IUpdaterService
             }
         }
 
+        _logger.Information("[UpdaterService] :: UpdateAssets completed: {0} candles saved for {1} assets", 
+            totalCandlesSaved, selectedAssets.Count);
         _logger.Debug("[UpdaterService] :: UpdateAssetsAsync completed successfully ({0})", 
             marketHours ? "Mode market hours" : "Continuous mode");
     }

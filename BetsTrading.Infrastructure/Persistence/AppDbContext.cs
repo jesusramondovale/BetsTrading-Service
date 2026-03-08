@@ -213,7 +213,7 @@ public class AppDbContext : DbContext
             entity.Property(e => e.AssetId).HasColumnName("AssetId");
             entity.Property(e => e.Exchange).HasColumnName("exchange");
             entity.Property(e => e.Interval).HasColumnName("interval");
-            entity.Property(e => e.DateTime).HasColumnName("datetime").HasColumnType("timestamp without time zone");
+            entity.Property(e => e.DateTime).HasColumnName("datetime").HasColumnType("timestamp with time zone");
             entity.Property(e => e.Open).HasColumnName("open");
             entity.Property(e => e.High).HasColumnName("high");
             entity.Property(e => e.Low).HasColumnName("low");
@@ -228,7 +228,7 @@ public class AppDbContext : DbContext
             entity.Property(e => e.AssetId).HasColumnName("AssetId");
             entity.Property(e => e.Exchange).HasColumnName("exchange");
             entity.Property(e => e.Interval).HasColumnName("interval");
-            entity.Property(e => e.DateTime).HasColumnName("datetime").HasColumnType("timestamp without time zone");
+            entity.Property(e => e.DateTime).HasColumnName("datetime").HasColumnType("timestamp with time zone");
             entity.Property(e => e.Open).HasColumnName("open");
             entity.Property(e => e.High).HasColumnName("high");
             entity.Property(e => e.Low).HasColumnName("low");
