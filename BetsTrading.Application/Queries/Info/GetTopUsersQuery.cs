@@ -6,7 +6,7 @@ namespace BetsTrading.Application.Queries.Info;
 public class GetTopUsersQuery : IRequest<GetTopUsersResult>
 {
     public string UserId { get; set; } = string.Empty;
-    public int Limit { get; set; } = 50;
+    public int Limit { get; set; } = 10;
 }
 
 public class GetTopUsersResult

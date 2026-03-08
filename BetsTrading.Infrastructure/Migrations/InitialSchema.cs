@@ -24,7 +24,6 @@ namespace BetsTrading.Infrastructure.Migrations
                     birthday date,
                     signin_date date NOT NULL,
                     last_session timestamp without time zone,
-                    credit_card text COLLATE pg_catalog.""default"",
                     username text COLLATE pg_catalog.""default"" NOT NULL,
                     token_expiration timestamp without time zone,
                     is_active boolean DEFAULT true,
@@ -37,6 +36,7 @@ namespace BetsTrading.Infrastructure.Migrations
                     pending_balance numeric,
                     is_verified boolean NOT NULL,
                     didit_session_id text COLLATE pg_catalog.""default"",
+                    ""private"" boolean NOT NULL DEFAULT false,
                     CONSTRAINT ""Users_pkey"" PRIMARY KEY (id),
                     CONSTRAINT ""Users_email_key"" UNIQUE (email),
                     CONSTRAINT ""Users_username_key"" UNIQUE (username)

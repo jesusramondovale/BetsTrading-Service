@@ -93,8 +93,7 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, RegisterR
                 birthday: request.Birthday ?? DateTime.UtcNow,
                 username: request.Username,
                 profilePic: request.ProfilePic,
-                points: 0.0,
-                creditCard: request.CreditCard ?? "nullCreditCard"
+                points: 0.0
             );
 
             newUser.IsActive = true;

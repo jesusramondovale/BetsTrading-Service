@@ -13,7 +13,6 @@ public class RegisterCommand : IRequest<RegisterResult>
     public string Email { get; set; } = string.Empty;
     public string? EmailCode { get; set; }
     public DateTime? Birthday { get; set; }
-    public string? CreditCard { get; set; }
     public string Username { get; set; } = string.Empty;
     public string? ProfilePic { get; set; }
     public bool GoogleQuickMode { get; set; } = false;

@@ -7,7 +7,7 @@ public class User
 
     public User(string id, string fcm, string fullname, string password, string country, 
                 string gender, string email, DateTime birthday, string username, 
-                string? profilePic = null, double points = 0.0, string? creditCard = null)
+                string? profilePic = null, double points = 0.0)
     {
         Id = id;
         Fcm = fcm;
@@ -20,7 +20,6 @@ public class User
         Username = username;
         ProfilePic = profilePic;
         Points = points;
-        CreditCard = creditCard ?? "nullCreditCard";
         SigninDate = DateTime.UtcNow;
         LastSession = DateTime.UtcNow;
         TokenExpiration = DateTime.UtcNow.AddDays(15); // SESSION_EXP_DAYS
@@ -28,6 +27,7 @@ public class User
         IsActive = true;
         FailedAttempts = 0;
         PendingBalance = 0.0;
+        IsPrivate = false;
     }
 
     public string Id { get; private set; } = string.Empty;
@@ -50,7 +50,7 @@ public class User
     public string? ProfilePic { get; set; }
     public double Points { get; private set; }
     public double PendingBalance { get; set; }
-    public string CreditCard { get; private set; } = string.Empty;
+    public bool IsPrivate { get; set; }
 
     // Métodos de dominio
     public void DeductPoints(double amount)

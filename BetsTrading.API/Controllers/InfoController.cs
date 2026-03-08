@@ -1013,4 +1013,47 @@ public class InfoController : ControllerBase
             return StatusCode(500, new { Message = "Server error", Error = ex.Message });
         }
     }
+
+    [HttpPost("SetUserPrivate")]
+    public async Task<IActionResult> SetUserPrivate([FromBody] SetUserPrivateCommand command, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var tokenUserId = User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? User.FindFirstValue("app_sub")
+                ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+            if (string.IsNullOrEmpty(tokenUserId))
+            {
+                return Unauthorized(new { Message = "Invalid token" });
+            }
+
+            var commandUserId = command.GetUserId();
+            if (!string.IsNullOrEmpty(commandUserId) &&
+                !string.Equals(commandUserId, tokenUserId, StringComparison.Ordinal) &&
+                !User.IsInRole("admin"))
+            {
+                return Forbid();
+            }
+
+            command.UserId = tokenUserId;
+
+            var result = await _mediator.Send(command, cancellationToken);
+
+            if (!result.Success)
+            {
+                if (result.Message.Contains("No active session"))
+                {
+                    return BadRequest(new { Message = result.Message });
+                }
+                return NotFound(new { Message = result.Message });
+            }
+
+            return Ok(new { Message = result.Message });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+        }
+    }
 }
