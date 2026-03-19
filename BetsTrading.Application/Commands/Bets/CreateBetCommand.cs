@@ -6,6 +6,9 @@ public class CreateBetCommand : IRequest<CreateBetResult>
 {
     public string UserId { get; set; } = string.Empty;
     public string Fcm { get; set; } = string.Empty;
+    public string Password { get; set; } = string.Empty;
+    public bool StepUpValidated { get; set; }
+    public bool RequireStrongAuth { get; set; }
     public string Ticker { get; set; } = string.Empty;
     public double BetAmount { get; set; }
     public double OriginValue { get; set; }

@@ -3,6 +3,7 @@ using BetsTrading.Domain.Entities;
 using BetsTrading.Domain.Interfaces;
 using BetsTrading.Domain.Exceptions;
 using BetsTrading.Application.Services;
+using BCrypt.Net;
 
 namespace BetsTrading.Application.Commands.Bets;
 
@@ -27,6 +28,14 @@ public class CreatePriceBetCommandHandler : IRequestHandler<CreatePriceBetComman
 
         // Calcular costo de la apuesta
         int betCost = PriceBetCostService.GetBetCostFromMargin(request.Margin);
+
+        if (request.RequireStrongAuth && !request.StepUpValidated)
+        {
+            if (string.IsNullOrWhiteSpace(request.Password) || !BCrypt.Net.BCrypt.Verify(request.Password, user.Password))
+            {
+                throw new InvalidOperationException("Incorrect password");
+            }
+        }
 
         // Validar que el usuario tiene suficientes puntos
         if (user.Points < betCost)

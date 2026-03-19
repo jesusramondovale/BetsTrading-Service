@@ -7,6 +7,8 @@ public class ChangePasswordCommand : IRequest<ChangePasswordResult>
     public string UserId { get; set; } = string.Empty;
     public string CurrentPassword { get; set; } = string.Empty;
     public string NewPassword { get; set; } = string.Empty;
+    public bool StepUpValidated { get; set; }
+    public string StepUpToken { get; set; } = string.Empty;
 }
 
 public class ChangePasswordResult

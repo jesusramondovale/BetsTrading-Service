@@ -4,6 +4,7 @@ using BetsTrading.Domain.Entities;
 using BetsTrading.Domain.Interfaces;
 using BetsTrading.Domain.Exceptions;
 using BetsTrading.Application.Interfaces;
+using BCrypt.Net;
 
 namespace BetsTrading.Application.Commands.Bets;
 
@@ -27,6 +28,14 @@ public class CreateBetCommandHandler : IRequestHandler<CreateBetCommand, CreateB
 
         if (user.Fcm != request.Fcm)
             throw new InvalidOperationException("Invalid session");
+
+        if (request.RequireStrongAuth && !request.StepUpValidated)
+        {
+            if (string.IsNullOrWhiteSpace(request.Password) || !BCrypt.Net.BCrypt.Verify(request.Password, user.Password))
+            {
+                throw new InvalidOperationException("Incorrect password");
+            }
+        }
 
         // Validar que el usuario tiene suficientes puntos
         if (user.Points < request.BetAmount)

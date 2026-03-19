@@ -8,6 +8,7 @@ using BetsTrading.Application.Queries.FinancialAssets;
 using BetsTrading.Domain.Exceptions;
 using System.Security.Claims;
 using System.IdentityModel.Tokens.Jwt;
+using BetsTrading.API.Security;
 
 namespace BetsTrading.API.Controllers;
 
@@ -17,11 +18,13 @@ public class BetController : ControllerBase
 {
     private readonly IMediator _mediator;
     private readonly ILogger<BetController> _logger;
+    private readonly IStepUpTokenService _stepUpTokenService;
 
-    public BetController(IMediator mediator, ILogger<BetController> logger)
+    public BetController(IMediator mediator, ILogger<BetController> logger, IStepUpTokenService stepUpTokenService)
     {
         _mediator = mediator;
         _logger = logger;
+        _stepUpTokenService = stepUpTokenService;
     }
 
     [HttpPost("NewBet")]
@@ -36,12 +39,31 @@ public class BetController : ControllerBase
             {
                 UserId = request.GetUserId(),
                 Fcm = request.GetFcm(),
+                Password = request.Password ?? string.Empty,
                 Ticker = request.Ticker ?? string.Empty,
                 BetAmount = request.GetBetAmount(),
                 OriginValue = request.GetOriginValue(),
                 BetZoneId = request.GetBetZoneId(),
-                Currency = request.Currency ?? "EUR"
+                Currency = request.Currency ?? "EUR",
+                RequireStrongAuth = request.GetBetAmount() >= 1000
             };
+
+            if (command.RequireStrongAuth && !string.IsNullOrWhiteSpace(request.StepUpToken))
+            {
+                command.StepUpValidated = _stepUpTokenService.ValidateAndConsume(
+                    request.StepUpToken,
+                    command.UserId,
+                    "bet",
+                    command.BetAmount);
+                if (!command.StepUpValidated && string.IsNullOrWhiteSpace(command.Password))
+                {
+                    return BadRequest(new { Message = "Strong authentication required" });
+                }
+            }
+            else if (command.RequireStrongAuth && string.IsNullOrWhiteSpace(command.Password))
+            {
+                return BadRequest(new { Message = "Strong authentication required" });
+            }
 
             var result = await _mediator.Send(command);
             _logger.LogInformation("[BetController] :: NewBet :: Bet created successfully. BetId: {betId}, RemainingPoints: {points}", 
@@ -399,12 +421,32 @@ public class BetController : ControllerBase
         {
             UserId = request.GetUserId(),
             Fcm = request.GetFcm(),
+            Password = request.Password ?? string.Empty,
             Ticker = request.Ticker ?? string.Empty,
             PriceBet = request.GetPriceBet(),
             Margin = request.Margin,
             EndDate = request.GetEndDate(),
-            Currency = request.Currency ?? "EUR"
+            Currency = request.Currency ?? "EUR",
+            RequireStrongAuth = BetsTrading.Application.Services.PriceBetCostService.GetBetCostFromMargin(request.Margin) >= 1000
         };
+
+        var cost = BetsTrading.Application.Services.PriceBetCostService.GetBetCostFromMargin(request.Margin);
+        if (command.RequireStrongAuth && !string.IsNullOrWhiteSpace(request.StepUpToken))
+        {
+            command.StepUpValidated = _stepUpTokenService.ValidateAndConsume(
+                request.StepUpToken,
+                command.UserId,
+                "bet",
+                cost);
+            if (!command.StepUpValidated && string.IsNullOrWhiteSpace(command.Password))
+            {
+                return BadRequest(new { Message = "Strong authentication required" });
+            }
+        }
+        else if (command.RequireStrongAuth && string.IsNullOrWhiteSpace(command.Password))
+        {
+            return BadRequest(new { Message = "Strong authentication required" });
+        }
 
         var result = await _mediator.Send(command);
         return Ok(new { });
@@ -453,6 +495,8 @@ public class CreateBetRequest
 {
     public string? UserId { get; set; }
     public string? Fcm { get; set; }
+    public string? Password { get; set; }
+    public string? StepUpToken { get; set; }
     public string? Ticker { get; set; }
     public double BetAmount { get; set; }
     public double OriginValue { get; set; }
@@ -505,6 +549,8 @@ public class CreatePriceBetRequest
 {
     public string? UserId { get; set; }
     public string? Fcm { get; set; }
+    public string? Password { get; set; }
+    public string? StepUpToken { get; set; }
     public string? Ticker { get; set; }
     public double PriceBet { get; set; }
     public double Margin { get; set; }

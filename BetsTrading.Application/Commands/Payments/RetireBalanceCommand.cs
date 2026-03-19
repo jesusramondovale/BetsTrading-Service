@@ -7,6 +7,8 @@ public class RetireBalanceCommand : IRequest<RetireBalanceResult>
     public string UserId { get; set; } = string.Empty;
     public string Fcm { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
+    public string StepUpToken { get; set; } = string.Empty;
+    public bool StepUpValidated { get; set; }
     public double CurrencyAmount { get; set; }
     public string Currency { get; set; } = "EUR";
     public double Coins { get; set; }

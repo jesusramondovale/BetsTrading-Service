@@ -6,6 +6,7 @@ using BetsTrading.Application.Queries.Auth;
 using System.Security.Claims;
 using System.IdentityModel.Tokens.Jwt;
 using System.IO;
+using BetsTrading.API.Security;
 
 namespace BetsTrading.API.Controllers;
 
@@ -14,10 +15,12 @@ namespace BetsTrading.API.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly IMediator _mediator;
+    private readonly IStepUpTokenService _stepUpTokenService;
 
-    public AuthController(IMediator mediator)
+    public AuthController(IMediator mediator, IStepUpTokenService stepUpTokenService)
     {
         _mediator = mediator;
+        _stepUpTokenService = stepUpTokenService;
     }
 
     [AllowAnonymous]
@@ -124,6 +127,17 @@ public class AuthController : ControllerBase
         }
 
         command.UserId = tokenUserId;
+        if (!string.IsNullOrWhiteSpace(command.StepUpToken))
+        {
+            command.StepUpValidated = _stepUpTokenService.ValidateAndConsume(
+                command.StepUpToken,
+                tokenUserId,
+                "change_password");
+            if (!command.StepUpValidated)
+            {
+                return BadRequest(new { success = false, message = "Invalid step-up token" });
+            }
+        }
         var result = await _mediator.Send(command, cancellationToken);
         
         if (!result.Success)
@@ -177,6 +191,29 @@ public class AuthController : ControllerBase
         }
 
         return Ok(new { Message = result.Message });
+    }
+
+    [HttpPost("StepUpToken")]
+    public IActionResult StepUpToken([FromBody] StepUpTokenRequest request)
+    {
+        var tokenUserId = User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? User.FindFirstValue("app_sub")
+            ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+        if (string.IsNullOrEmpty(tokenUserId))
+        {
+            return Unauthorized(new { Message = "Invalid token" });
+        }
+
+        var purpose = request.Purpose?.Trim().ToLowerInvariant() ?? string.Empty;
+        var allowedPurposes = new[] { "withdraw", "change_password", "bet", "new_password" };
+        if (!allowedPurposes.Contains(purpose))
+        {
+            return BadRequest(new { Message = "Invalid purpose" });
+        }
+
+        var token = _stepUpTokenService.IssueToken(tokenUserId, purpose, request.MaxAmountCoins);
+        return Ok(new { stepUpToken = token });
     }
 
     [HttpPost("GoogleLogIn")]
@@ -512,4 +549,10 @@ public class AuthController : ControllerBase
             return StatusCode(500, new { Message = "Server error", Error = ex.Message });
         }
     }
+}
+
+public class StepUpTokenRequest
+{
+    public string Purpose { get; set; } = string.Empty;
+    public double? MaxAmountCoins { get; set; }
 }

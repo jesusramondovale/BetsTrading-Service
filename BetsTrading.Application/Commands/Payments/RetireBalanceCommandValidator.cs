@@ -12,9 +12,6 @@ public class RetireBalanceCommandValidator : AbstractValidator<RetireBalanceComm
         RuleFor(x => x.Fcm)
             .NotEmpty().WithMessage("FCM token is required");
 
-        RuleFor(x => x.Password)
-            .NotEmpty().WithMessage("Password is required");
-
         RuleFor(x => x.Coins)
             .GreaterThan(0).WithMessage("Coins must be greater than zero");
 

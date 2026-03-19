@@ -57,8 +57,8 @@ public class RetireBalanceCommandHandler : IRequestHandler<RetireBalanceCommand,
                 };
             }
 
-            // Verify password
-            if (!BCrypt.Net.BCrypt.Verify(request.Password, user.Password))
+            // Verify password unless step-up token was already validated by controller
+            if (!request.StepUpValidated && !BCrypt.Net.BCrypt.Verify(request.Password, user.Password))
             {
                 if (geo == null)
                     _logger.Error(null, "[PAYMENTS] :: INCORRECT RETIRE ATTEMPT FOR USER {0} FROM IP {1}", request.UserId, request.ClientIp ?? "UNKNOWN");

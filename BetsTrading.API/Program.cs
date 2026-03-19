@@ -22,6 +22,8 @@ using Npgsql;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Hosting;
 using BetsTrading.API.Health;
+using BetsTrading.API.Security;
+using Microsoft.Extensions.Caching.Memory;
 
 try
 {
@@ -557,6 +559,11 @@ builder.Services.AddSingleton<BetsTrading.Application.Interfaces.IFirebaseNotifi
 
 // Rate Limiting
 builder.Services.AddMemoryCache();
+builder.Services.AddSingleton<IStepUpTokenService>(sp =>
+    new StepUpTokenService(
+        sp.GetRequiredService<IMemoryCache>(),
+        localIssuer,
+        jwtLocalKey));
 builder.Services.Configure<IpRateLimitOptions>(builder.Configuration.GetSection("IpRateLimiting"));
 builder.Services.AddInMemoryRateLimiting();
 builder.Services.AddSingleton<IRateLimitConfiguration, RateLimitConfiguration>();

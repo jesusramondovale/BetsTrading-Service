@@ -9,6 +9,7 @@ using Stripe;
 using BetsTrading.Domain.Interfaces;
 using BetsTrading.Domain.Entities;
 using BetsTrading.Application.Interfaces;
+using BetsTrading.API.Security;
 
 namespace BetsTrading.API.Controllers;
 
@@ -20,17 +21,20 @@ public class PaymentsController : ControllerBase
     private readonly IUnitOfWork _unitOfWork;
     private readonly IEmailService _emailService;
     private readonly IApplicationLogger _logger;
+    private readonly IStepUpTokenService _stepUpTokenService;
 
     public PaymentsController(
         IMediator mediator, 
         IUnitOfWork unitOfWork,
         IEmailService emailService,
-        IApplicationLogger logger)
+        IApplicationLogger logger,
+        IStepUpTokenService stepUpTokenService)
     {
         _mediator = mediator;
         _unitOfWork = unitOfWork;
         _emailService = emailService;
         _logger = logger;
+        _stepUpTokenService = stepUpTokenService;
         // Stripe se configura en Program.cs
     }
 
@@ -193,6 +197,18 @@ public class PaymentsController : ControllerBase
         }
 
         command.UserId = tokenUserId;
+        if (!string.IsNullOrWhiteSpace(command.StepUpToken))
+        {
+            command.StepUpValidated = _stepUpTokenService.ValidateAndConsume(
+                command.StepUpToken,
+                tokenUserId,
+                "withdraw",
+                command.Coins);
+            if (!command.StepUpValidated)
+            {
+                return BadRequest(new { Message = "Invalid step-up token" });
+            }
+        }
         command.ClientIp = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault()
             ?? HttpContext.Connection.RemoteIpAddress?.ToString();
 

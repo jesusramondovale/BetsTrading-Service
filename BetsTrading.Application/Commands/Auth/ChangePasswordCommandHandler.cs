@@ -30,8 +30,8 @@ public class ChangePasswordCommandHandler : IRequestHandler<ChangePasswordComman
             };
         }
 
-        // Verify current password
-        if (!BCrypt.Net.BCrypt.Verify(request.CurrentPassword, user.Password))
+        // Verify current password unless step-up token was already validated by controller
+        if (!request.StepUpValidated && !BCrypt.Net.BCrypt.Verify(request.CurrentPassword, user.Password))
         {
             _logger.Warning("[AUTH] :: ChangePassword :: Invalid current password for user: {0}", request.UserId);
             return new ChangePasswordResult
