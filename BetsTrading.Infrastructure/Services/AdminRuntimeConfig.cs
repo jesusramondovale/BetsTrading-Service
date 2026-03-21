@@ -15,6 +15,7 @@ public sealed class AdminRuntimeConfig : IAdminRuntimeConfig
     private double? _dailyRewardWindowUntilStreakLostHours;
     private readonly ConcurrentDictionary<string, string> _exchangeOptionsByCurrency = new();
     private int? _jwtTokenExpirationHours;
+    private int[]? _registrationDefaultFavoriteAssetIds;
 
     public int? UpdaterMinute => _updaterMinute;
     public int? OddsAdjusterRefreshTimeSeconds => _oddsAdjusterRefreshTimeSeconds;
@@ -26,6 +27,8 @@ public sealed class AdminRuntimeConfig : IAdminRuntimeConfig
     public string? ExchangeOptionsUsd => _exchangeOptionsByCurrency.TryGetValue("usd", out var v) ? v : null;
 
     public int? JwtTokenExpirationHours => _jwtTokenExpirationHours;
+
+    public int[]? RegistrationDefaultFavoriteAssetIds => _registrationDefaultFavoriteAssetIds;
 
     public string? GetExchangeOptions(string currency)
     {
@@ -42,6 +45,11 @@ public sealed class AdminRuntimeConfig : IAdminRuntimeConfig
         _dailyRewardWindowUntilStreakLostHours = dto.DailyRewardWindowUntilStreakLostHours;
         if (dto.JwtTokenExpirationHours >= 1 && dto.JwtTokenExpirationHours <= 720)
             _jwtTokenExpirationHours = dto.JwtTokenExpirationHours;
+        var favIds = dto.RegistrationDefaultFavoriteAssetIds;
+        _registrationDefaultFavoriteAssetIds = (favIds ?? new[] { 97, 87 })
+            .Where(id => id > 0)
+            .Distinct()
+            .ToArray();
         if (dto.ExchangeOptionsEur != null)
             _exchangeOptionsByCurrency["eur"] = dto.ExchangeOptionsEur;
         if (dto.ExchangeOptionsUsd != null)
@@ -60,6 +68,7 @@ public sealed class AdminRuntimeConfig : IAdminRuntimeConfig
             DailyRewardWindowToClaimHours = _dailyRewardWindowToClaimHours ?? 24,
             DailyRewardWindowUntilStreakLostHours = _dailyRewardWindowUntilStreakLostHours ?? 48,
             JwtTokenExpirationHours = _jwtTokenExpirationHours ?? 96,
+            RegistrationDefaultFavoriteAssetIds = _registrationDefaultFavoriteAssetIds ?? new[] { 97, 87 },
             ExchangeOptionsEur = ExchangeOptionsEur ?? exchangeOptionsEurFromFile ?? "[]",
             ExchangeOptionsUsd = ExchangeOptionsUsd ?? exchangeOptionsUsdFromFile ?? "[]",
         };
@@ -76,6 +85,8 @@ public class AdminConfigDto
     public double DailyRewardWindowUntilStreakLostHours { get; set; } = 48;
     /// <summary>Horas hasta expiración del JWT de la API (1–720).</summary>
     public int JwtTokenExpirationHours { get; set; } = 96;
+    /// <summary>Ids de activos para favoritos al registrar (lista dinámica; ej. 97,87 o siete ids).</summary>
+    public int[] RegistrationDefaultFavoriteAssetIds { get; set; } = { 97, 87 };
     public string ExchangeOptionsEur { get; set; } = "[]";
     public string ExchangeOptionsUsd { get; set; } = "[]";
 }

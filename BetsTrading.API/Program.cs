@@ -772,6 +772,14 @@ app.MapPost("/status/admin/config", async (HttpContext ctx, BetsTrading.Infrastr
         return Results.Json(new { error = "jwtTokenExpirationHours debe estar entre 1 y 720 (horas)." }, statusCode: 400);
     }
 
+    const int maxRegistrationFavIds = 50;
+    if (dto.RegistrationDefaultFavoriteAssetIds != null &&
+        dto.RegistrationDefaultFavoriteAssetIds.Length > maxRegistrationFavIds)
+    {
+        customLogger.Log.Warning("[ADMIN] :: POST config: demasiados registrationDefaultFavoriteAssetIds: {0}", dto.RegistrationDefaultFavoriteAssetIds.Length);
+        return Results.Json(new { error = $"registrationDefaultFavoriteAssetIds: máximo {maxRegistrationFavIds} ids." }, statusCode: 400);
+    }
+
     // Validar que el JSON de exchange options es válido antes de guardar (evitar petar StoreOptions/RetireBalance)
     var jsonOpts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
     if (!string.IsNullOrWhiteSpace(dto.ExchangeOptionsEur))

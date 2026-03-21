@@ -298,7 +298,7 @@ public class AppDbContext : DbContext
             entity.Property(e => e.Prize).HasColumnName("prize");
         });
 
-        // Configuración de Favorite
+        // Favorite → User: FK explícita para que EF inserte Users antes que Favorites (evita violar fk_user en PG).
         modelBuilder.Entity<Favorite>(entity =>
         {
             entity.ToTable("Favorites", "BetsTrading");
@@ -306,6 +306,10 @@ public class AppDbContext : DbContext
             entity.Property(e => e.Id).HasColumnName("id");
             entity.Property(e => e.UserId).HasColumnName("user_id").IsRequired();
             entity.Property(e => e.Ticker).HasColumnName("ticker").IsRequired();
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         // Configuración de Raffle

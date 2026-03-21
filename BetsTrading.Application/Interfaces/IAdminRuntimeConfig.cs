@@ -32,4 +32,11 @@ public interface IAdminRuntimeConfig
 
     /// <summary>Horas de caducidad del JWT emitido por la API (login, registro, GoogleLogIn). Null = 96 (4 días).</summary>
     int? JwtTokenExpirationHours { get; }
+
+    /// <summary>
+    /// Ids de FinancialAsset para crear favoritos en cada registro (Google o estándar).
+    /// Null = nunca guardado desde el panel (el registro usa 97 y 87).
+    /// Array vacío = no crear favoritos. Si hay elementos, se usan en orden (duplicados filtrados en servidor).
+    /// </summary>
+    int[]? RegistrationDefaultFavoriteAssetIds { get; }
 }

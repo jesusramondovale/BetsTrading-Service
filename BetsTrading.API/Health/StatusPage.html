@@ -145,6 +145,51 @@
             color: rgba(165, 243, 252, 0.8);
             margin-top: 0.75rem;
         }
+
+        /* Panel admin: dos columnas (compacto | JSON) */
+        #admin-panel {
+            width: 100%;
+            max-width: 1180px;
+            align-self: stretch;
+        }
+        #admin-panel .card {
+            text-align: left;
+            padding: 1.5rem 1.75rem;
+        }
+        .admin-form-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            gap: 1rem 1.5rem;
+            align-items: start;
+        }
+        .admin-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            min-width: 0;
+        }
+        .admin-fieldset {
+            border: 1px solid rgba(34, 211, 238, 0.25);
+            border-radius: 12px;
+            padding: 1rem;
+        }
+        .admin-fieldset label {
+            display: block;
+        }
+        .admin-form-actions {
+            grid-column: 1 / -1;
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            margin-top: 0.25rem;
+            padding-top: 1rem;
+            border-top: 1px solid rgba(34, 211, 238, 0.12);
+        }
+        @media (max-width: 880px) {
+            .admin-form-grid {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 <body>
@@ -192,46 +237,57 @@
     </div>
     </div>
 
-    <div id="admin-panel" style="display:none; position:relative; z-index:10; width:100%; max-width:720px; flex-shrink:0;">
-        <div class="card" style="text-align:left; padding:1.5rem;">
+    <div id="admin-panel" style="display:none; position:relative; z-index:10; width:100%; flex-shrink:0;">
+        <div class="card">
             <h2 style="margin-bottom:1rem;">Configuración del servidor (tiempo real)</h2>
             <p id="admin-status" style="font-size:0.85rem; color:#94a3b8; margin-bottom:1rem;">Los cambios se aplican de inmediato. Exchange options se guardan también en archivo.</p>
             <form id="admin-form">
-                <fieldset style="margin-bottom:1.25rem; border:1px solid rgba(34,211,238,0.25); border-radius:12px; padding:1rem;">
-                    <legend style="color:#22d3ee;">Updater (carga de assets)</legend>
-                    <label>Minuto UTC (XX:MM) para ejecutar actualización</label>
-                    <input type="number" id="updaterMinute" name="updaterMinute" min="0" max="59" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:80px;">
-                </fieldset>
-                <fieldset style="margin-bottom:1.25rem; border:1px solid rgba(34,211,238,0.25); border-radius:12px; padding:1rem;">
-                    <legend style="color:#22d3ee;">Odds Adjuster</legend>
-                    <label>Intervalo entre refrescos (segundos)</label>
-                    <input type="number" id="oddsAdjusterRefreshTimeSeconds" name="oddsAdjusterRefreshTimeSeconds" min="1" max="120" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:80px;">
-                </fieldset>
-                <fieldset style="margin-bottom:1.25rem; border:1px solid rgba(34,211,238,0.25); border-radius:12px; padding:1rem;">
-                    <legend style="color:#22d3ee;">Auth (JWT API)</legend>
-                    <label>Caducidad del token de sesión (horas; 96 = 4 días). Rango 1–720.</label>
-                    <input type="number" id="jwtTokenExpirationHours" name="jwtTokenExpirationHours" min="1" max="720" step="1" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:100px;">
-                </fieldset>
-                <fieldset style="margin-bottom:1.25rem; border:1px solid rgba(34,211,238,0.25); border-radius:12px; padding:1rem;">
-                    <legend style="color:#22d3ee;">Recompensas diarias</legend>
-                    <label>Monedas por día (6 valores separados por coma)</label>
-                    <input type="text" id="dailyRewardCoinsByDay" name="dailyRewardCoinsByDay" placeholder="5,10,15,25,40,50" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:100%;">
-                    <label style="margin-top:0.5rem;">Ventana para reclamar (horas)</label>
-                    <input type="number" id="dailyRewardWindowToClaimHours" name="dailyRewardWindowToClaimHours" min="1" step="0.5" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:80px;">
-                    <label style="margin-top:0.5rem;">Horas sin reclamar para perder racha</label>
-                    <input type="number" id="dailyRewardWindowUntilStreakLostHours" name="dailyRewardWindowUntilStreakLostHours" min="24" step="1" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:80px;">
-                </fieldset>
-                <fieldset style="margin-bottom:1.25rem; border:1px solid rgba(34,211,238,0.25); border-radius:12px; padding:1rem;">
-                    <legend style="color:#22d3ee;">Exchange options EUR (JSON)</legend>
-                    <textarea id="exchangeOptionsEur" name="exchangeOptionsEur" rows="8" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:100%; font-family:monospace; font-size:0.8rem;"></textarea>
-                </fieldset>
-                <fieldset style="margin-bottom:1.25rem; border:1px solid rgba(34,211,238,0.25); border-radius:12px; padding:1rem;">
-                    <legend style="color:#22d3ee;">Exchange options USD (JSON)</legend>
-                    <textarea id="exchangeOptionsUsd" name="exchangeOptionsUsd" rows="8" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:100%; font-family:monospace; font-size:0.8rem;"></textarea>
-                </fieldset>
-                <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
-                    <button type="submit" style="padding:0.6rem 1.2rem; background:#22d3ee; color:#0f0f23; border:none; border-radius:8px; font-weight:600; cursor:pointer;">Guardar configuración</button>
-                    <button type="button" id="admin-close" style="padding:0.6rem 1.2rem; background:rgba(255,255,255,0.1); color:#e8e8ed; border:1px solid rgba(34,211,238,0.3); border-radius:8px; cursor:pointer;">Regresar a la vista original</button>
+                <div class="admin-form-grid">
+                    <div class="admin-stack">
+                        <fieldset class="admin-fieldset">
+                            <legend style="color:#22d3ee;">Updater (carga de assets)</legend>
+                            <label>Minuto UTC (XX:MM) para ejecutar actualización</label>
+                            <input type="number" id="updaterMinute" name="updaterMinute" min="0" max="59" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:80px;">
+                        </fieldset>
+                        <fieldset class="admin-fieldset">
+                            <legend style="color:#22d3ee;">Odds Adjuster</legend>
+                            <label>Intervalo entre refrescos (segundos)</label>
+                            <input type="number" id="oddsAdjusterRefreshTimeSeconds" name="oddsAdjusterRefreshTimeSeconds" min="1" max="120" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:80px;">
+                        </fieldset>
+                        <fieldset class="admin-fieldset">
+                            <legend style="color:#22d3ee;">Auth (JWT API)</legend>
+                            <label>Caducidad del token de sesión (horas; 96 = 4 días). Rango 1–720.</label>
+                            <input type="number" id="jwtTokenExpirationHours" name="jwtTokenExpirationHours" min="1" max="720" step="1" value="96" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:100px;">
+                        </fieldset>
+                        <fieldset class="admin-fieldset">
+                            <legend style="color:#22d3ee;">Registro — favoritos por defecto</legend>
+                            <label>Ids numéricos de activos (FinancialAsset), separados por coma. Cada usuario nuevo recibirá un favorito por id válido. Vacío = ninguno. Por defecto 97,87 (BTC, Nvidia).</label>
+                            <input type="text" id="registrationDefaultFavoriteAssetIds" name="registrationDefaultFavoriteAssetIds" placeholder="97,87" autocomplete="off" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:100%; font-family:monospace; font-size:0.9rem;">
+                        </fieldset>
+                        <fieldset class="admin-fieldset">
+                            <legend style="color:#22d3ee;">Recompensas diarias</legend>
+                            <label>Monedas por día (6 valores separados por coma)</label>
+                            <input type="text" id="dailyRewardCoinsByDay" name="dailyRewardCoinsByDay" placeholder="5,10,15,25,40,50" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:100%;">
+                            <label style="margin-top:0.5rem;">Ventana para reclamar (horas)</label>
+                            <input type="number" id="dailyRewardWindowToClaimHours" name="dailyRewardWindowToClaimHours" min="1" step="0.5" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:80px;">
+                            <label style="margin-top:0.5rem;">Horas sin reclamar para perder racha</label>
+                            <input type="number" id="dailyRewardWindowUntilStreakLostHours" name="dailyRewardWindowUntilStreakLostHours" min="24" step="1" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:80px;">
+                        </fieldset>
+                    </div>
+                    <div class="admin-stack">
+                        <fieldset class="admin-fieldset">
+                            <legend style="color:#22d3ee;">Exchange options EUR (JSON)</legend>
+                            <textarea id="exchangeOptionsEur" name="exchangeOptionsEur" rows="10" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:100%; min-height:12rem; font-family:monospace; font-size:0.8rem; resize:vertical; box-sizing:border-box;"></textarea>
+                        </fieldset>
+                        <fieldset class="admin-fieldset">
+                            <legend style="color:#22d3ee;">Exchange options USD (JSON)</legend>
+                            <textarea id="exchangeOptionsUsd" name="exchangeOptionsUsd" rows="10" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:100%; min-height:12rem; font-family:monospace; font-size:0.8rem; resize:vertical; box-sizing:border-box;"></textarea>
+                        </fieldset>
+                    </div>
+                    <div class="admin-form-actions">
+                        <button type="submit" style="padding:0.6rem 1.2rem; background:#22d3ee; color:#0f0f23; border:none; border-radius:8px; font-weight:600; cursor:pointer;">Guardar configuración</button>
+                        <button type="button" id="admin-close" style="padding:0.6rem 1.2rem; background:rgba(255,255,255,0.1); color:#e8e8ed; border:1px solid rgba(34,211,238,0.3); border-radius:8px; cursor:pointer;">Regresar a la vista original</button>
+                    </div>
                 </div>
             </form>
         </div>
@@ -375,6 +431,10 @@
                 const d = await r.json();
                 document.getElementById('updaterMinute').value = d.updaterMinute ?? 15;
                 document.getElementById('oddsAdjusterRefreshTimeSeconds').value = d.oddsAdjusterRefreshTimeSeconds ?? 4;
+                var jwtH = d.jwtTokenExpirationHours;
+                document.getElementById('jwtTokenExpirationHours').value = (jwtH != null && jwtH !== undefined && !isNaN(jwtH)) ? jwtH : 96;
+                var regFav = d.registrationDefaultFavoriteAssetIds;
+                document.getElementById('registrationDefaultFavoriteAssetIds').value = (regFav && regFav.length) ? regFav.join(',') : '';
                 document.getElementById('dailyRewardCoinsByDay').value = (d.dailyRewardCoinsByDay && d.dailyRewardCoinsByDay.length) ? d.dailyRewardCoinsByDay.join(',') : '5,10,15,25,40,50';
                 document.getElementById('dailyRewardWindowToClaimHours').value = d.dailyRewardWindowToClaimHours ?? 24;
                 document.getElementById('dailyRewardWindowUntilStreakLostHours').value = d.dailyRewardWindowUntilStreakLostHours ?? 48;
@@ -398,10 +458,15 @@
             let jwtH = parseInt(document.getElementById('jwtTokenExpirationHours').value, 10);
             if (isNaN(jwtH) || jwtH < 1) jwtH = 96;
             if (jwtH > 720) jwtH = 720;
+            const regFavRaw = (document.getElementById('registrationDefaultFavoriteAssetIds').value || '').trim();
+            const registrationDefaultFavoriteAssetIds = regFavRaw.length === 0
+                ? []
+                : regFavRaw.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0);
             const payload = {
                 updaterMinute: parseInt(document.getElementById('updaterMinute').value, 10) || 15,
                 oddsAdjusterRefreshTimeSeconds: parseInt(document.getElementById('oddsAdjusterRefreshTimeSeconds').value, 10) || 4,
                 jwtTokenExpirationHours: jwtH,
+                registrationDefaultFavoriteAssetIds: registrationDefaultFavoriteAssetIds,
                 dailyRewardCoinsByDay: (document.getElementById('dailyRewardCoinsByDay').value || '5,10,15,25,40,50').split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n)),
                 dailyRewardWindowToClaimHours: parseFloat(document.getElementById('dailyRewardWindowToClaimHours').value) || 24,
                 dailyRewardWindowUntilStreakLostHours: parseFloat(document.getElementById('dailyRewardWindowUntilStreakLostHours').value) || 48,

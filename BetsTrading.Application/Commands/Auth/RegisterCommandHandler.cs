@@ -13,18 +13,22 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, RegisterR
     private readonly IJwtTokenService _jwtTokenService;
     private readonly IEmailService _emailService;
     private readonly IApplicationLogger _logger;
+    private readonly IAdminRuntimeConfig _adminRuntimeConfig;
     private const int SESSION_EXP_DAYS = 15;
+    private static readonly int[] FallbackRegistrationFavoriteAssetIds = { 97, 87 };
 
     public RegisterCommandHandler(
-        IUnitOfWork unitOfWork, 
+        IUnitOfWork unitOfWork,
         IJwtTokenService jwtTokenService,
         IEmailService emailService,
-        IApplicationLogger logger)
+        IApplicationLogger logger,
+        IAdminRuntimeConfig adminRuntimeConfig)
     {
         _unitOfWork = unitOfWork;
         _jwtTokenService = jwtTokenService;
         _emailService = emailService;
         _logger = logger;
+        _adminRuntimeConfig = adminRuntimeConfig;
     }
 
     public async Task<RegisterResult> Handle(RegisterCommand request, CancellationToken cancellationToken)
@@ -115,6 +119,8 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, RegisterR
                 }
             }
 
+            await AddDefaultRegistrationFavoritesAsync(newUser.Id, cancellationToken);
+
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             // Generate JWT token
@@ -155,6 +161,29 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, RegisterR
                 Success = false,
                 Message = "Internal server error",
             };
+        }
+    }
+
+    /// <summary>Favoritos iniciales según panel /status; ticker en mayúsculas como en el toggle de favoritos.</summary>
+    private async Task AddDefaultRegistrationFavoritesAsync(string userId, CancellationToken cancellationToken)
+    {
+        var configured = _adminRuntimeConfig.RegistrationDefaultFavoriteAssetIds;
+        var assetIds = configured ?? FallbackRegistrationFavoriteAssetIds;
+
+        foreach (var assetId in assetIds)
+        {
+            var asset = await _unitOfWork.FinancialAssets.GetByIdAsync(assetId, cancellationToken);
+            if (asset == null) continue;
+
+            var ticker = (asset.Ticker ?? string.Empty).Trim().ToUpperInvariant();
+            if (string.IsNullOrEmpty(ticker)) continue;
+
+            var existing = await _unitOfWork.Favorites.GetByUserIdAndTickerAsync(userId, ticker, cancellationToken);
+            if (existing != null) continue;
+
+            await _unitOfWork.Favorites.AddAsync(
+                new Favorite(Guid.NewGuid().ToString(), userId, ticker),
+                cancellationToken);
         }
     }
 }
