@@ -2,29 +2,40 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using Microsoft.IdentityModel.Tokens;
+using BetsTrading.Application.Interfaces;
 
 namespace BetsTrading.Application.Services;
 
 public interface IJwtTokenService
 {
-    string GenerateToken(string userId, string email, string? name, int expirationHours = 12);
+    string GenerateToken(string userId, string email, string? name);
 }
 
 public class JwtTokenService : IJwtTokenService
 {
+    private const int DefaultExpirationHours = 96;
+
     private readonly string _issuer;
     private readonly string _audience;
     private readonly string _key;
+    private readonly IAdminRuntimeConfig _adminRuntimeConfig;
 
-    public JwtTokenService(string issuer, string audience, string key)
+    public JwtTokenService(
+        string issuer,
+        string audience,
+        string key,
+        IAdminRuntimeConfig adminRuntimeConfig)
     {
         _issuer = issuer;
         _audience = audience;
         _key = key;
+        _adminRuntimeConfig = adminRuntimeConfig;
     }
 
-    public string GenerateToken(string userId, string email, string? name, int expirationHours = 12)
+    public string GenerateToken(string userId, string email, string? name)
     {
+        var expirationHours = _adminRuntimeConfig.JwtTokenExpirationHours ?? DefaultExpirationHours;
+
         var claims = new[]
         {
             new Claim(JwtRegisteredClaimNames.Sub, userId),

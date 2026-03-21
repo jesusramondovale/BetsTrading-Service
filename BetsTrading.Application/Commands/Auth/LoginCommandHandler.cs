@@ -106,7 +106,7 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResult>
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         // Generate JWT token
-        var jwtToken = _jwtTokenService.GenerateToken(user.Id, user.Email, user.Fullname, 12);
+        var jwtToken = _jwtTokenService.GenerateToken(user.Id, user.Email, user.Fullname);
 
         _logger.Information("[AUTH] :: Login :: Success for user: {0}", user.Id);
 

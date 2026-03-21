@@ -14,6 +14,7 @@ public sealed class AdminRuntimeConfig : IAdminRuntimeConfig
     private double? _dailyRewardWindowToClaimHours;
     private double? _dailyRewardWindowUntilStreakLostHours;
     private readonly ConcurrentDictionary<string, string> _exchangeOptionsByCurrency = new();
+    private int? _jwtTokenExpirationHours;
 
     public int? UpdaterMinute => _updaterMinute;
     public int? OddsAdjusterRefreshTimeSeconds => _oddsAdjusterRefreshTimeSeconds;
@@ -23,6 +24,8 @@ public sealed class AdminRuntimeConfig : IAdminRuntimeConfig
 
     public string? ExchangeOptionsEur => _exchangeOptionsByCurrency.TryGetValue("eur", out var v) ? v : null;
     public string? ExchangeOptionsUsd => _exchangeOptionsByCurrency.TryGetValue("usd", out var v) ? v : null;
+
+    public int? JwtTokenExpirationHours => _jwtTokenExpirationHours;
 
     public string? GetExchangeOptions(string currency)
     {
@@ -37,6 +40,8 @@ public sealed class AdminRuntimeConfig : IAdminRuntimeConfig
         _dailyRewardCoinsByDay = dto.DailyRewardCoinsByDay;
         _dailyRewardWindowToClaimHours = dto.DailyRewardWindowToClaimHours;
         _dailyRewardWindowUntilStreakLostHours = dto.DailyRewardWindowUntilStreakLostHours;
+        if (dto.JwtTokenExpirationHours >= 1 && dto.JwtTokenExpirationHours <= 720)
+            _jwtTokenExpirationHours = dto.JwtTokenExpirationHours;
         if (dto.ExchangeOptionsEur != null)
             _exchangeOptionsByCurrency["eur"] = dto.ExchangeOptionsEur;
         if (dto.ExchangeOptionsUsd != null)
@@ -54,6 +59,7 @@ public sealed class AdminRuntimeConfig : IAdminRuntimeConfig
             DailyRewardCoinsByDay = _dailyRewardCoinsByDay ?? new[] { 5, 10, 15, 25, 40, 50 },
             DailyRewardWindowToClaimHours = _dailyRewardWindowToClaimHours ?? 24,
             DailyRewardWindowUntilStreakLostHours = _dailyRewardWindowUntilStreakLostHours ?? 48,
+            JwtTokenExpirationHours = _jwtTokenExpirationHours ?? 96,
             ExchangeOptionsEur = ExchangeOptionsEur ?? exchangeOptionsEurFromFile ?? "[]",
             ExchangeOptionsUsd = ExchangeOptionsUsd ?? exchangeOptionsUsdFromFile ?? "[]",
         };
@@ -68,6 +74,8 @@ public class AdminConfigDto
     public int[] DailyRewardCoinsByDay { get; set; } = { 5, 10, 15, 25, 40, 50 };
     public double DailyRewardWindowToClaimHours { get; set; } = 24;
     public double DailyRewardWindowUntilStreakLostHours { get; set; } = 48;
+    /// <summary>Horas hasta expiración del JWT de la API (1–720).</summary>
+    public int JwtTokenExpirationHours { get; set; } = 96;
     public string ExchangeOptionsEur { get; set; } = "[]";
     public string ExchangeOptionsUsd { get; set; } = "[]";
 }

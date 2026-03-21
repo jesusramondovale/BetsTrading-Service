@@ -179,10 +179,6 @@ else
 
 JwtSecurityTokenHandler.DefaultMapInboundClaims = false;
 
-// JWT Token Service
-builder.Services.AddSingleton<IJwtTokenService>(sp => 
-    new JwtTokenService(localIssuer, localAudience, jwtLocalKey));
-
 // Authentication
 builder.Services.AddAuthentication(options =>
 {
@@ -535,6 +531,13 @@ builder.Services.AddSingleton<BetsTrading.Infrastructure.Services.AdminRuntimeCo
 builder.Services.AddSingleton<BetsTrading.Application.Interfaces.IAdminRuntimeConfig>(sp =>
     sp.GetRequiredService<BetsTrading.Infrastructure.Services.AdminRuntimeConfig>());
 
+builder.Services.AddSingleton<IJwtTokenService>(sp =>
+    new JwtTokenService(
+        localIssuer,
+        localAudience,
+        jwtLocalKey,
+        sp.GetRequiredService<BetsTrading.Application.Interfaces.IAdminRuntimeConfig>()));
+
 // Hosted Services (odds se actualizan al hacer NewBet, no con job periódico)
 builder.Services.AddHostedService<BetsTrading.Infrastructure.HostedServices.UpdaterHostedService>();
 
@@ -762,6 +765,12 @@ app.MapPost("/status/admin/config", async (HttpContext ctx, BetsTrading.Infrastr
     }
     catch { return Results.Json(new { error = "Invalid JSON" }, statusCode: 400); }
     if (dto == null) return Results.Json(new { error = "Invalid body" }, statusCode: 400);
+
+    if (dto.JwtTokenExpirationHours < 1 || dto.JwtTokenExpirationHours > 720)
+    {
+        customLogger.Log.Warning("[ADMIN] :: POST config: JwtTokenExpirationHours fuera de rango: {0}", dto.JwtTokenExpirationHours);
+        return Results.Json(new { error = "jwtTokenExpirationHours debe estar entre 1 y 720 (horas)." }, statusCode: 400);
+    }
 
     // Validar que el JSON de exchange options es válido antes de guardar (evitar petar StoreOptions/RetireBalance)
     var jsonOpts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };

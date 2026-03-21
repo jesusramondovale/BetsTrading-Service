@@ -208,6 +208,11 @@
                     <input type="number" id="oddsAdjusterRefreshTimeSeconds" name="oddsAdjusterRefreshTimeSeconds" min="1" max="120" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:80px;">
                 </fieldset>
                 <fieldset style="margin-bottom:1.25rem; border:1px solid rgba(34,211,238,0.25); border-radius:12px; padding:1rem;">
+                    <legend style="color:#22d3ee;">Auth (JWT API)</legend>
+                    <label>Caducidad del token de sesión (horas; 96 = 4 días). Rango 1–720.</label>
+                    <input type="number" id="jwtTokenExpirationHours" name="jwtTokenExpirationHours" min="1" max="720" step="1" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:100px;">
+                </fieldset>
+                <fieldset style="margin-bottom:1.25rem; border:1px solid rgba(34,211,238,0.25); border-radius:12px; padding:1rem;">
                     <legend style="color:#22d3ee;">Recompensas diarias</legend>
                     <label>Monedas por día (6 valores separados por coma)</label>
                     <input type="text" id="dailyRewardCoinsByDay" name="dailyRewardCoinsByDay" placeholder="5,10,15,25,40,50" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:100%;">
@@ -390,9 +395,13 @@
                 setAdminStatus('Sesión expirada. Escribe la clave de nuevo.');
                 return;
             }
+            let jwtH = parseInt(document.getElementById('jwtTokenExpirationHours').value, 10);
+            if (isNaN(jwtH) || jwtH < 1) jwtH = 96;
+            if (jwtH > 720) jwtH = 720;
             const payload = {
                 updaterMinute: parseInt(document.getElementById('updaterMinute').value, 10) || 15,
                 oddsAdjusterRefreshTimeSeconds: parseInt(document.getElementById('oddsAdjusterRefreshTimeSeconds').value, 10) || 4,
+                jwtTokenExpirationHours: jwtH,
                 dailyRewardCoinsByDay: (document.getElementById('dailyRewardCoinsByDay').value || '5,10,15,25,40,50').split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n)),
                 dailyRewardWindowToClaimHours: parseFloat(document.getElementById('dailyRewardWindowToClaimHours').value) || 24,
                 dailyRewardWindowUntilStreakLostHours: parseFloat(document.getElementById('dailyRewardWindowUntilStreakLostHours').value) || 48,

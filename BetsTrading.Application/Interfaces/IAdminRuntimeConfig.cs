@@ -29,4 +29,7 @@ public interface IAdminRuntimeConfig
 
     /// <summary>JSON de opciones de exchange para la moneda indicada (ej. eur, usd). Null = leer de archivo.</summary>
     string? GetExchangeOptions(string currency);
+
+    /// <summary>Horas de caducidad del JWT emitido por la API (login, registro, GoogleLogIn). Null = 96 (4 días).</summary>
+    int? JwtTokenExpirationHours { get; }
 }

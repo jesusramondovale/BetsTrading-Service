@@ -1,15 +1,18 @@
 using MediatR;
 using BetsTrading.Domain.Interfaces;
+using BetsTrading.Application.Services;
 
 namespace BetsTrading.Application.Commands.Auth;
 
 public class GoogleLogInCommandHandler : IRequestHandler<GoogleLogInCommand, GoogleLogInResult>
 {
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IJwtTokenService _jwtTokenService;
 
-    public GoogleLogInCommandHandler(IUnitOfWork unitOfWork)
+    public GoogleLogInCommandHandler(IUnitOfWork unitOfWork, IJwtTokenService jwtTokenService)
     {
         _unitOfWork = unitOfWork;
+        _jwtTokenService = jwtTokenService;
     }
 
     public async Task<GoogleLogInResult> Handle(GoogleLogInCommand request, CancellationToken cancellationToken)
@@ -33,11 +36,14 @@ public class GoogleLogInCommandHandler : IRequestHandler<GoogleLogInCommand, Goo
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
+            var jwtToken = _jwtTokenService.GenerateToken(user.Id, user.Email, user.Fullname);
+
             return new GoogleLogInResult
             {
                 Success = true,
                 Message = "Google LogIn SUCCESS",
-                UserId = user.Id
+                UserId = user.Id,
+                JwtToken = jwtToken
             };
         }
         catch (Exception ex)

@@ -110,7 +110,12 @@ public class AuthController : ControllerBase
             return StatusCode(500, new { Message = "Internal server error", Error = result.Message });
         }
 
-        return Ok(new { message = "User quick-registered", userId = result.UserId });
+        return Ok(new
+        {
+            message = "User quick-registered",
+            userId = result.UserId,
+            jwtToken = result.JwtToken
+        });
     }
 
     [HttpPost("ChangePassword")]
@@ -289,7 +294,13 @@ public class AuthController : ControllerBase
                 return NotFound(new { Message = result.Message });
             }
 
-            return Ok(new { Message = result.Message, UserId = result.UserId });
+            return Ok(new
+            {
+                success = true,
+                message = result.Message,
+                userId = result.UserId,
+                jwtToken = result.JwtToken
+            });
         }
         catch (System.Text.Json.JsonException)
         {

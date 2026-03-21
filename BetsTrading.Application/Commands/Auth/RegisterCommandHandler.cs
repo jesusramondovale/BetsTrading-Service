@@ -118,7 +118,7 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, RegisterR
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             // Generate JWT token
-            var jwtToken = _jwtTokenService.GenerateToken(newUser.Id, newUser.Email, newUser.Fullname, 12);
+            var jwtToken = _jwtTokenService.GenerateToken(newUser.Id, newUser.Email, newUser.Fullname);
 
             // Send welcome email (simplified)
             try
