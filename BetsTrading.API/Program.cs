@@ -384,7 +384,7 @@ builder.Services.AddAuthentication(options =>
                 path, ctx.Error ?? "null", ctx.ErrorDescription ?? "null", hasToken, isAuthenticated, hasRealError);
             
             // Skip challenge for health/status check endpoints
-            if (ctx.Request.Path.StartsWithSegments("/health") || ctx.Request.Path.StartsWithSegments("/status"))
+            if (ctx.Request.Path.StartsWithSegments("/health") || ctx.Request.Path.StartsWithSegments("/status") || ctx.Request.Path.StartsWithSegments("/info"))
             {
                 ctx.HandleResponse();
                 return Task.CompletedTask;
@@ -688,6 +688,17 @@ var adminSecretHash = string.IsNullOrEmpty(adminSecret)
 app.MapGet("/status", () =>
 {
     var html = StatusView.GetHtml(DateTime.UtcNow.ToString("o"), adminSecretHash);
+    return Results.Content(html, "text/html; charset=utf-8");
+}).AllowAnonymous();
+
+// Página pública para verificación OAuth (Google): descripción de la app, uso de datos, enlace a privacidad
+app.MapGet("/info", (IConfiguration configuration) =>
+{
+    var privacyUrl = configuration["AppInfo:PrivacyPolicyUrl"]
+        ?? Environment.GetEnvironmentVariable("APP_INFO_PRIVACY_POLICY_URL");
+    var privacyUrlEs = configuration["AppInfo:PrivacyPolicyUrlEs"]
+        ?? Environment.GetEnvironmentVariable("APP_INFO_PRIVACY_POLICY_URL_ES");
+    var html = AppInfoView.GetHtml(privacyUrl, privacyUrlEs);
     return Results.Content(html, "text/html; charset=utf-8");
 }).AllowAnonymous();
 

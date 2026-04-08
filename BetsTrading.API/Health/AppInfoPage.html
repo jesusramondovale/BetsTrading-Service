@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Betrader</title>
+    <meta name="application-name" content="Betrader">
+    <meta property="og:title" content="Betrader">
+    <meta property="og:site_name" content="Betrader">
+    <meta name="apple-mobile-web-app-title" content="Betrader">
+    <meta name="description" content="Betrader — información oficial de la app, uso de datos con Google y enlaces a la política de privacidad.">
+    <script type="application/ld+json">
+    {"@context":"https://schema.org","@type":"MobileApplication","name":"Betrader"}
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            min-height: 100vh;
+            font-family: 'Outfit', sans-serif;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+            color: #e8e8ed;
+            line-height: 1.6;
+            padding: 2rem 1rem 4rem;
+        }
+        .grid-bg {
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(34, 211, 238, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(34, 211, 238, 0.03) 1px, transparent 1px);
+            background-size: 48px 48px;
+            pointer-events: none;
+            z-index: 0;
+        }
+        .wrap {
+            position: relative;
+            z-index: 1;
+            max-width: 720px;
+            margin: 0 auto;
+        }
+        .card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(34, 211, 238, 0.2);
+            border-radius: 24px;
+            padding: 2.5rem 2rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+        }
+        .app-name-banner {
+            text-align: center;
+            margin-bottom: 1.25rem;
+            padding: 1rem 1.25rem;
+            border-radius: 16px;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            font-size: 1.05rem;
+            color: #e2e8f0;
+        }
+        .app-name-banner strong {
+            color: #f8fafc;
+            font-size: 1.25rem;
+            letter-spacing: 0.02em;
+        }
+        .app-name-banner .hint {
+            display: block;
+            margin-top: 0.5rem;
+            font-size: 0.8rem;
+            color: #94a3b8;
+            font-weight: 400;
+        }
+        a.privacy-link {
+            color: #38bdf8;
+            font-weight: 600;
+            text-decoration: underline;
+            text-underline-offset: 3px;
+        }
+        a.privacy-link:visited { color: #7dd3fc; }
+        a.privacy-link:hover { color: #e0f2fe; }
+        .privacy-nav {
+            text-align: center;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1.25rem;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+            font-size: 1rem;
+        }
+        .privacy-nav a { margin: 0 0.5rem; }
+        .logo-wrap {
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+        .logo-wrap img {
+            width: 120px;
+            height: auto;
+            object-fit: contain;
+        }
+        h1 {
+            font-size: 1.65rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            text-align: center;
+            margin-bottom: 0.35rem;
+            color: #f8fafc;
+        }
+        .subtitle {
+            text-align: center;
+            color: #94a3b8;
+            font-size: 0.95rem;
+            margin-bottom: 1.25rem;
+        }
+        h2 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #22d3ee;
+            margin: 1.75rem 0 0.65rem;
+        }
+        h2:first-of-type { margin-top: 0; }
+        p, li { color: #cbd5e1; font-size: 0.95rem; }
+        ul { margin: 0.5rem 0 0 1.25rem; }
+        li { margin-bottom: 0.35rem; }
+        .privacy-box {
+            margin-top: 1.75rem;
+            padding: 1.35rem;
+            border-radius: 16px;
+            background: rgba(34, 211, 238, 0.1);
+            border: 1px solid rgba(34, 211, 238, 0.35);
+            text-align: center;
+        }
+        .privacy-box .label {
+            margin-bottom: 0.85rem;
+            color: #f1f5f9;
+            font-weight: 600;
+            font-size: 1.05rem;
+        }
+        .privacy-url-text {
+            margin-top: 0.65rem;
+            font-size: 0.75rem;
+            color: #94a3b8;
+            word-break: break-all;
+            text-align: left;
+        }
+        .footer-note {
+            margin-top: 2rem;
+            text-align: center;
+            font-size: 0.8rem;
+            color: #64748b;
+        }
+        .footer-note a { color: #94a3b8; }
+    </style>
+</head>
+<body>
+    <div class="grid-bg" aria-hidden="true"></div>
+    <div class="wrap">
+        <div class="card">
+            <div class="app-name-banner">
+                Nombre de la aplicación / Application name: <strong>Betrader</strong>
+                <span class="hint">Este nombre es el mismo que aparece en la pantalla de consentimiento OAuth de Google Cloud.</span>
+            </div>
+
+            <nav class="privacy-nav" aria-label="Legal">
+                <a class="privacy-link" href="__PRIVACY_POLICY_URL__" rel="noopener noreferrer">Privacy Policy (English)</a>
+                <span style="color:#64748b">|</span>
+                <a class="privacy-link" href="__PRIVACY_POLICY_URL_ES__" rel="noopener noreferrer">Política de privacidad (español)</a>
+            </nav>
+
+            <div class="logo-wrap">
+                <img src="/logo" alt="Betrader" width="120" height="120" onerror="this.style.display='none'">
+            </div>
+            <h1>Betrader</h1>
+            <p class="subtitle">Página oficial de la aplicación. No hace falta iniciar sesión para ver esta información.</p>
+
+            <h2>Qué es Betrader</h2>
+            <p>
+                <strong>Betrader</strong> es nuestra aplicación móvil para el seguimiento y la gestión de apuestas deportivas y actividad en mercados financieros
+                (cotizaciones, favoritos, notificaciones y funciones relacionadas). Esta página describe únicamente el producto <strong>Betrader</strong>.
+            </p>
+
+            <h2>Funciones principales</h2>
+            <ul>
+                <li>Registro e inicio de sesión (incluido <strong>Iniciar sesión con Google</strong>).</li>
+                <li>Perfil, preferencias e instrumentos favoritos.</li>
+                <li>Datos de mercado y lógica de negocio de la app.</li>
+                <li>Notificaciones y comunicaciones del servicio.</li>
+            </ul>
+
+            <h2>Google Sign-In y datos de Google</h2>
+            <p>
+                Si usas el inicio de sesión con Google, aplicamos el flujo OAuth estándar de Google. Los datos de tu cuenta que autorices
+                (por ejemplo identificador, correo y nombre, según los permisos de la pantalla de consentimiento de Google) se usan <strong>solo</strong> para:
+            </p>
+            <ul>
+                <li>Autenticarte y crear o vincular tu cuenta de <strong>Betrader</strong>.</li>
+                <li>Mantener la sesión y proteger el acceso a funciones para usuarios registrados.</li>
+                <li>Reducir abusos (cuentas duplicadas o accesos no autorizados).</li>
+            </ul>
+            <p>
+                No vendemos tu identidad de Google. Los detalles del tratamiento están en la
+                <a class="privacy-link" href="__PRIVACY_POLICY_URL__" rel="noopener noreferrer">Privacy Policy</a>
+                (inglés) y en la
+                <a class="privacy-link" href="__PRIVACY_POLICY_URL_ES__" rel="noopener noreferrer">política de privacidad en español</a>.
+                La URL que indiques en Google Cloud como política de privacidad debe coincidir con una de estas (la que hayas registrado en la consola).
+            </p>
+
+            <div class="privacy-box">
+                <p class="label">Privacy Policy — Política de privacidad</p>
+                <p>
+                    <a class="privacy-link" href="__PRIVACY_POLICY_URL__" rel="noopener noreferrer">Privacy Policy (English)</a>
+                </p>
+                <p style="margin-top:0.65rem">
+                    <a class="privacy-link" href="__PRIVACY_POLICY_URL_ES__" rel="noopener noreferrer">Política de privacidad (español)</a>
+                </p>
+                <p class="privacy-url-text">English: __PRIVACY_POLICY_URL_PLAIN__</p>
+                <p class="privacy-url-text">Español: __PRIVACY_POLICY_URL_PLAIN_ES__</p>
+            </div>
+
+            <p class="footer-note">
+                API: <a href="/status">Estado del servicio</a>
+                &nbsp;·&nbsp;
+                <a class="privacy-link" href="__PRIVACY_POLICY_URL__" rel="noopener noreferrer">Privacy Policy</a>
+                &nbsp;·&nbsp;
+                <a class="privacy-link" href="__PRIVACY_POLICY_URL_ES__" rel="noopener noreferrer">Política (ES)</a>
+            </p>
+        </div>
+    </div>
+</body>
+</html>
