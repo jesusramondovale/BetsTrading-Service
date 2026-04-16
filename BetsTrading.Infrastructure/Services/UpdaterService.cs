@@ -22,6 +22,19 @@ public class UpdaterService : IUpdaterService
         .Select(i => Environment.GetEnvironmentVariable($"TWELVE_DATA_KEY{i}") ?? "")
         .ToArray();
     private const decimal FIXED_EUR_USD = 1.16m;
+    /// <summary>Mínimo 3 bandas por región (debajo / spot / encima) → 9 zonas por período.</summary>
+    private const int ZonesPerPeriod = 9;
+    private const double MaxTargetOddsCap = 999.99;
+
+    /// <summary>Multiplicador de odds casi proporcional al timeframe (1h→1×, 2h→2×, 4h→4×, 24h→24×).</summary>
+    private static double TimeframeOddsMultiplier(int timeframeHours) =>
+        timeframeHours <= 0 ? 1.0 : timeframeHours;
+
+    private static double ApplyTimeframeOddsBoost(double baseOdds, int timeframeHours)
+    {
+        double boosted = baseOdds * TimeframeOddsMultiplier(timeframeHours);
+        return Math.Min(MaxTargetOddsCap, Math.Max(1.01, Math.Round(boosted, 2)));
+    }
 
     public UpdaterService(
         IUnitOfWork unitOfWork,
@@ -470,8 +483,6 @@ public class UpdaterService : IUpdaterService
                         var period = timePeriods[periodIndex];
                         double timeToExpiry = (period.End - now).TotalHours;
 
-                        int zonesPerPeriod = 3;
-
                         _logger.Debug("[UpdaterService] :: Calling GenerateIntelligentZones for {0} timeframe {1} period {2}. Price: {3}, Volatility: {4}, TimeToExpiry: {5}h",
                             currentAsset.Ticker, timeframe, periodIndex, currentPrice, volatility, timeToExpiry);
 
@@ -480,7 +491,7 @@ public class UpdaterService : IUpdaterService
                         {
                             zones = GenerateIntelligentZones(
                                 currentPrice, supports, resistances, volatility,
-                                timeToExpiry, rsi, bollinger, drift, zoneCount: zonesPerPeriod,
+                                timeToExpiry, rsi, bollinger, drift, zoneCount: ZonesPerPeriod,
                                 maxVariationPercent: maxVariationPercent);
 
                             _logger.Debug("[UpdaterService] :: GenerateIntelligentZones returned {0} zones for {1} timeframe {2} period {3}",
@@ -526,7 +537,8 @@ public class UpdaterService : IUpdaterService
                             }
 
                             double adjustedProb = zone.BaseProbability * timeAdjustmentFactor;
-                            double odds = TechnicalAnalysisService.ProbabilityToOdds(adjustedProb, 0.95);
+                            double baseOdds = TechnicalAnalysisService.ProbabilityToOdds(adjustedProb, 0.95);
+                            double odds = ApplyTimeframeOddsBoost(baseOdds, timeframe);
 
                             var betZone = new BetZone(
                                 currentAsset.Ticker,
@@ -551,7 +563,8 @@ public class UpdaterService : IUpdaterService
                                 continue;
 
                             double adjustedProb = zone.BaseProbability * timeAdjustmentFactor;
-                            double odds = TechnicalAnalysisService.ProbabilityToOdds(adjustedProb, 0.95);
+                            double baseOddsUsd = TechnicalAnalysisService.ProbabilityToOdds(adjustedProb, 0.95);
+                            double odds = ApplyTimeframeOddsBoost(baseOddsUsd, timeframe);
 
                             var betZoneUSD = new BetZoneUSD(
                                 currentAsset.Ticker,
@@ -715,7 +728,8 @@ public class UpdaterService : IUpdaterService
                 foreach (var volumeEntry in volumes)
                 {
                     double prob = (volumeEntry.Value + k) / total;
-                    double odds = Math.Max(1.1, Math.Round((1.0 / prob) * margin, 2));
+                    double baseOdds = Math.Max(1.1, Math.Round((1.0 / prob) * margin, 2));
+                    double odds = ApplyTimeframeOddsBoost(baseOdds, group.Key.Timeframe);
 
                     var zone = group.FirstOrDefault(z => z.Id == volumeEntry.Key);
                     if (zone != null)
@@ -765,7 +779,8 @@ public class UpdaterService : IUpdaterService
             foreach (var volEntry in volumes)
             {
                 double prob = (volEntry.Value + k) / total;
-                double odds = Math.Max(1.1, Math.Round((1.0 / prob) * margin, 2));
+                double baseOddsVol = Math.Max(1.1, Math.Round((1.0 / prob) * margin, 2));
+                double odds = ApplyTimeframeOddsBoost(baseOddsVol, zone.Timeframe);
                 var z = group.FirstOrDefault(x => x.Id == volEntry.Key);
                 if (z != null)
                 {
@@ -794,7 +809,8 @@ public class UpdaterService : IUpdaterService
             foreach (var volEntry in volumes)
             {
                 double prob = (volEntry.Value + k) / total;
-                double odds = Math.Max(1.1, Math.Round((1.0 / prob) * margin, 2));
+                double baseOddsVolEur = Math.Max(1.1, Math.Round((1.0 / prob) * margin, 2));
+                double odds = ApplyTimeframeOddsBoost(baseOddsVolEur, zone.Timeframe);
                 var z = group.FirstOrDefault(x => x.Id == volEntry.Key);
                 if (z != null)
                 {
@@ -893,6 +909,125 @@ public class UpdaterService : IUpdaterService
     // ========== MÉTODOS AUXILIARES DE ANÁLISIS TÉCNICO ==========
 
     /// <summary>
+    /// 9 zonas con 9 targets distintos, intervalos [target ± margin] sin solapamiento (hueco mínimo entre bandas).
+    /// </summary>
+    private static List<(double Target, double Margin, double BaseProbability, string ZoneType)>
+        BuildGuaranteedNineNonOverlappingZones(
+            double currentPrice,
+            double effectiveVolatility,
+            double timeToExpiryHours,
+            double drift,
+            double rsi,
+            double maxVariationPercent)
+    {
+        // Tres bloques: 3 debajo del spot, 3 en el centro (spot + vecinos), 3 encima — todos los targets son distintos
+        (double pct, string zoneType)[] spec =
+        {
+            (-0.052, "below"),
+            (-0.035, "below"),
+            (-0.018, "below"),
+            (-0.006, "below"),
+            (0.0, "current"),
+            (0.006, "above"),
+            (0.018, "above"),
+            (0.035, "above"),
+            (0.052, "above"),
+        };
+
+        var centers = new double[spec.Length];
+        for (int i = 0; i < spec.Length; i++)
+            centers[i] = currentPrice * (1.0 + spec[i].pct);
+
+        double minGap = double.MaxValue;
+        for (int i = 1; i < centers.Length; i++)
+            minGap = Math.Min(minGap, centers[i] - centers[i - 1]);
+
+        double volBoost = 1.0 + Math.Min(0.4, maxVariationPercent);
+        double minHalf = currentPrice * 0.0025;
+        double maxHalf = currentPrice * Math.Min(0.04, Math.Max(0.01, effectiveVolatility * 0.14 * volBoost));
+        // Sin solape: para todo i, margin_i + margin_{i+1} <= (c_{i+1} - c_i); con m uniforme: 2m <= minGap
+        double uniformMargin = Math.Clamp(minGap * 0.45, minHalf, maxHalf);
+        uniformMargin = Math.Min(uniformMargin, minGap * 0.49);
+
+        var zones = new List<(double Target, double Margin, double BaseProbability, string ZoneType)>();
+        for (int i = 0; i < centers.Length; i++)
+        {
+            double targetPrice = centers[i];
+            double margin = uniformMargin;
+
+            double prob = 0.5;
+            try
+            {
+                prob = TechnicalAnalysisService.CalculateReachProbability(
+                    currentPrice, targetPrice, effectiveVolatility, timeToExpiryHours, drift);
+            }
+            catch
+            {
+                prob = 0.5;
+            }
+
+            double targetPct = (targetPrice - currentPrice) / currentPrice;
+            if (targetPct < 0 && rsi < 30) prob *= 1.12;
+            if (targetPct > 0 && rsi > 70) prob *= 0.88;
+            prob = Math.Max(0.14, Math.Min(0.78, prob));
+
+            zones.Add((targetPrice, margin, prob, spec[i].zoneType));
+        }
+
+        // Unificación de márgenes por parejas adyacentes: mismo half-width base salvo ajuste fino
+        return EnforcePairwiseNonOverlappingMargins(zones, currentPrice, minHalf);
+    }
+
+    /// <summary>
+    /// Ajusta márgenes para que para todas las parejas ordenadas por Target se cumpla upper_i &lt; lower_{i+1} (sin solape).
+    /// </summary>
+    private static List<(double Target, double Margin, double BaseProbability, string ZoneType)>
+        EnforcePairwiseNonOverlappingMargins(
+            List<(double Target, double Margin, double BaseProbability, string ZoneType)> zones,
+            double currentPrice,
+            double minHalf)
+    {
+        if (zones.Count <= 1)
+            return zones;
+
+        var ordered = zones.OrderBy(z => z.Target).ToList();
+        var margins = ordered.Select(z => z.Margin).ToArray();
+        int n = ordered.Count;
+
+        for (int pass = 0; pass < 24; pass++)
+        {
+            bool changed = false;
+            for (int i = 0; i < n - 1; i++)
+            {
+                double upperI = ordered[i].Target + margins[i];
+                double lowerNext = ordered[i + 1].Target - margins[i + 1];
+                double epsilon = Math.Max(currentPrice * 1e-9, minHalf * 1e-4);
+                if (upperI >= lowerNext - epsilon)
+                {
+                    double overlap = upperI - lowerNext + epsilon;
+                    double shrink = overlap * 0.51;
+                    double ni = Math.Max(minHalf, margins[i] - shrink);
+                    double nj = Math.Max(minHalf, margins[i + 1] - shrink);
+                    if (ni < margins[i] - 1e-15 || nj < margins[i + 1] - 1e-15)
+                        changed = true;
+                    margins[i] = ni;
+                    margins[i + 1] = nj;
+                }
+            }
+            if (!changed) break;
+        }
+
+        var result = new List<(double Target, double Margin, double BaseProbability, string ZoneType)>();
+        for (int i = 0; i < n; i++)
+        {
+            var z = ordered[i];
+            result.Add((z.Target, margins[i], z.BaseProbability, z.ZoneType));
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// Genera zonas inteligentes basadas en niveles técnicos
     /// Genera zoneCount zonas VISUALMENTE DISTINTAS distribuidas en diferentes niveles de precio
     /// </summary>
@@ -913,6 +1048,12 @@ public class UpdaterService : IUpdaterService
         // Asegurar que la volatilidad tenga un mínimo razonable
         double minVolatility = 0.01;
         double effectiveVolatility = Math.Max(volatility, minVolatility);
+
+        if (zoneCount >= 9)
+        {
+            return BuildGuaranteedNineNonOverlappingZones(
+                currentPrice, effectiveVolatility, timeToExpiryHours, drift, rsi, maxVariationPercent);
+        }
 
         // Definir porcentajes de distancia del precio actual
         var zonePercentages = new List<double>();
@@ -987,12 +1128,16 @@ public class UpdaterService : IUpdaterService
         }
 
         // Para cada porcentaje objetivo, buscar nivel técnico más cercano o usar porcentaje directamente
+        var orderedTargetPcts = zonePercentages.Where(p => p != 0.0).OrderBy(p => Math.Abs(p)).ToList();
+
         int maxZoneAttempts = zoneCount * 10;
         int zoneAttempts = 0;
-        foreach (var targetPct in zonePercentages.Where(p => p != 0.0).OrderBy(p => Math.Abs(p)))
+        foreach (var targetPct in orderedTargetPcts)
         {
             if (zones.Count >= zoneCount) break;
             if (zoneAttempts++ >= maxZoneAttempts) break;
+
+            bool nearSpotBand = zoneCount >= 9 && Math.Abs(targetPct) < 0.012;
 
             double targetPrice;
             string zoneType;
@@ -1017,8 +1162,12 @@ public class UpdaterService : IUpdaterService
                 zoneType = targetPct < 0 ? "below" : "above";
 
                 double distanceFromCurrent = Math.Abs(targetPct);
-                double baseMinMarginPercent = zoneCount == 3 ? 0.0075 : 0.01;
-                double baseMaxMarginPercent = zoneCount == 3 ? 0.025 : 0.04;
+                double baseMinMarginPercent = zoneCount == 3
+                    ? 0.0075
+                    : nearSpotBand ? 0.0055 : 0.01;
+                double baseMaxMarginPercent = zoneCount == 3
+                    ? 0.025
+                    : nearSpotBand ? 0.018 : 0.04;
 
                 double minMarginPercent = baseMinMarginPercent;
                 double maxMarginPercent = baseMaxMarginPercent;
@@ -1035,7 +1184,9 @@ public class UpdaterService : IUpdaterService
                 double marginPercent = minMarginPercent + (distanceFromCurrent / 0.10) * (maxMarginPercent - minMarginPercent);
                 marginPercent = Math.Min(maxMarginPercent, Math.Max(minMarginPercent, marginPercent));
                 margin = targetPrice * marginPercent;
-                double absoluteMinMargin = targetPrice * (zoneCount == 3 ? 0.006 : 0.0075);
+                double absoluteMinMargin = targetPrice * (zoneCount == 3
+                    ? 0.006
+                    : nearSpotBand ? 0.005 : 0.0075);
                 margin = Math.Max(margin, absoluteMinMargin);
             }
 
@@ -1047,14 +1198,10 @@ public class UpdaterService : IUpdaterService
                 double targetUpper = targetPrice + margin;
                 double targetLower = targetPrice - margin;
                 double overlapAmount = Math.Min(targetUpper - zLower, zUpper - targetLower);
-                if (zoneCount == 3)
-                {
-                    return overlapAmount > (Math.Min(margin, z.Margin) * 0.2);
-                }
-                else
-                {
-                    return overlapAmount > (Math.Min(margin, z.Margin) * 0.1);
-                }
+                double overlapFrac = zoneCount == 3
+                    ? 0.2
+                    : nearSpotBand ? 0.38 : 0.1;
+                return overlapAmount > (Math.Min(margin, z.Margin) * overlapFrac);
             });
 
             if (overlaps)
@@ -1084,7 +1231,7 @@ public class UpdaterService : IUpdaterService
                 margin *= 1.3;
             }
 
-            double finalMinMargin = targetPrice * 0.01;
+            double finalMinMargin = targetPrice * (nearSpotBand ? 0.006 : 0.01);
             margin = Math.Max(margin, finalMinMargin);
 
             zones.Add((targetPrice, margin, prob, zoneType));
@@ -1166,8 +1313,6 @@ public class UpdaterService : IUpdaterService
                 double minMargin = currentPrice * 0.01;
                 zones.Add((currentPrice, minMargin, 0.5, "current"));
             }
-
-            if (zones.Count < zoneCount / 2 && zones.Count > 0) break;
         }
 
         // Ordenar por precio
