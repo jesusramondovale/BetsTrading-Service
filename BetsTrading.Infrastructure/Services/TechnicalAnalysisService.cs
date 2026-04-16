@@ -158,8 +158,9 @@ public static class TechnicalAnalysisService
         // Aproximación de la CDF normal usando función de error
         double probability = 0.5 * (1.0 + Erf(z / Math.Sqrt(2.0)));
 
-        // Asegurar que la probabilidad esté en un rango razonable
-        return Math.Max(0.01, Math.Min(0.99, probability));
+        // Rango amplio: un suelo/pico demasiado agresivo (p. ej. 1%–99%) aplana colas y hace que
+        // muchos activos compartan la misma probabilidad efectiva y por tanto las mismas odds máximas.
+        return Math.Max(1e-4, Math.Min(1.0 - 1e-4, probability));
     }
 
     /// <summary>

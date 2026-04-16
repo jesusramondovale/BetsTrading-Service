@@ -19,4 +19,6 @@ public class UserInfoDto
     public DateTime LastSession { get; set; }
     public string? ProfilePic { get; set; }
     public double Points { get; set; }
+
+    public bool NoAds { get; set; }
 }

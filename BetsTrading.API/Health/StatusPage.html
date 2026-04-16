@@ -273,6 +273,17 @@
                             <label style="margin-top:0.5rem;">Horas sin reclamar para perder racha</label>
                             <input type="number" id="dailyRewardWindowUntilStreakLostHours" name="dailyRewardWindowUntilStreakLostHours" min="24" step="1" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:80px;">
                         </fieldset>
+                        <fieldset class="admin-fieldset">
+                            <legend style="color:#22d3ee;">Anuncios (app)</legend>
+                            <label>Minutos en primer plano antes de intersticial (1–480)</label>
+                            <input type="number" id="mandatoryAdForegroundMinutes" name="mandatoryAdForegroundMinutes" min="1" max="480" step="1" value="10" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:100px;">
+                            <label style="margin-top:0.5rem;">Cooldown mínimo entre intersticiales obligatorios (seg; 30–86400)</label>
+                            <input type="number" id="mandatoryAdCooldownSeconds" name="mandatoryAdCooldownSeconds" min="30" max="86400" step="1" value="300" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:100px;">
+                            <label style="margin-top:0.5rem;">Precio compra «No Ads» (EUR)</label>
+                            <input type="number" id="noAdsPriceEur" name="noAdsPriceEur" min="0.5" max="999.99" step="0.01" value="4.99" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:100px;">
+                            <label style="margin-top:0.5rem;">Precio compra «No Ads» (USD)</label>
+                            <input type="number" id="noAdsPriceUsd" name="noAdsPriceUsd" min="0.5" max="999.99" step="0.01" value="4.99" style="display:block; margin-top:0.25rem; padding:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(34,211,238,0.3); border-radius:8px; color:#e8e8ed; width:100px;">
+                        </fieldset>
                     </div>
                     <div class="admin-stack">
                         <fieldset class="admin-fieldset">
@@ -438,6 +449,10 @@
                 document.getElementById('dailyRewardCoinsByDay').value = (d.dailyRewardCoinsByDay && d.dailyRewardCoinsByDay.length) ? d.dailyRewardCoinsByDay.join(',') : '5,10,15,25,40,50';
                 document.getElementById('dailyRewardWindowToClaimHours').value = d.dailyRewardWindowToClaimHours ?? 24;
                 document.getElementById('dailyRewardWindowUntilStreakLostHours').value = d.dailyRewardWindowUntilStreakLostHours ?? 48;
+                document.getElementById('mandatoryAdForegroundMinutes').value = d.mandatoryAdForegroundMinutes ?? 10;
+                document.getElementById('mandatoryAdCooldownSeconds').value = d.mandatoryAdCooldownSeconds ?? 300;
+                document.getElementById('noAdsPriceEur').value = d.noAdsPriceEur ?? 4.99;
+                document.getElementById('noAdsPriceUsd').value = d.noAdsPriceUsd ?? 4.99;
                 document.getElementById('exchangeOptionsEur').value = typeof d.exchangeOptionsEur === 'string' ? d.exchangeOptionsEur : JSON.stringify(d.exchangeOptionsEur || [], null, 2);
                 document.getElementById('exchangeOptionsUsd').value = typeof d.exchangeOptionsUsd === 'string' ? d.exchangeOptionsUsd : JSON.stringify(d.exchangeOptionsUsd || [], null, 2);
                 setAdminStatus('');
@@ -470,6 +485,10 @@
                 dailyRewardCoinsByDay: (document.getElementById('dailyRewardCoinsByDay').value || '5,10,15,25,40,50').split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n)),
                 dailyRewardWindowToClaimHours: parseFloat(document.getElementById('dailyRewardWindowToClaimHours').value) || 24,
                 dailyRewardWindowUntilStreakLostHours: parseFloat(document.getElementById('dailyRewardWindowUntilStreakLostHours').value) || 48,
+                mandatoryAdForegroundMinutes: parseInt(document.getElementById('mandatoryAdForegroundMinutes').value, 10) || 10,
+                mandatoryAdCooldownSeconds: parseInt(document.getElementById('mandatoryAdCooldownSeconds').value, 10) || 300,
+                noAdsPriceEur: parseFloat(document.getElementById('noAdsPriceEur').value) || 4.99,
+                noAdsPriceUsd: parseFloat(document.getElementById('noAdsPriceUsd').value) || 4.99,
                 exchangeOptionsEur: document.getElementById('exchangeOptionsEur').value.trim() || '[]',
                 exchangeOptionsUsd: document.getElementById('exchangeOptionsUsd').value.trim() || '[]'
             };

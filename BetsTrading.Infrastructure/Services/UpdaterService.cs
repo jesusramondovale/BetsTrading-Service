@@ -969,7 +969,8 @@ public class UpdaterService : IUpdaterService
             double targetPct = (targetPrice - currentPrice) / currentPrice;
             if (targetPct < 0 && rsi < 30) prob *= 1.12;
             if (targetPct > 0 && rsi > 70) prob *= 0.88;
-            prob = Math.Max(0.14, Math.Min(0.78, prob));
+            // Evitar que todas las colas “muertas” converjan al mismo valor (antes 0.14) y generen odds idénticas.
+            prob = Math.Max(0.025, Math.Min(0.90, prob));
 
             zones.Add((targetPrice, margin, prob, spec[i].zoneType));
         }
@@ -1045,9 +1046,11 @@ public class UpdaterService : IUpdaterService
             return zones;
         }
 
-        // Asegurar que la volatilidad tenga un mínimo razonable
-        double minVolatility = 0.01;
-        double effectiveVolatility = Math.Max(volatility, minVolatility);
+        // No forzar σ ≥ 1%: en datos horarios muchos activos quedaban con la misma volatilidad efectiva
+        // y las probabilidades de alcance (y las odds máximas) coincidían entre tickers.
+        double effectiveVolatility = (volatility > 1e-9 && !double.IsNaN(volatility) && !double.IsInfinity(volatility))
+            ? volatility
+            : 0.001;
 
         if (zoneCount >= 9)
         {
@@ -1224,7 +1227,7 @@ public class UpdaterService : IUpdaterService
 
             double distanceFactor = 1.0 - (Math.Abs(targetPct) * 0.3);
             prob *= Math.Max(0.5, distanceFactor);
-            prob = Math.Max(0.15, Math.Min(0.75, prob));
+            prob = Math.Max(0.03, Math.Min(0.88, prob));
 
             if (prob < 0.30)
             {

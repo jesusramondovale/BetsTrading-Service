@@ -36,6 +36,43 @@ public class InfoController : ControllerBase
         _adminConfig = adminConfig;
     }
 
+    /// <summary>Configuración pública para la app (sin auth): umbrales de anuncios y precios No Ads.</summary>
+    [AllowAnonymous]
+    [HttpPost("ClientRuntimeConfig")]
+    public IActionResult ClientRuntimeConfig()
+    {
+        string? eurJson = null, usdJson = null;
+        foreach (var currency in new[] { "eur", "usd" })
+        {
+            var path = Path.Combine(AppContext.BaseDirectory ?? "", $"exchange_options_{currency}.json");
+            if (!System.IO.File.Exists(path))
+                path = Path.Combine(_env.ContentRootPath, $"exchange_options_{currency}.json");
+            if (System.IO.File.Exists(path))
+            {
+                try
+                {
+                    if (currency == "eur")
+                        eurJson = System.IO.File.ReadAllText(path);
+                    else
+                        usdJson = System.IO.File.ReadAllText(path);
+                }
+                catch
+                {
+                    // ignore
+                }
+            }
+        }
+
+        var c = _adminConfig.GetPublicClientAdsConfig(eurJson, usdJson);
+        return Ok(new
+        {
+            mandatoryAdForegroundMinutes = c.MandatoryAdForegroundMinutes,
+            mandatoryAdCooldownSeconds = c.MandatoryAdCooldownSeconds,
+            noAdsPriceEur = c.NoAdsPriceEur,
+            noAdsPriceUsd = c.NoAdsPriceUsd,
+        });
+    }
+
     [AllowAnonymous]
     [HttpGet("AddAps")]
     public async Task<IActionResult> GetAppAds()
@@ -181,7 +218,8 @@ public class InfoController : ControllerBase
                 country = result.Country,
                 lastsession = result.LastSession,
                 profilepic = result.ProfilePic,
-                points = result.Points
+                points = result.Points,
+                noAds = result.NoAds
             });
         }
         catch (System.Text.Json.JsonException)

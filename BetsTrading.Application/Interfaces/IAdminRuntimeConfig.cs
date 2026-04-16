@@ -1,3 +1,5 @@
+using BetsTrading.Application.DTOs;
+
 namespace BetsTrading.Application.Interfaces;
 
 /// <summary>
@@ -39,4 +41,19 @@ public interface IAdminRuntimeConfig
     /// Array vacío = no crear favoritos. Si hay elementos, se usan en orden (duplicados filtrados en servidor).
     /// </summary>
     int[]? RegistrationDefaultFavoriteAssetIds { get; }
+
+    /// <summary>Minutos en primer plano (lado app) antes de intentar intersticial. Null = 10.</summary>
+    int? MandatoryAdForegroundMinutes { get; }
+
+    /// <summary>Segundos mínimos entre dos intersticiales obligatorios. Null = 300.</summary>
+    int? MandatoryAdCooldownSeconds { get; }
+
+    /// <summary>Precio Stripe compra No Ads en EUR (minor units se calcula ×100). Null = 4.99.</summary>
+    double? NoAdsPriceEur { get; }
+
+    /// <summary>Precio Stripe compra No Ads en USD. Null = 4.99.</summary>
+    double? NoAdsPriceUsd { get; }
+
+    /// <summary>Snapshot con defaults aplicados para el cliente móvil.</summary>
+    PublicClientAdsConfig GetPublicClientAdsConfig(string? exchangeOptionsEurFromFile, string? exchangeOptionsUsdFromFile);
 }

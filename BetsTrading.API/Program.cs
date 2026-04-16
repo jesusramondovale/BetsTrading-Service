@@ -791,6 +791,24 @@ app.MapPost("/status/admin/config", async (HttpContext ctx, BetsTrading.Infrastr
         return Results.Json(new { error = $"registrationDefaultFavoriteAssetIds: máximo {maxRegistrationFavIds} ids." }, statusCode: 400);
     }
 
+    if (dto.MandatoryAdForegroundMinutes < 1 || dto.MandatoryAdForegroundMinutes > 480)
+    {
+        customLogger.Log.Warning("[ADMIN] :: POST config: mandatoryAdForegroundMinutes fuera de rango: {0}", dto.MandatoryAdForegroundMinutes);
+        return Results.Json(new { error = "mandatoryAdForegroundMinutes debe estar entre 1 y 480 (minutos en primer plano)." }, statusCode: 400);
+    }
+
+    if (dto.MandatoryAdCooldownSeconds < 30 || dto.MandatoryAdCooldownSeconds > 86400)
+    {
+        customLogger.Log.Warning("[ADMIN] :: POST config: mandatoryAdCooldownSeconds fuera de rango: {0}", dto.MandatoryAdCooldownSeconds);
+        return Results.Json(new { error = "mandatoryAdCooldownSeconds debe estar entre 30 y 86400 (segundos)." }, statusCode: 400);
+    }
+
+    if (dto.NoAdsPriceEur < 0.5 || dto.NoAdsPriceEur > 999.99 || dto.NoAdsPriceUsd < 0.5 || dto.NoAdsPriceUsd > 999.99)
+    {
+        customLogger.Log.Warning("[ADMIN] :: POST config: precio No Ads inválido EUR={Eur} USD={Usd}", dto.NoAdsPriceEur, dto.NoAdsPriceUsd);
+        return Results.Json(new { error = "noAdsPriceEur y noAdsPriceUsd deben estar entre 0.5 y 999.99." }, statusCode: 400);
+    }
+
     // Validar que el JSON de exchange options es válido antes de guardar (evitar petar StoreOptions/RetireBalance)
     var jsonOpts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
     if (!string.IsNullOrWhiteSpace(dto.ExchangeOptionsEur))

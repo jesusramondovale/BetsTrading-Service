@@ -38,7 +38,8 @@ public class GetUserInfoQueryHandler : IRequestHandler<GetUserInfoQuery, UserInf
             Country = user.Country,
             LastSession = user.LastSession,
             ProfilePic = user.ProfilePic,
-            Points = user.Points
+            Points = user.Points,
+            NoAds = user.NoAds
         };
     }
 }

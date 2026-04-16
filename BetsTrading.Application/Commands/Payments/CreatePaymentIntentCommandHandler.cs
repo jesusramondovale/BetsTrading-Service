@@ -1,5 +1,6 @@
 using MediatR;
 using BetsTrading.Application.Interfaces;
+using BetsTrading.Domain.Interfaces;
 using Stripe;
 
 namespace BetsTrading.Application.Commands.Payments;
@@ -7,10 +8,17 @@ namespace BetsTrading.Application.Commands.Payments;
 public class CreatePaymentIntentCommandHandler : IRequestHandler<CreatePaymentIntentCommand, CreatePaymentIntentResult>
 {
     private readonly IApplicationLogger _logger;
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly IAdminRuntimeConfig _adminConfig;
 
-    public CreatePaymentIntentCommandHandler(IApplicationLogger logger)
+    public CreatePaymentIntentCommandHandler(
+        IApplicationLogger logger,
+        IUnitOfWork unitOfWork,
+        IAdminRuntimeConfig adminConfig)
     {
         _logger = logger;
+        _unitOfWork = unitOfWork;
+        _adminConfig = adminConfig;
         StripeConfiguration.ApiKey = Environment.GetEnvironmentVariable("STRIPE_SECRET_KEY") ?? "";
     }
 
@@ -18,10 +26,35 @@ public class CreatePaymentIntentCommandHandler : IRequestHandler<CreatePaymentIn
     {
         try
         {
+            var productType = (request.ProductType ?? "coins").Trim();
+            long amountMinor = request.Amount;
+            var coins = request.Coins;
+            var currency = (request.Currency ?? "eur").ToLowerInvariant();
+
+            if (string.Equals(productType, "no_ads", StringComparison.OrdinalIgnoreCase))
+            {
+                var user = await _unitOfWork.Users.GetByIdAsync(request.UserId, cancellationToken);
+                if (user == null)
+                {
+                    return new CreatePaymentIntentResult { Success = false, Message = "User not found" };
+                }
+
+                if (user.NoAds)
+                {
+                    return new CreatePaymentIntentResult { Success = false, Message = "no_ads_already_owned" };
+                }
+
+                var price = currency == "usd"
+                    ? (_adminConfig.NoAdsPriceUsd ?? 4.99)
+                    : (_adminConfig.NoAdsPriceEur ?? 4.99);
+                amountMinor = (long)Math.Round(price * 100.0, MidpointRounding.AwayFromZero);
+                coins = 0;
+            }
+
             var options = new PaymentIntentCreateOptions
             {
-                Amount = request.Amount,
-                Currency = request.Currency,
+                Amount = amountMinor,
+                Currency = currency,
                 AutomaticPaymentMethods = new PaymentIntentAutomaticPaymentMethodsOptions
                 {
                     Enabled = true
@@ -29,7 +62,8 @@ public class CreatePaymentIntentCommandHandler : IRequestHandler<CreatePaymentIn
                 Metadata = new Dictionary<string, string>
                 {
                     { "userId", request.UserId },
-                    { "coins", request.Coins.ToString() }
+                    { "coins", coins.ToString() },
+                    { "productType", string.Equals(productType, "no_ads", StringComparison.OrdinalIgnoreCase) ? "no_ads" : "coins" }
                 }
             };
 

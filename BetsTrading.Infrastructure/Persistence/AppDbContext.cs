@@ -82,6 +82,7 @@ public class AppDbContext : DbContext
             entity.Property(e => e.Points).HasColumnName("points");
             entity.Property(e => e.PendingBalance).HasColumnName("pending_balance");
             entity.Property(e => e.IsPrivate).HasColumnName("private");
+            entity.Property(e => e.NoAds).HasColumnName("no_ads");
         });
 
         // Configuración de BetZone

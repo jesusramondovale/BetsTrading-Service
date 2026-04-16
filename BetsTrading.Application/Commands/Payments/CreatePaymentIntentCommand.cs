@@ -8,6 +8,9 @@ public class CreatePaymentIntentCommand : IRequest<CreatePaymentIntentResult>
     public long Amount { get; set; }
     public string Currency { get; set; } = "eur";
     public int Coins { get; set; }
+
+    /// <summary>coins (por defecto) | no_ads</summary>
+    public string ProductType { get; set; } = "coins";
 }
 
 public class CreatePaymentIntentResult

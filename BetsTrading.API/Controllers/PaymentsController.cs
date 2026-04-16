@@ -62,6 +62,11 @@ public class PaymentsController : ControllerBase
 
         if (!result.Success)
         {
+            if (result.Message is "User not found" or "no_ads_already_owned")
+            {
+                return BadRequest(new { message = result.Message });
+            }
+
             return StatusCode(500, new { message = "Stripe error", error = result.Message });
         }
 
@@ -84,7 +89,7 @@ public class PaymentsController : ControllerBase
             {
                 var intent = stripeEvent.Data.Object as PaymentIntent;
                 var userId = intent!.Metadata["userId"];
-                var coins = double.Parse(intent.Metadata["coins"], System.Globalization.CultureInfo.InvariantCulture);
+                var productType = intent.Metadata.TryGetValue("productType", out var pt) ? pt : "coins";
 
                 // Extract payment method
                 string paymentMethod = "unknown";
@@ -123,26 +128,61 @@ public class PaymentsController : ControllerBase
                     }
                 }
 
-                _logger.Debug("[Stripe] Pay confirmed for user {0} ({1} coins) via {2}", userId, coins, paymentMethod);
-
                 var user = await _unitOfWork.Users.GetByIdAsync(userId, cancellationToken: default);
-                if (user != null)
+                if (user == null)
                 {
-                    user.AddPoints(coins);
+                    return Ok();
+                }
 
-                    var paymentHistory = new PaymentData(
+                if (string.Equals(productType, "no_ads", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.Debug("[Stripe] No-ads purchase for user {0} via {1}", userId, paymentMethod);
+                    if (!user.NoAds)
+                    {
+                        user.GrantNoAds();
+                    }
+
+                    var noAdsPayment = new PaymentData(
                         userId,
                         intent.Id,
-                        coins,
+                        0,
                         currency,
                         amount,
                         true,
                         paymentMethod
                     );
 
-                    await _unitOfWork.PaymentData.AddAsync(paymentHistory, cancellationToken: default);
+                    await _unitOfWork.PaymentData.AddAsync(noAdsPayment, cancellationToken: default);
                     await _unitOfWork.SaveChangesAsync();
+                    return Ok();
                 }
+
+                var coins = 0.0;
+                if (intent.Metadata.TryGetValue("coins", out var coinsRaw) &&
+                    double.TryParse(coinsRaw, System.Globalization.CultureInfo.InvariantCulture, out var parsedCoins))
+                {
+                    coins = parsedCoins;
+                }
+
+                _logger.Debug("[Stripe] Pay confirmed for user {0} ({1} coins) via {2}", userId, coins, paymentMethod);
+
+                if (coins > 0)
+                {
+                    user.AddPoints(coins);
+                }
+
+                var paymentHistory = new PaymentData(
+                    userId,
+                    intent.Id,
+                    coins,
+                    currency,
+                    amount,
+                    true,
+                    paymentMethod
+                );
+
+                await _unitOfWork.PaymentData.AddAsync(paymentHistory, cancellationToken: default);
+                await _unitOfWork.SaveChangesAsync();
             }
             else if (stripeEvent.Type == "payment_intent.payment_failed")
             {

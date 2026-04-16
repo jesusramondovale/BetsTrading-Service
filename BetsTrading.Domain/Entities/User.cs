@@ -28,6 +28,7 @@ public class User
         FailedAttempts = 0;
         PendingBalance = 0.0;
         IsPrivate = false;
+        NoAds = false;
     }
 
     public string Id { get; private set; } = string.Empty;
@@ -51,6 +52,9 @@ public class User
     public double Points { get; private set; }
     public double PendingBalance { get; set; }
     public bool IsPrivate { get; set; }
+
+    /// <summary>Compra in-app "sin anuncios" (Stripe); si es true no se muestran intersticiales obligatorios.</summary>
+    public bool NoAds { get; private set; }
 
     // Métodos de dominio
     public void DeductPoints(double amount)
@@ -108,5 +112,10 @@ public class User
     public void UpdateDiditSessionId(string sessionId)
     {
         DiditSessionId = sessionId;
+    }
+
+    public void GrantNoAds()
+    {
+        NoAds = true;
     }
 }
