@@ -8,6 +8,9 @@ namespace BetsTrading.Application.Interfaces;
 /// </summary>
 public interface IAdminRuntimeConfig
 {
+    /// <summary>Versión monotónica de la configuración en memoria; incrementa cada POST de config.</summary>
+    long ConfigVersion { get; }
+
     /// <summary>Minuto UTC en que corre el updater de assets (ej. 15 = XX:15). Null = usar 15.</summary>
     int? UpdaterMinute { get; }
 

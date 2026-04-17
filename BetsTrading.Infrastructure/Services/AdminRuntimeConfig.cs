@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Threading;
 using BetsTrading.Application.DTOs;
 using BetsTrading.Application.Interfaces;
 
@@ -21,6 +22,9 @@ public sealed class AdminRuntimeConfig : IAdminRuntimeConfig
     private int? _mandatoryAdCooldownSeconds;
     private double? _noAdsPriceEur;
     private double? _noAdsPriceUsd;
+    private long _configVersion = 0;
+
+    public long ConfigVersion => Interlocked.Read(ref _configVersion);
 
     public int? UpdaterMinute => _updaterMinute;
     public int? OddsAdjusterRefreshTimeSeconds => _oddsAdjusterRefreshTimeSeconds;
@@ -71,6 +75,7 @@ public sealed class AdminRuntimeConfig : IAdminRuntimeConfig
         _mandatoryAdCooldownSeconds = dto.MandatoryAdCooldownSeconds;
         _noAdsPriceEur = dto.NoAdsPriceEur;
         _noAdsPriceUsd = dto.NoAdsPriceUsd;
+        Interlocked.Increment(ref _configVersion);
     }
 
     public AdminConfigDto ToDto(

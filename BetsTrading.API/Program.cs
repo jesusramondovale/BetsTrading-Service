@@ -838,6 +838,22 @@ app.MapPost("/status/admin/config", async (HttpContext ctx, BetsTrading.Infrastr
 
     adminConfig.SetFromDto(dto);
 
+    var nowUtc = DateTime.UtcNow;
+    var configuredMinute = Math.Clamp(dto.UpdaterMinute, 0, 59);
+    var currentHourAtConfiguredMinuteUtc = new DateTime(
+        nowUtc.Year,
+        nowUtc.Month,
+        nowUtc.Day,
+        nowUtc.Hour,
+        configuredMinute,
+        0,
+        DateTimeKind.Utc);
+    var toleranceEndUtc = currentHourAtConfiguredMinuteUtc.AddSeconds(59);
+    var nextUpdaterRunUtc = nowUtc <= currentHourAtConfiguredMinuteUtc
+        ? currentHourAtConfiguredMinuteUtc
+        : (nowUtc <= toleranceEndUtc ? nowUtc : currentHourAtConfiguredMinuteUtc.AddHours(1));
+    var waitSeconds = Math.Max(0, (nextUpdaterRunUtc - nowUtc).TotalSeconds);
+
     // Persistir exchange options a archivo si existe la ruta
     var baseDir = AppContext.BaseDirectory ?? env.ContentRootPath;
     if (!string.IsNullOrWhiteSpace(dto.ExchangeOptionsEur))
@@ -845,7 +861,13 @@ app.MapPost("/status/admin/config", async (HttpContext ctx, BetsTrading.Infrastr
     if (!string.IsNullOrWhiteSpace(dto.ExchangeOptionsUsd))
         try { await System.IO.File.WriteAllTextAsync(Path.Combine(baseDir, "exchange_options_usd.json"), dto.ExchangeOptionsUsd); } catch { }
 
-    customLogger.Log.Information("[ADMIN] :: POST config: OK (config updated)");
+    customLogger.Log.Information(
+        "[ADMIN] :: POST config: OK (config updated) | updater_minute={UpdaterMinute} | now_utc={NowUtc:O} | now_local={NowLocal:O} | next_updater_run_utc={NextRunUtc:O} | wait_seconds={WaitSeconds:F0}",
+        configuredMinute,
+        nowUtc,
+        DateTimeOffset.Now,
+        nextUpdaterRunUtc,
+        waitSeconds);
     return Results.Ok();
 }).AllowAnonymous();
 

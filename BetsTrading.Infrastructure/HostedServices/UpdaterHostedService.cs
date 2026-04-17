@@ -6,6 +6,7 @@ namespace BetsTrading.Infrastructure.HostedServices;
 
 public class UpdaterHostedService : BackgroundService
 {
+    private const int MinuteToleranceSeconds = 59;
     private readonly IServiceProvider _serviceProvider;
     private readonly IApplicationLogger _logger;
     private readonly IAdminRuntimeConfig _adminConfig;
@@ -52,17 +53,37 @@ public class UpdaterHostedService : BackgroundService
         {
             try
             {
+                var observedConfigVersion = _adminConfig.ConfigVersion;
                 var minute = _adminConfig.UpdaterMinute ?? 15;
                 var delay = GetDelayUntilNextXXMinuteUtc(minute);
+                var nowUtc = DateTime.UtcNow;
+                var nextRunAtUtc = GetNextRunAtUtc(minute, nowUtc);
+                _logger.Information(
+                    "[UpdaterHostedService] :: Scheduler check | now_utc={NowUtc:O} | now_local={NowLocal:O} | updater_minute={Minute} | config_version={ConfigVersion} | next_run_utc={NextRunUtc:O} | wait_seconds={WaitSeconds:F0}",
+                    nowUtc,
+                    DateTimeOffset.Now,
+                    minute,
+                    observedConfigVersion,
+                    nextRunAtUtc,
+                    delay.TotalSeconds);
                 if (delay > TimeSpan.Zero)
                 {
                     _logger.Debug("[UpdaterHostedService] :: Next run at XX:{1:D2} UTC in {0:F0}s", delay.TotalSeconds, minute);
-                    await Task.Delay(delay, stoppingToken);
+                    var configChanged = await WaitUntilNextRunOrConfigChange(delay, observedConfigVersion, stoppingToken);
+                    if (configChanged)
+                    {
+                        _logger.Information(
+                            "[UpdaterHostedService] :: Scheduler wait interrupted by config update | old_version={OldVersion} | new_version={NewVersion} | recalculating next run",
+                            observedConfigVersion,
+                            _adminConfig.ConfigVersion);
+                        continue;
+                    }
                 }
 
                 if (stoppingToken.IsCancellationRequested) break;
 
                 var runStartedAtUtc = DateTime.UtcNow;
+                _logger.Information("[UpdaterHostedService] :: Scheduler wake-up | trigger_utc={TriggerUtc:O}", runStartedAtUtc);
                 var marketOpen = IsMarketOpen();
 
                 await ExecuteUpdateAssets(marketOpen, stoppingToken);
@@ -84,11 +105,37 @@ public class UpdaterHostedService : BackgroundService
     private static TimeSpan GetDelayUntilNextXXMinuteUtc(int minute)
     {
         var now = DateTime.UtcNow;
-        var m = Math.Clamp(minute, 0, 59);
-        var currentHourXX = new DateTime(now.Year, now.Month, now.Day, now.Hour, m, 0, DateTimeKind.Utc);
-        var next = now <= currentHourXX ? currentHourXX : currentHourXX.AddHours(1);
+        var next = GetNextRunAtUtc(minute, now);
         var delay = next - now;
         return delay.TotalMilliseconds > 0 ? delay : TimeSpan.Zero;
+    }
+
+    private static DateTime GetNextRunAtUtc(int minute, DateTime nowUtc)
+    {
+        var m = Math.Clamp(minute, 0, 59);
+        var currentHourXX = new DateTime(nowUtc.Year, nowUtc.Month, nowUtc.Day, nowUtc.Hour, m, 0, DateTimeKind.Utc);
+        var toleranceEnd = currentHourXX.AddSeconds(MinuteToleranceSeconds);
+        if (nowUtc <= currentHourXX)
+            return currentHourXX;
+        if (nowUtc <= toleranceEnd)
+            return nowUtc;
+        return currentHourXX.AddHours(1);
+    }
+
+    private async Task<bool> WaitUntilNextRunOrConfigChange(TimeSpan delay, long expectedConfigVersion, CancellationToken stoppingToken)
+    {
+        var remaining = delay;
+        while (remaining > TimeSpan.Zero && !stoppingToken.IsCancellationRequested)
+        {
+            if (_adminConfig.ConfigVersion != expectedConfigVersion)
+                return true;
+
+            var chunk = remaining > TimeSpan.FromSeconds(5) ? TimeSpan.FromSeconds(5) : remaining;
+            await Task.Delay(chunk, stoppingToken);
+            remaining -= chunk;
+        }
+
+        return _adminConfig.ConfigVersion != expectedConfigVersion;
     }
 
     private bool IsMarketOpen()

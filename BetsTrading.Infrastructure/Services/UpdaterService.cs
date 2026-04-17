@@ -1,6 +1,7 @@
 using BetsTrading.Application.Interfaces;
 using BetsTrading.Domain.Interfaces;
 using BetsTrading.Domain.Entities;
+using BetsTrading.Domain.Enums;
 using BetsTrading.Infrastructure.Persistence;
 using System.Text.Json;
 using System.Globalization;
@@ -22,8 +23,8 @@ public class UpdaterService : IUpdaterService
         .Select(i => Environment.GetEnvironmentVariable($"TWELVE_DATA_KEY{i}") ?? "")
         .ToArray();
     private const decimal FIXED_EUR_USD = 1.16m;
-    /// <summary>Mínimo 3 bandas por región (debajo / spot / encima) → 9 zonas por período.</summary>
-    private const int ZonesPerPeriod = 9;
+    private const int MaxZonesPerTickerTimeframe = 12;
+    private const int MaxPeriodsPerTimeframe = 3;
     private const double MaxTargetOddsCap = 999.99;
 
     /// <summary>Multiplicador de odds casi proporcional al timeframe (1h→1×, 2h→2×, 4h→4×, 24h→24×).</summary>
@@ -473,7 +474,7 @@ public class UpdaterService : IUpdaterService
 
                     // Generar zonas para cada período temporal
                     int totalZonesCreated = 0;
-                    int maxPeriods = Math.Min(3, timePeriods.Count);
+                    int maxPeriods = Math.Min(MaxPeriodsPerTimeframe, timePeriods.Count);
 
                     _logger.Debug("[UpdaterService] :: Generating zones for {0} timeframe {1} with {2} periods",
                         currentAsset.Ticker, timeframe, maxPeriods);
@@ -486,12 +487,13 @@ public class UpdaterService : IUpdaterService
                         _logger.Debug("[UpdaterService] :: Calling GenerateIntelligentZones for {0} timeframe {1} period {2}. Price: {3}, Volatility: {4}, TimeToExpiry: {5}h",
                             currentAsset.Ticker, timeframe, periodIndex, currentPrice, volatility, timeToExpiry);
 
+                        int zonesPerPeriod = Math.Max(1, MaxZonesPerTickerTimeframe / maxPeriods);
                         List<(double Target, double Margin, double BaseProbability, string ZoneType)> zones;
                         try
                         {
                             zones = GenerateIntelligentZones(
                                 currentPrice, supports, resistances, volatility,
-                                timeToExpiry, rsi, bollinger, drift, zoneCount: ZonesPerPeriod,
+                                timeToExpiry, rsi, bollinger, drift, zoneCount: zonesPerPeriod,
                                 maxVariationPercent: maxVariationPercent);
 
                             _logger.Debug("[UpdaterService] :: GenerateIntelligentZones returned {0} zones for {1} timeframe {2} period {3}",
@@ -524,11 +526,14 @@ public class UpdaterService : IUpdaterService
                         )).ToList();
 
                         zonesWithPercentMargins = AdjustZonesToTouchPercent(zonesWithPercentMargins);
+                        zonesWithPercentMargins = EnsureBidirectionalCoverage(zonesWithPercentMargins, currentPrice);
+
+                        var zoneTypePlan = BuildBetTypePlan(zonesWithPercentMargins, periodIndex);
 
                         // Crear zonas EUR para este período
-                        int betTypeCounter = 0;
-                        foreach (var zone in zonesWithPercentMargins)
+                        for (int zoneIndex = 0; zoneIndex < zonesWithPercentMargins.Count; zoneIndex++)
                         {
+                            var zone = zonesWithPercentMargins[zoneIndex];
                             if (zone.Target <= 0 || zone.MarginPercent <= 0)
                             {
                                 _logger.Debug("[UpdaterService] :: Invalid zone data for {0}: Target={1}, MarginPercent={2}",
@@ -547,18 +552,17 @@ public class UpdaterService : IUpdaterService
                                 period.Start,
                                 period.End,
                                 Math.Round(odds, 2),
-                                betTypeCounter % 2,
+                                (int)zoneTypePlan[zoneIndex],
                                 timeframe
                             );
 
                             await _unitOfWork.BetZones.AddAsync(betZone, cancellationToken);
-                            betTypeCounter++;
                         }
 
                         // Crear zonas USD para este período
-                        betTypeCounter = 0;
-                        foreach (var zone in zonesWithPercentMargins)
+                        for (int zoneIndex = 0; zoneIndex < zonesWithPercentMargins.Count; zoneIndex++)
                         {
+                            var zone = zonesWithPercentMargins[zoneIndex];
                             if (zone.Target <= 0 || zone.MarginPercent <= 0)
                                 continue;
 
@@ -573,12 +577,11 @@ public class UpdaterService : IUpdaterService
                                 period.Start,
                                 period.End,
                                 Math.Round(odds, 2),
-                                betTypeCounter % 2,
+                                (int)zoneTypePlan[zoneIndex],
                                 timeframe
                             );
 
                             await _unitOfWork.BetZonesUSD.AddAsync(betZoneUSD, cancellationToken);
-                            betTypeCounter++;
                         }
 
                         totalZonesCreated += zonesWithPercentMargins.Count;
@@ -618,19 +621,16 @@ public class UpdaterService : IUpdaterService
         {
             var now = DateTime.UtcNow;
 
-            // Obtener IDs de zonas de apuestas activas
-            var betZoneIds = await _unitOfWork.BetZones
-                .GetActiveBetZoneIdsByDateRangeAsync(now, now, marketHours, cancellationToken);
+            // Evaluar todas las apuestas no finalizadas para no perder cierres al expirar una zona
+            var betsToUpdate = await _dbContext.Bets
+                .Where(b => !b.Finished)
+                .ToListAsync(cancellationToken);
 
-            if (!betZoneIds.Any())
+            if (!betsToUpdate.Any())
             {
-                _logger.Debug("[UpdaterService] :: CheckBetsAsync - No bet zones to check");
+                _logger.Debug("[UpdaterService] :: CheckBetsAsync - No unfinished bets to evaluate");
                 return;
             }
-
-            // Obtener apuestas no finalizadas para estas zonas
-            var betsToUpdate = await _unitOfWork.Bets
-                .GetBetsByBetZoneIdsAsync(betZoneIds, includeFinished: false, cancellationToken);
 
             foreach (var bet in betsToUpdate)
             {
@@ -659,24 +659,54 @@ public class UpdaterService : IUpdaterService
                     continue;
                 }
 
-                // Calcular l?mites de la zona
+                // Calcular límites de la zona
                 double upperBound = betZone.TargetValue + (betZone.TargetValue * betZone.BetMargin / 200);
                 double lowerBound = betZone.TargetValue - (betZone.TargetValue * betZone.BetMargin / 200);
+                bool zoneWindowEnded = now >= betZone.EndDate;
+                bool hasExitedZone = candles.Any(c => (double)c.High > upperBound || (double)c.Low < lowerBound);
+                bool hasTouchedZone = candles.Any(c => (double)c.High >= lowerBound && (double)c.Low <= upperBound);
+                bool isUpperLimitZone = lowerBound > bet.OriginValue;
+                bool crossedContinuousLimit = isUpperLimitZone
+                    ? candles.Any(c => (double)c.High > upperBound)
+                    : candles.Any(c => (double)c.Low < lowerBound);
 
-                // Verificar si alguna vela sali? de la zona
-                bool hasExitedZone = candles.Any(c =>
-                    (double)c.High > upperBound || (double)c.Low < lowerBound);
+                BetZoneType zoneType = betZone.BetType switch
+                {
+                    1 => BetZoneType.Extreme,
+                    2 => BetZoneType.Limit,
+                    _ => BetZoneType.Standard
+                };
 
-                // Usar m?todos de dominio
-                if (hasExitedZone)
+                bool shouldLose = false;
+                bool shouldWin = false;
+
+                switch (zoneType)
+                {
+                    case BetZoneType.Standard:
+                        shouldLose = hasExitedZone;
+                        shouldWin = !hasExitedZone && zoneWindowEnded;
+                        break;
+                    case BetZoneType.Extreme:
+                        shouldWin = zoneWindowEnded && hasTouchedZone;
+                        shouldLose = zoneWindowEnded && !hasTouchedZone;
+                        break;
+                    case BetZoneType.Limit:
+                        shouldLose = crossedContinuousLimit;
+                        shouldWin = !crossedContinuousLimit && zoneWindowEnded && hasTouchedZone;
+                        if (zoneWindowEnded && !crossedContinuousLimit && !hasTouchedZone)
+                        {
+                            shouldLose = true;
+                        }
+                        break;
+                }
+
+                if (shouldLose)
                 {
                     bet.MarkAsLost();
                 }
-                else
+                else if (shouldWin)
                 {
-                    // Si no sali? de la zona, la apuesta sigue activa (no se marca como ganada hasta que termine el per?odo)
-                    // En el c?digo legacy se marca target_won = true, pero no se marca finished hasta que salga de la zona
-                    // Por ahora, solo marcamos como perdida si sale de la zona
+                    bet.MarkAsWon();
                 }
 
                 _unitOfWork.Bets.Update(bet);
@@ -899,6 +929,83 @@ public class UpdaterService : IUpdaterService
         if (lowerBound > currentPrice) return 1;   // Verde: zona por encima
         if (upperBound < currentPrice) return -1;   // Rojo: zona por debajo
         return 0;   // Amarillo: zona en medio
+    }
+
+    private static List<BetZoneType> BuildBetTypePlan(
+        List<(double Target, double MarginPercent, double BaseProbability, string ZoneType)> zones,
+        int periodIndex)
+    {
+        int count = zones.Count;
+        var plan = Enumerable.Repeat(BetZoneType.Standard, count).ToList();
+        if (count == 0)
+        {
+            return plan;
+        }
+
+        // 60/25/15 aproximado por período.
+        int standardTarget = (int)Math.Round(count * 0.60, MidpointRounding.AwayFromZero);
+        int extremeTarget = (int)Math.Round(count * 0.25, MidpointRounding.AwayFromZero);
+        int limitTarget = Math.Max(1, count - standardTarget - extremeTarget);
+
+        // Con 4 o más zonas, forzar límite inferior y superior para evitar quedar solo en un lado.
+        if (count >= 4)
+            limitTarget = Math.Max(2, limitTarget);
+
+        if (standardTarget < 1) standardTarget = 1;
+        if (extremeTarget < 1 && count >= 3) extremeTarget = 1;
+        while (standardTarget + extremeTarget + limitTarget > count)
+        {
+            if (standardTarget > 1) standardTarget--;
+            else if (extremeTarget > 1) extremeTarget--;
+            else limitTarget--;
+        }
+        while (standardTarget + extremeTarget + limitTarget < count)
+        {
+            standardTarget++;
+        }
+
+        var sorted = zones
+            .Select((z, i) => new { Index = i, z.Target })
+            .OrderBy(x => x.Target)
+            .ToList();
+
+        // Límites en extremos inferior/superior del tablero.
+        if (limitTarget >= 1) plan[sorted.First().Index] = BetZoneType.Limit;
+        if (limitTarget >= 2) plan[sorted.Last().Index] = BetZoneType.Limit;
+
+        var freeIndices = sorted
+            .Where(x => plan[x.Index] == BetZoneType.Standard)
+            .Select(x => x.Index)
+            .ToList();
+
+        // Moradas en esquinas y alternadas por período para evitar "franja" completa.
+        var freeSorted = freeIndices
+            .OrderBy(i => zones[i].Target)
+            .ToList();
+        var extremeCandidates = new List<int>();
+        bool startFromLowerCorner = periodIndex % 2 == 0;
+        int left = 0;
+        int right = freeSorted.Count - 1;
+        while (extremeCandidates.Count < extremeTarget && left <= right)
+        {
+            if (startFromLowerCorner)
+            {
+                if (left <= right) extremeCandidates.Add(freeSorted[left++]);
+                if (extremeCandidates.Count < extremeTarget && left <= right) extremeCandidates.Add(freeSorted[right--]);
+            }
+            else
+            {
+                if (left <= right) extremeCandidates.Add(freeSorted[right--]);
+                if (extremeCandidates.Count < extremeTarget && left <= right) extremeCandidates.Add(freeSorted[left++]);
+            }
+        }
+
+        foreach (var idx in extremeCandidates)
+        {
+            plan[idx] = BetZoneType.Extreme;
+        }
+
+        return plan;
     }
 
     /// <summary>Obsoleto: ya no se usa tabla Trends; la API calcula los 5 con mayor odd en tiempo real.</summary>
@@ -1504,5 +1611,72 @@ public class UpdaterService : IUpdaterService
         }
 
         return adjustedZones;
+    }
+
+    /// <summary>
+    /// Garantiza que el set final tenga al menos una zona por encima y otra por debajo del precio actual.
+    /// Evita lotes sesgados (todo abajo o todo arriba), que rompían límites superiores/inferiores.
+    /// </summary>
+    private static List<(double Target, double MarginPercent, double BaseProbability, string ZoneType)> EnsureBidirectionalCoverage(
+        List<(double Target, double MarginPercent, double BaseProbability, string ZoneType)> zones,
+        double currentPrice)
+    {
+        if (zones.Count < 2 || currentPrice <= 0)
+            return zones;
+
+        var normalized = zones
+            .Select(z => (
+                Target: z.Target,
+                MarginPercent: Math.Max(1.0, z.MarginPercent),
+                BaseProbability: z.BaseProbability,
+                ZoneType: z.ZoneType))
+            .OrderBy(z => z.Target)
+            .ToList();
+
+        bool hasAbove = normalized.Any(z => z.Target > currentPrice);
+        bool hasBelow = normalized.Any(z => z.Target < currentPrice);
+        if (hasAbove && hasBelow)
+            return normalized;
+
+        // Distancia mínima para no quedar pegado al spot.
+        const double minDistancePct = 0.015; // 1.5%
+
+        if (!hasAbove)
+        {
+            // Recolocar la zona más alta al lado superior manteniendo su anchura relativa.
+            int idx = normalized.Count - 1;
+            double farBelowPct = normalized
+                .Where(z => z.Target < currentPrice)
+                .Select(z => Math.Abs((z.Target - currentPrice) / currentPrice))
+                .DefaultIfEmpty(minDistancePct)
+                .Max();
+            double newPct = Math.Max(minDistancePct, farBelowPct);
+            var z = normalized[idx];
+            normalized[idx] = (
+                Target: currentPrice * (1.0 + newPct),
+                MarginPercent: z.MarginPercent,
+                BaseProbability: z.BaseProbability,
+                ZoneType: "above");
+        }
+
+        if (!hasBelow)
+        {
+            // Recolocar la zona más baja al lado inferior manteniendo su anchura relativa.
+            int idx = 0;
+            double farAbovePct = normalized
+                .Where(z => z.Target > currentPrice)
+                .Select(z => Math.Abs((z.Target - currentPrice) / currentPrice))
+                .DefaultIfEmpty(minDistancePct)
+                .Max();
+            double newPct = Math.Max(minDistancePct, farAbovePct);
+            var z = normalized[idx];
+            normalized[idx] = (
+                Target: currentPrice * (1.0 - newPct),
+                MarginPercent: z.MarginPercent,
+                BaseProbability: z.BaseProbability,
+                ZoneType: "below");
+        }
+
+        return normalized.OrderBy(z => z.Target).ToList();
     }
 }
