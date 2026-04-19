@@ -15,7 +15,7 @@ Este documento lista todas las variables de entorno necesarias para ejecutar la 
 - Si no se configura la variable de entorno, se intentará leer desde `appsettings.json` bajo la sección `Google:ClientId`
 
 ### Stripe
-- `STRIPE_SECRET_KEY`: Clave secreta de Stripe para procesar pagos (requerida para módulo de pagos)
+- `STRIPE_REAL_SECRET_KEY`: Clave secreta de Stripe para procesar pagos (`sk_test_...` o `sk_live_...` según entorno; requerida para módulo de pagos)
 - `STRIPE_WEBHOOK_SECRET`: Secreto del webhook de Stripe para validar eventos (requerida para webhooks)
 
 ### SMTP (Email)
@@ -54,7 +54,7 @@ Para desarrollo local, puedes crear un archivo `.env` (no incluido en git) o con
 $env:POSTGRES_ADMIN_PASSWORD = "tu-password-postgres"
 $env:JWT_LOCAL_KEY = "tu-clave-secreta-aqui"
 $env:GOOGLE_CLIENT_ID = "tu-google-client-id.apps.googleusercontent.com"
-$env:STRIPE_SECRET_KEY = "sk_test_..."
+$env:STRIPE_REAL_SECRET_KEY = "sk_test_..."
 $env:STRIPE_WEBHOOK_SECRET = "whsec_..."
 $env:SMTP__Host = "smtp.gmail.com"
 $env:SMTP__Username = "tu-email@gmail.com"
@@ -69,7 +69,7 @@ $env:TWELVE_DATA_KEY1 = "tu-api-key-1"
 export POSTGRES_ADMIN_PASSWORD="tu-password-postgres"
 export JWT_LOCAL_KEY="tu-clave-secreta-aqui"
 export GOOGLE_CLIENT_ID="tu-google-client-id.apps.googleusercontent.com"
-export STRIPE_SECRET_KEY="sk_test_..."
+export STRIPE_REAL_SECRET_KEY="sk_test_..."
 export STRIPE_WEBHOOK_SECRET="whsec_..."
 export SMTP__Host="smtp.gmail.com"
 export SMTP__Username="tu-email@gmail.com"
