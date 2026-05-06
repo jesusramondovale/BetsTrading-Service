@@ -703,6 +703,7 @@ public class UpdaterService : IUpdaterService
                 if (shouldLose)
                 {
                     bet.MarkAsLost();
+                    await StopFollowersAfterFirstLossAsync(bet.UserId, cancellationToken);
                 }
                 else if (shouldWin)
                 {
@@ -719,6 +720,22 @@ public class UpdaterService : IUpdaterService
         {
             _logger.Debug("[UpdaterService] :: CheckBetsAsync error: {0}", ex.Message);
             throw;
+        }
+    }
+
+    private async Task StopFollowersAfterFirstLossAsync(string targetUserId, CancellationToken cancellationToken)
+    {
+        var subscriptions = await _unitOfWork.CopyTradingSubscriptions
+            .GetActiveByTargetUserIdAsync(targetUserId, cancellationToken);
+
+        _logger.Debug("[UpdaterService] :: StopFollowersAfterFirstLossAsync target={0}, activeSubscriptions={1}", targetUserId, subscriptions.Count);
+        if (subscriptions.Count == 0) return;
+
+        foreach (var subscription in subscriptions.Where(s => s.StopAfterOneLoss))
+        {
+            subscription.Stop("stopped_after_first_loss");
+            _unitOfWork.CopyTradingSubscriptions.Update(subscription);
+            _logger.Debug("[UpdaterService] :: Subscription stopped after first loss. follower={0}, target={1}", subscription.FollowerUserId, targetUserId);
         }
     }
 

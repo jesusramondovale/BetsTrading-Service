@@ -28,6 +28,7 @@ public class AppDbContext : DbContext
     public DbSet<RaffleItem> RaffleItems { get; set; }
     public DbSet<WithdrawalMethod> WithdrawalMethods { get; set; }
     public DbSet<DailyLoginStreak> DailyLoginStreaks { get; set; }
+    public DbSet<CopyTradingSubscription> CopyTradingSubscriptions { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -365,6 +366,28 @@ public class AppDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Configuración de CopyTradingSubscription
+        modelBuilder.Entity<CopyTradingSubscription>(entity =>
+        {
+            entity.ToTable("CopyTradingSubscriptions", "BetsTrading");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.FollowerUserId).HasColumnName("follower_user_id").IsRequired();
+            entity.Property(e => e.TargetUserId).HasColumnName("target_user_id").IsRequired();
+            entity.Property(e => e.CopyPercent).HasColumnName("copy_percent");
+            entity.Property(e => e.AutoAdjustByBalance).HasColumnName("auto_adjust_by_balance");
+            entity.Property(e => e.StopAfterOneLoss).HasColumnName("stop_after_one_loss");
+            entity.Property(e => e.IsActive).HasColumnName("is_active");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasColumnType("timestamp with time zone");
+            entity.Property(e => e.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamp with time zone");
+            entity.Property(e => e.LastCopiedAt).HasColumnName("last_copied_at").HasColumnType("timestamp with time zone");
+            entity.Property(e => e.StoppedAt).HasColumnName("stopped_at").HasColumnType("timestamp with time zone");
+            entity.Property(e => e.StopReason).HasColumnName("stop_reason");
+            entity.HasIndex(e => new { e.FollowerUserId, e.TargetUserId }).IsUnique();
+            entity.HasIndex(e => e.TargetUserId);
+            entity.HasIndex(e => new { e.TargetUserId, e.IsActive });
         });
 
         base.OnModelCreating(modelBuilder);

@@ -66,6 +66,36 @@ namespace BetsTrading.Infrastructure.Migrations
             migrationBuilder.Sql(@"CREATE INDEX IF NOT EXISTS ""BetsTrading"".""IX_VerificationCodes_Email"" ON ""BetsTrading"".""VerificationCodes"" USING btree (email COLLATE pg_catalog.""default"" ASC NULLS LAST) TABLESPACE pg_default;");
 
             migrationBuilder.Sql(@"
+                CREATE TABLE IF NOT EXISTS ""BetsTrading"".""CopyTradingSubscriptions""
+                (
+                    id uuid NOT NULL DEFAULT gen_random_uuid(),
+                    follower_user_id text COLLATE pg_catalog.""default"" NOT NULL,
+                    target_user_id text COLLATE pg_catalog.""default"" NOT NULL,
+                    copy_percent numeric(8,2) NOT NULL DEFAULT 50,
+                    auto_adjust_by_balance boolean NOT NULL DEFAULT false,
+                    stop_after_one_loss boolean NOT NULL DEFAULT false,
+                    is_active boolean NOT NULL DEFAULT true,
+                    created_at timestamp with time zone NOT NULL DEFAULT now(),
+                    updated_at timestamp with time zone NOT NULL DEFAULT now(),
+                    last_copied_at timestamp with time zone,
+                    stopped_at timestamp with time zone,
+                    stop_reason text COLLATE pg_catalog.""default"",
+                    CONSTRAINT ""CopyTradingSubscriptions_pkey"" PRIMARY KEY (id),
+                    CONSTRAINT ""CopyTradingSubscriptions_follower_fk"" FOREIGN KEY (follower_user_id)
+                        REFERENCES ""BetsTrading"".""Users"" (id) MATCH SIMPLE
+                        ON UPDATE CASCADE
+                        ON DELETE CASCADE,
+                    CONSTRAINT ""CopyTradingSubscriptions_target_fk"" FOREIGN KEY (target_user_id)
+                        REFERENCES ""BetsTrading"".""Users"" (id) MATCH SIMPLE
+                        ON UPDATE CASCADE
+                        ON DELETE CASCADE
+                )
+                TABLESPACE pg_default;
+            ");
+            migrationBuilder.Sql(@"CREATE UNIQUE INDEX IF NOT EXISTS ""BetsTrading"".ux_copytrading_follower_target ON ""BetsTrading"".""CopyTradingSubscriptions"" USING btree (follower_user_id COLLATE pg_catalog.""default"", target_user_id COLLATE pg_catalog.""default"") TABLESPACE pg_default;");
+            migrationBuilder.Sql(@"CREATE INDEX IF NOT EXISTS ""BetsTrading"".ix_copytrading_target_active ON ""BetsTrading"".""CopyTradingSubscriptions"" USING btree (target_user_id COLLATE pg_catalog.""default"", is_active) TABLESPACE pg_default;");
+
+            migrationBuilder.Sql(@"
                 CREATE TABLE IF NOT EXISTS ""BetsTrading"".""RaffleItems""
                 (
                     id integer NOT NULL GENERATED ALWAYS AS IDENTITY ( INCREMENT 1 START 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1 ),
@@ -435,6 +465,7 @@ namespace BetsTrading.Infrastructure.Migrations
             migrationBuilder.Sql(@"DROP TABLE IF EXISTS ""BetsTrading"".""Raffles"";");
             migrationBuilder.Sql(@"DROP TABLE IF EXISTS ""BetsTrading"".""RaffleItems"";");
             migrationBuilder.Sql(@"DROP TABLE IF EXISTS ""BetsTrading"".""VerificationCodes"";");
+            migrationBuilder.Sql(@"DROP TABLE IF EXISTS ""BetsTrading"".""CopyTradingSubscriptions"";");
             migrationBuilder.Sql(@"DROP TABLE IF EXISTS ""BetsTrading"".""Users"";");
             migrationBuilder.Sql(@"
                 DROP SEQUENCE IF EXISTS ""BetsTrading"".""PriceBetsUSD_id_seq"";

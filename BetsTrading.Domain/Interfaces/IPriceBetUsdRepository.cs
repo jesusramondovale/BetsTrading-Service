@@ -6,5 +6,5 @@ public interface IPriceBetUsdRepository : IRepository<PriceBetUSD>
 {
     Task<PriceBetUSD?> GetByIdAsync(int id, CancellationToken cancellationToken = default);
     Task<IEnumerable<PriceBetUSD>> GetUserPriceBetsAsync(string userId, bool includeArchived = false, CancellationToken cancellationToken = default);
-    Task<PriceBetUSD?> GetByTickerAndEndDateAsync(string ticker, DateTime endDate, CancellationToken cancellationToken = default);
+    Task<PriceBetUSD?> GetByTickerAndEndDateAsync(string userId, string ticker, DateTime endDate, CancellationToken cancellationToken = default);
 }

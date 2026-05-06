@@ -29,6 +29,7 @@ public class UnitOfWork : IUnitOfWork
     private IRaffleRepository? _raffles;
     private IRaffleItemRepository? _raffleItems;
     private IDailyLoginStreakRepository? _dailyLoginStreaks;
+    private ICopyTradingSubscriptionRepository? _copyTradingSubscriptions;
 
     public UnitOfWork(AppDbContext context)
     {
@@ -54,6 +55,7 @@ public class UnitOfWork : IUnitOfWork
     public IRaffleRepository Raffles => _raffles ??= new RaffleRepository(_context);
     public IRaffleItemRepository RaffleItems => _raffleItems ??= new RaffleItemRepository(_context);
     public IDailyLoginStreakRepository DailyLoginStreaks => _dailyLoginStreaks ??= new DailyLoginStreakRepository(_context);
+    public ICopyTradingSubscriptionRepository CopyTradingSubscriptions => _copyTradingSubscriptions ??= new CopyTradingSubscriptionRepository(_context);
 
     public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {

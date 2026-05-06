@@ -189,6 +189,81 @@ public class BetController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Perfil público para Copy-Betting: rendimiento en apuestas de zona archivadas y hasta 15 últimas apuestas (zona + precio exacto EUR).
+    /// Cualquier usuario autenticado puede consultar el histórico publicable de otro usuario.
+    /// </summary>
+    [HttpPost("PublicCopyBettingSnapshot")]
+    public async Task<IActionResult> PublicCopyBettingSnapshot(
+        [FromBody] PublicCopyBettingSnapshotRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var tokenUserId = User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? User.FindFirstValue("app_sub")
+                ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+            if (string.IsNullOrEmpty(tokenUserId))
+            {
+                return Unauthorized(new { Message = "Invalid token" });
+            }
+
+            var targetUserId = (request.TargetUserId ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(targetUserId))
+            {
+                return BadRequest(new { Message = "targetUserId is required" });
+            }
+
+            var query = new GetPublicCopyBettingSnapshotQuery { TargetUserId = targetUserId };
+            var result = await _mediator.Send(query, cancellationToken);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[BetController] :: PublicCopyBettingSnapshot :: Unexpected error: {message}", ex.Message);
+            return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+        }
+    }
+
+    [HttpPost("ConfigureCopyTrading")]
+    public async Task<IActionResult> ConfigureCopyTrading([FromBody] ConfigureCopyTradingRequest request)
+    {
+        try
+        {
+            _logger.LogDebug(
+                "[BetController] :: ConfigureCopyTrading :: Request received. FollowerUserId={FollowerUserId}, UserId={UserId}, TargetUserId={TargetUserId}, IsEnabled={IsEnabled}, CopyPercent={CopyPercent}, AutoAdjust={AutoAdjust}, StopAfterOneLoss={StopAfterOneLoss}",
+                request.FollowerUserId, request.UserId, request.TargetUserId, request.IsEnabled, request.CopyPercent, request.AutoAdjustByBalance, request.StopAfterOneLoss);
+
+            var command = new ConfigureCopyTradingCommand
+            {
+                FollowerUserId = request.GetFollowerUserId(),
+                Fcm = request.GetFcm(),
+                TargetUserId = request.GetTargetUserId(),
+                IsEnabled = request.IsEnabled,
+                CopyPercent = request.CopyPercent,
+                AutoAdjustByBalance = request.AutoAdjustByBalance,
+                StopAfterOneLoss = request.StopAfterOneLoss
+            };
+
+            var result = await _mediator.Send(command);
+            _logger.LogDebug(
+                "[BetController] :: ConfigureCopyTrading :: Completed. Active={Active}, Message={Message}",
+                result.Active, result.Message);
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning("[BetController] :: ConfigureCopyTrading :: Validation error: {Message}", ex.Message);
+            return BadRequest(new { Message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[BetController] :: ConfigureCopyTrading :: Unexpected error: {message}", ex.Message);
+            return StatusCode(500, new { Message = "Server error", Error = ex.Message });
+        }
+    }
+
     [HttpPost("GetBetZone")]
     public async Task<IActionResult> GetBetZone([FromBody] GetBetZoneRequest request)
     {
@@ -514,6 +589,26 @@ public class GetUserBetsRequest
     public string? UserId { get; set; }
     public bool IncludeArchived { get; set; }
     public string GetUserId() => UserId ?? string.Empty;
+}
+
+public class PublicCopyBettingSnapshotRequest
+{
+    public string? TargetUserId { get; set; }
+}
+
+public class ConfigureCopyTradingRequest
+{
+    public string? UserId { get; set; }
+    public string? FollowerUserId { get; set; }
+    public string? Fcm { get; set; }
+    public string? TargetUserId { get; set; }
+    public bool IsEnabled { get; set; } = true;
+    public double CopyPercent { get; set; } = 50;
+    public bool AutoAdjustByBalance { get; set; }
+    public bool StopAfterOneLoss { get; set; }
+    public string GetFollowerUserId() => FollowerUserId ?? UserId ?? string.Empty;
+    public string GetFcm() => Fcm ?? string.Empty;
+    public string GetTargetUserId() => TargetUserId ?? string.Empty;
 }
 
 public class GetBetZoneRequest

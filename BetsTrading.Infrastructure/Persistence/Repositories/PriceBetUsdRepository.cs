@@ -28,9 +28,9 @@ public class PriceBetUsdRepository : Repository<PriceBetUSD>, IPriceBetUsdReposi
         return await query.ToListAsync(cancellationToken);
     }
 
-    public async Task<PriceBetUSD?> GetByTickerAndEndDateAsync(string ticker, DateTime endDate, CancellationToken cancellationToken = default)
+    public async Task<PriceBetUSD?> GetByTickerAndEndDateAsync(string userId, string ticker, DateTime endDate, CancellationToken cancellationToken = default)
     {
         return await _dbSet
-            .FirstOrDefaultAsync(pb => pb.Ticker == ticker && pb.EndDate == endDate, cancellationToken);
+            .FirstOrDefaultAsync(pb => pb.UserId == userId && pb.Ticker == ticker && pb.EndDate == endDate, cancellationToken);
     }
 }
