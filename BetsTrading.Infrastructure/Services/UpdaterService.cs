@@ -634,10 +634,10 @@ public class UpdaterService : IUpdaterService
 
             foreach (var bet in betsToUpdate)
             {
-                var betZone = await _unitOfWork.BetZones.GetByIdAsync(bet.BetZoneId, cancellationToken);
-                if (betZone == null)
+                var resolved = await TryResolveBetZoneBoundsAsync(bet.BetZoneId, cancellationToken);
+                if (resolved == null)
                 {
-                    _logger.Debug("[UpdaterService] :: CheckBetsAsync - Bet zone null for bet [{0}]", bet.Id);
+                    _logger.Debug("[UpdaterService] :: CheckBetsAsync - Bet zone not found (EUR/USD) for bet [{0}] zoneId [{1}]", bet.Id, bet.BetZoneId);
                     continue;
                 }
 
@@ -650,19 +650,19 @@ public class UpdaterService : IUpdaterService
 
                 // Obtener candles en el rango de la zona
                 var candles = await _unitOfWork.AssetCandles
-                    .GetCandlesByDateRangeAsync(asset.Id, "1h", betZone.StartDate, betZone.EndDate, cancellationToken);
+                    .GetCandlesByDateRangeAsync(asset.Id, "1h", resolved.StartDate, resolved.EndDate, cancellationToken);
 
                 if (!candles.Any())
                 {
-                    _logger.Debug("[UpdaterService] :: CheckBetsAsync - No candles for [{0}] zone [{1}]", 
-                        asset.Ticker, betZone.Id);
+                    _logger.Debug("[UpdaterService] :: CheckBetsAsync - No candles for [{0}] zone [{1}]",
+                        asset.Ticker, bet.BetZoneId);
                     continue;
                 }
 
                 // Calcular límites de la zona
-                double upperBound = betZone.TargetValue + (betZone.TargetValue * betZone.BetMargin / 200);
-                double lowerBound = betZone.TargetValue - (betZone.TargetValue * betZone.BetMargin / 200);
-                bool zoneWindowEnded = now >= betZone.EndDate;
+                double upperBound = resolved.UpperBound;
+                double lowerBound = resolved.LowerBound;
+                bool zoneWindowEnded = now >= resolved.EndDate;
                 bool hasExitedZone = candles.Any(c => (double)c.High > upperBound || (double)c.Low < lowerBound);
                 bool hasTouchedZone = candles.Any(c => (double)c.High >= lowerBound && (double)c.Low <= upperBound);
                 bool isUpperLimitZone = lowerBound > bet.OriginValue;
@@ -670,7 +670,7 @@ public class UpdaterService : IUpdaterService
                     ? candles.Any(c => (double)c.High > upperBound)
                     : candles.Any(c => (double)c.Low < lowerBound);
 
-                BetZoneType zoneType = betZone.BetType switch
+                BetZoneType zoneType = resolved.BetType switch
                 {
                     1 => BetZoneType.Extreme,
                     2 => BetZoneType.Limit,
@@ -687,7 +687,8 @@ public class UpdaterService : IUpdaterService
                         shouldWin = !hasExitedZone && zoneWindowEnded;
                         break;
                     case BetZoneType.Extreme:
-                        shouldWin = zoneWindowEnded && hasTouchedZone;
+                        // Zona morada discontinua: gana en cuanto el precio toca la banda (cualquier vela en ventana).
+                        shouldWin = hasTouchedZone;
                         shouldLose = zoneWindowEnded && !hasTouchedZone;
                         break;
                     case BetZoneType.Limit:
@@ -700,14 +701,14 @@ public class UpdaterService : IUpdaterService
                         break;
                 }
 
-                if (shouldLose)
+                if (shouldWin)
+                {
+                    bet.MarkAsWon();
+                }
+                else if (shouldLose)
                 {
                     bet.MarkAsLost();
                     await StopFollowersAfterFirstLossAsync(bet.UserId, cancellationToken);
-                }
-                else if (shouldWin)
-                {
-                    bet.MarkAsWon();
                 }
 
                 _unitOfWork.Bets.Update(bet);
@@ -721,6 +722,35 @@ public class UpdaterService : IUpdaterService
             _logger.Debug("[UpdaterService] :: CheckBetsAsync error: {0}", ex.Message);
             throw;
         }
+    }
+
+    /// <summary>Resuelve límites y fechas de la zona (EUR o USD) para evaluar la apuesta.</summary>
+    private sealed record ResolvedBetZoneBounds(
+        double UpperBound,
+        double LowerBound,
+        DateTime StartDate,
+        DateTime EndDate,
+        int BetType);
+
+    private async Task<ResolvedBetZoneBounds?> TryResolveBetZoneBoundsAsync(int betZoneId, CancellationToken cancellationToken)
+    {
+        var betZone = await _unitOfWork.BetZones.GetByIdAsync(betZoneId, cancellationToken);
+        if (betZone != null)
+        {
+            double upper = betZone.TargetValue + (betZone.TargetValue * betZone.BetMargin / 200);
+            double lower = betZone.TargetValue - (betZone.TargetValue * betZone.BetMargin / 200);
+            return new ResolvedBetZoneBounds(upper, lower, betZone.StartDate, betZone.EndDate, betZone.BetType);
+        }
+
+        var usd = await _unitOfWork.BetZonesUSD.GetByIdAsync(betZoneId, cancellationToken);
+        if (usd != null)
+        {
+            double upper = usd.TargetValue + (usd.TargetValue * usd.BetMargin / 200);
+            double lower = usd.TargetValue - (usd.TargetValue * usd.BetMargin / 200);
+            return new ResolvedBetZoneBounds(upper, lower, usd.StartDate, usd.EndDate, usd.BetType);
+        }
+
+        return null;
     }
 
     private async Task StopFollowersAfterFirstLossAsync(string targetUserId, CancellationToken cancellationToken)
