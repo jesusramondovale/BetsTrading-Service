@@ -27,7 +27,10 @@ public class GetPaymentHistoryQueryHandler : IRequestHandler<GetPaymentHistoryQu
 
         var payments = await _unitOfWork.PaymentData.GetByUserIdAsync(request.UserId, cancellationToken);
 
-        var paymentDtos = payments.OrderByDescending(p => p.ExecutedAt).Select(p => new PaymentHistoryDto
+        var paymentDtos = payments
+            .OrderByDescending(p => p.ExecutedAt)
+            .ThenByDescending(p => p.Id)
+            .Select(p => new PaymentHistoryDto
         {
             Id = p.Id,
             UserId = p.UserId,

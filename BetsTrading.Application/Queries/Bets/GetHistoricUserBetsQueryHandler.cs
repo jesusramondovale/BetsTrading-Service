@@ -16,7 +16,6 @@ public class GetHistoricUserBetsQueryHandler : IRequestHandler<GetHistoricUserBe
 
     public async Task<IEnumerable<BetDto>> Handle(GetHistoricUserBetsQuery request, CancellationToken cancellationToken)
     {
-        // Obtener apuestas archivadas (históricas)
         var bets = await _unitOfWork.Bets.GetUserBetsAsync(request.UserId, includeArchived: true, cancellationToken);
         var archivedBets = bets.Where(b => b.Archived).ToList();
 
@@ -28,43 +27,72 @@ public class GetHistoricUserBetsQueryHandler : IRequestHandler<GetHistoricUserBe
             if (asset == null) continue;
 
             var betZone = await _unitOfWork.BetZones.GetByIdAsync(bet.BetZoneId, cancellationToken);
-            if (betZone == null) continue;
+            if (betZone != null)
+            {
+                double necessaryGain = BetCalculationService.CalculateNecessaryGain(asset, betZone, "EUR");
+                TimeSpan timeMargin = betZone.EndDate - betZone.StartDate;
+                var profitLoss = bet.TargetWon ? bet.BetAmount * bet.OriginOdds : -bet.BetAmount;
+                betDtos.Add(new BetDto
+                {
+                    Id = bet.Id,
+                    UserId = bet.UserId,
+                    Ticker = bet.Ticker,
+                    Name = asset.Name,
+                    BetAmount = bet.BetAmount,
+                    NecessaryGain = necessaryGain,
+                    OriginValue = bet.OriginValue,
+                    CurrentValue = asset.CurrentEur,
+                    TargetValue = betZone.TargetValue,
+                    TargetMargin = betZone.BetMargin,
+                    TargetDate = betZone.StartDate,
+                    EndDate = betZone.EndDate,
+                    TargetOdds = bet.OriginOdds,
+                    TargetWon = bet.TargetWon,
+                    Finished = bet.Finished,
+                    IconPath = asset.Icon ?? "null",
+                    Type = betZone.BetType,
+                    DateMargin = timeMargin.Days,
+                    BetZone = bet.BetZoneId,
+                    Archived = bet.Archived,
+                    ProfitLoss = profitLoss
+                });
+                continue;
+            }
 
-            // Calcular ganancia necesaria
-            double necessaryGain = BetCalculationService.CalculateNecessaryGain(asset, betZone, "EUR");
+            var betZoneUsd = await _unitOfWork.BetZonesUSD.GetByIdAsync(bet.BetZoneId, cancellationToken);
+            if (betZoneUsd == null) continue;
 
-            // Calcular margen de tiempo
-            TimeSpan timeMargin = betZone.EndDate - betZone.StartDate;
-
-            var profitLoss = bet.TargetWon ? bet.BetAmount * bet.OriginOdds : -bet.BetAmount;
-            var betDto = new BetDto
+            double necessaryGainUsd = BetCalculationService.CalculateNecessaryGain(asset, betZoneUsd, "USD");
+            TimeSpan timeMarginUsd = betZoneUsd.EndDate - betZoneUsd.StartDate;
+            var profitLossUsd = bet.TargetWon ? bet.BetAmount * bet.OriginOdds : -bet.BetAmount;
+            betDtos.Add(new BetDto
             {
                 Id = bet.Id,
                 UserId = bet.UserId,
                 Ticker = bet.Ticker,
                 Name = asset.Name,
                 BetAmount = bet.BetAmount,
-                NecessaryGain = necessaryGain,
+                NecessaryGain = necessaryGainUsd,
                 OriginValue = bet.OriginValue,
-                CurrentValue = asset.CurrentEur,
-                TargetValue = betZone.TargetValue,
-                TargetMargin = betZone.BetMargin,
-                TargetDate = betZone.StartDate,
-                EndDate = betZone.EndDate,
+                CurrentValue = asset.CurrentUsd,
+                TargetValue = betZoneUsd.TargetValue,
+                TargetMargin = betZoneUsd.BetMargin,
+                TargetDate = betZoneUsd.StartDate,
+                EndDate = betZoneUsd.EndDate,
                 TargetOdds = bet.OriginOdds,
                 TargetWon = bet.TargetWon,
                 Finished = bet.Finished,
                 IconPath = asset.Icon ?? "null",
-                Type = betZone.BetType,
-                DateMargin = timeMargin.Days,
+                Type = betZoneUsd.BetType,
+                DateMargin = timeMarginUsd.Days,
                 BetZone = bet.BetZoneId,
                 Archived = bet.Archived,
-                ProfitLoss = profitLoss
-            };
-
-            betDtos.Add(betDto);
+                ProfitLoss = profitLossUsd
+            });
         }
 
-        return betDtos;
+        return betDtos
+            .OrderByDescending(b => b.EndDate ?? b.TargetDate ?? DateTime.MinValue)
+            .ThenByDescending(b => b.Id);
     }
 }

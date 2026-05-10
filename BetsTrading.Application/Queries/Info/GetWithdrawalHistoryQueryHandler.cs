@@ -27,7 +27,10 @@ public class GetWithdrawalHistoryQueryHandler : IRequestHandler<GetWithdrawalHis
 
         var withdrawals = await _unitOfWork.WithdrawalData.GetByUserIdAsync(request.UserId, cancellationToken);
 
-        var withdrawalDtos = withdrawals.OrderByDescending(w => w.ExecutedAt).Select(w => new WithdrawalHistoryDto
+        var withdrawalDtos = withdrawals
+            .OrderByDescending(w => w.ExecutedAt)
+            .ThenByDescending(w => w.Id)
+            .Select(w => new WithdrawalHistoryDto
         {
             Id = w.Id,
             UserId = w.UserId,

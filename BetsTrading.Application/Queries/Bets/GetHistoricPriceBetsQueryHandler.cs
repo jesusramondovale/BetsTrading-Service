@@ -15,20 +15,19 @@ public class GetHistoricPriceBetsQueryHandler : IRequestHandler<GetHistoricPrice
 
     public async Task<IEnumerable<PriceBetDto>> Handle(GetHistoricPriceBetsQuery request, CancellationToken cancellationToken)
     {
-        IEnumerable<PriceBetDto> priceBetDtos;
+        var priceBetDtos = new List<PriceBetDto>();
 
         if (request.Currency == "EUR")
         {
             var allPriceBets = await _unitOfWork.PriceBets.GetUserPriceBetsAsync(request.UserId, includeArchived: true, cancellationToken);
             var archivedPriceBets = allPriceBets.Where(pb => pb.Archived).ToList();
-            priceBetDtos = new List<PriceBetDto>();
 
             foreach (var priceBet in archivedPriceBets)
             {
                 var asset = await _unitOfWork.FinancialAssets.GetByTickerAsync(priceBet.Ticker, cancellationToken);
                 if (asset == null) continue;
 
-                ((List<PriceBetDto>)priceBetDtos).Add(new PriceBetDto
+                priceBetDtos.Add(new PriceBetDto
                 {
                     Id = priceBet.Id,
                     Name = asset.Name,
@@ -49,14 +48,13 @@ public class GetHistoricPriceBetsQueryHandler : IRequestHandler<GetHistoricPrice
         {
             var allPriceBets = await _unitOfWork.PriceBetsUSD.GetUserPriceBetsAsync(request.UserId, includeArchived: true, cancellationToken);
             var archivedPriceBets = allPriceBets.Where(pb => pb.Archived).ToList();
-            priceBetDtos = new List<PriceBetDto>();
 
             foreach (var priceBet in archivedPriceBets)
             {
                 var asset = await _unitOfWork.FinancialAssets.GetByTickerAsync(priceBet.Ticker, cancellationToken);
                 if (asset == null) continue;
 
-                ((List<PriceBetDto>)priceBetDtos).Add(new PriceBetDto
+                priceBetDtos.Add(new PriceBetDto
                 {
                     Id = priceBet.Id,
                     Name = asset.Name,
@@ -74,6 +72,9 @@ public class GetHistoricPriceBetsQueryHandler : IRequestHandler<GetHistoricPrice
             }
         }
 
-        return priceBetDtos;
+        return priceBetDtos
+            .OrderByDescending(p => p.EndDate)
+            .ThenByDescending(p => p.BetDate)
+            .ThenByDescending(p => p.Id);
     }
 }
