@@ -45,6 +45,7 @@
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </Content>
     <EmbeddedResource Include="Health\StatusPage.html" />
+    <EmbeddedResource Include="Health\DeleteAccountPage.html" />
     <EmbeddedResource Include="Health\AppInfoPage.html" />
     <!-- Firebase credentials: solo se copia si existe en raíz (está en .gitignore). Ver doc/FIREBASE_README.md -->
     <Content Include="..\betrader-v1-firebase.json" Condition="Exists('..\betrader-v1-firebase.json')">

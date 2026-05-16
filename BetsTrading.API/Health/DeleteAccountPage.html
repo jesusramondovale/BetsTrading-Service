@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BetsTrading — Eliminar cuenta</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            min-height: 100vh;
+            font-family: 'Outfit', sans-serif;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+            color: #e8e8ed;
+            padding: 2rem 1rem 3rem;
+        }
+        .grid-bg {
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(239, 68, 68, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(239, 68, 68, 0.03) 1px, transparent 1px);
+            background-size: 48px 48px;
+            pointer-events: none;
+        }
+        .wrap {
+            position: relative;
+            max-width: 520px;
+            margin: 0 auto;
+        }
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            color: #a5f3fc;
+            text-decoration: none;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+        }
+        .back-link:hover { text-decoration: underline; }
+        .card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(239, 68, 68, 0.35);
+            border-radius: 20px;
+            padding: 1.75rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+        h1 {
+            font-size: 1.4rem;
+            color: #fca5a5;
+            margin-bottom: 0.5rem;
+        }
+        .warn {
+            background: rgba(239, 68, 68, 0.12);
+            border: 1px solid rgba(239, 68, 68, 0.35);
+            border-radius: 12px;
+            padding: 1rem;
+            margin: 1rem 0;
+            font-size: 0.88rem;
+            line-height: 1.5;
+            color: #fecaca;
+        }
+        .warn ul {
+            margin: 0.5rem 0 0 1.1rem;
+        }
+        label {
+            display: block;
+            font-size: 0.8rem;
+            color: #94a3b8;
+            margin-top: 0.85rem;
+        }
+        input[type="text"],
+        input[type="password"] {
+            width: 100%;
+            margin-top: 0.25rem;
+            padding: 0.6rem 0.75rem;
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid rgba(239, 68, 68, 0.35);
+            border-radius: 8px;
+            color: #e8e8ed;
+            font-size: 0.95rem;
+        }
+        input:focus {
+            outline: none;
+            border-color: #f87171;
+        }
+        #status-msg {
+            margin-top: 1rem;
+            font-size: 0.85rem;
+            min-height: 1.2em;
+        }
+        .btn-row {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: 1.25rem;
+            flex-wrap: wrap;
+        }
+        .btn-delete {
+            padding: 0.65rem 1.25rem;
+            background: #dc2626;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .btn-delete:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+        .btn-cancel {
+            padding: 0.65rem 1.25rem;
+            background: rgba(255,255,255,0.08);
+            color: #e8e8ed;
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: inherit;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.75);
+            z-index: 200;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+        .modal-overlay.open { display: flex; }
+        .modal {
+            background: #1a1a2e;
+            border: 1px solid rgba(239, 68, 68, 0.5);
+            border-radius: 16px;
+            padding: 1.5rem;
+            max-width: 400px;
+            width: 100%;
+        }
+        .modal h2 {
+            color: #fca5a5;
+            font-size: 1.1rem;
+            margin-bottom: 0.75rem;
+        }
+        .modal p {
+            font-size: 0.88rem;
+            line-height: 1.45;
+            color: #e8e8ed;
+            margin-bottom: 1rem;
+        }
+        .modal-actions {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: flex-end;
+        }
+    </style>
+</head>
+<body>
+    <div class="grid-bg"></div>
+    <div class="wrap">
+        <a href="/status" class="back-link">← Volver a status</a>
+        <div class="card">
+            <h1>🗑️ Eliminar mi cuenta</h1>
+            <p style="font-size:0.88rem; color:#94a3b8;">BetsTrading — operación irreversible</p>
+
+            <div id="form-panel">
+                <div class="warn">
+                    <strong>Atención:</strong> esta acción es permanente.
+                    <ul>
+                        <li>Se borrarán apuestas, favoritos, sorteos, price bets, pagos, retiros, copy-trading y demás datos del usuario.</li>
+                        <li><strong>No se recuperan monedas ni fondos</strong> pendientes o saldo restante.</li>
+                        <li>La cuenta no podrá restaurarse.</li>
+                    </ul>
+                </div>
+
+                <form id="delete-form" autocomplete="off">
+                    <label for="username">Usuario o email de tu cuenta</label>
+                    <input type="text" id="username" name="username" required autocomplete="username">
+
+                    <label for="password">Contraseña de tu cuenta</label>
+                    <input type="password" id="password" name="password" required autocomplete="current-password">
+
+                    <label for="confirmFullname">Escribe tu nombre completo (confirmación)</label>
+                    <input type="text" id="confirmFullname" name="confirmFullname" required placeholder="Exactamente como en tu perfil">
+
+                    <p id="status-msg"></p>
+                    <div class="btn-row">
+                        <button type="button" class="btn-delete" id="btn-open-confirm">Eliminar cuenta</button>
+                        <a href="/status" class="btn-cancel">Cancelar</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="confirm-modal">
+        <div class="modal">
+            <h2>¿Eliminar definitivamente?</h2>
+            <p>Confirma que deseas borrar esta cuenta y todos sus datos. <strong>No hay vuelta atrás</strong> ni recuperación de fondos.</p>
+            <div class="modal-actions">
+                <button type="button" class="btn-cancel" id="modal-cancel">No, volver</button>
+                <button type="button" class="btn-delete" id="modal-confirm">Sí, eliminar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const statusMsg = document.getElementById('status-msg');
+        const modal = document.getElementById('confirm-modal');
+        const btnOpen = document.getElementById('btn-open-confirm');
+        const btnModalCancel = document.getElementById('modal-cancel');
+        const btnModalConfirm = document.getElementById('modal-confirm');
+        const form = document.getElementById('delete-form');
+
+        function setStatus(text, isError) {
+            statusMsg.textContent = text || '';
+            statusMsg.style.color = isError ? '#fca5a5' : '#6ee7b7';
+        }
+
+        btnOpen?.addEventListener('click', () => {
+            if (!form.reportValidity()) return;
+            modal.classList.add('open');
+        });
+        btnModalCancel?.addEventListener('click', () => modal.classList.remove('open'));
+        modal?.addEventListener('click', (e) => {
+            if (e.target === modal) modal.classList.remove('open');
+        });
+
+        btnModalConfirm?.addEventListener('click', async () => {
+            modal.classList.remove('open');
+            const payload = {
+                username: document.getElementById('username').value.trim(),
+                password: document.getElementById('password').value,
+                confirmFullname: document.getElementById('confirmFullname').value.trim()
+            };
+            btnModalConfirm.disabled = true;
+            btnOpen.disabled = true;
+            setStatus('Verificando contraseña y eliminando cuenta...', false);
+            try {
+                const r = await fetch('/status/delete-account', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await r.json().catch(() => ({}));
+                if (r.ok && data.success) {
+                    setStatus(data.message || 'Tu cuenta ha sido eliminada.', false);
+                    form.reset();
+                } else {
+                    setStatus(data.error || data.message || ('Error ' + r.status), true);
+                }
+            } catch (e) {
+                setStatus('Error de red. Inténtalo de nuevo.', true);
+            } finally {
+                btnModalConfirm.disabled = false;
+                btnOpen.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>

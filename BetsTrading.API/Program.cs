@@ -544,6 +544,7 @@ builder.Services.AddHostedService<BetsTrading.Infrastructure.HostedServices.Upda
 builder.Services.AddHostedService<BetsTrading.Infrastructure.HostedServices.RaffleDrawHostedService>();
 builder.Services.AddScoped<BetsTrading.Application.Interfaces.IRaffleDrawService, BetsTrading.Infrastructure.Services.RaffleDrawService>();
 builder.Services.AddScoped<BetsTrading.Application.Interfaces.IRaffleAdminService, BetsTrading.Infrastructure.Services.RaffleAdminService>();
+builder.Services.AddScoped<BetsTrading.Application.Interfaces.IUserAccountDeletionService, BetsTrading.Infrastructure.Services.UserAccountDeletionService>();
 
 builder.Services.AddSingleton<BetsTrading.Application.Interfaces.IEmailService>(sp =>
 {
@@ -693,6 +694,12 @@ var adminSecretHash = string.IsNullOrEmpty(adminSecret)
 app.MapGet("/status", () =>
 {
     var html = StatusView.GetHtml(DateTime.UtcNow.ToString("o"), adminSecretHash);
+    return Results.Content(html, "text/html; charset=utf-8");
+}).AllowAnonymous();
+
+app.MapGet("/status/delete-account", () =>
+{
+    var html = DeleteAccountView.GetHtml();
     return Results.Content(html, "text/html; charset=utf-8");
 }).AllowAnonymous();
 
@@ -959,6 +966,41 @@ app.MapPost("/status/admin/raffle-items", async (HttpContext ctx, BetsTrading.Ap
     catch (Exception ex)
     {
         customLogger.Log.Error(ex, "[ADMIN] :: POST raffle-items failed");
+        return Results.Json(new { error = ex.Message }, statusCode: 500);
+    }
+}).AllowAnonymous();
+
+// Borrado de cuenta (público): el usuario confirma con su contraseña y nombre completo
+app.MapPost("/status/delete-account", async (
+    HttpContext ctx,
+    BetsTrading.Application.Interfaces.IUserAccountDeletionService deletionService) =>
+{
+    try
+    {
+        using var reader = new StreamReader(ctx.Request.Body);
+        var raw = await reader.ReadToEndAsync();
+        var opts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var body = System.Text.Json.JsonSerializer.Deserialize<DeleteAccountRequestDto>(raw, opts);
+        if (body == null)
+            return Results.Json(new { error = "Invalid body" }, statusCode: 400);
+
+        var result = await deletionService.DeleteAccountAsync(
+            body.Username ?? string.Empty,
+            body.Password ?? string.Empty,
+            body.ConfirmFullname ?? string.Empty);
+
+        if (!result.Success)
+        {
+            customLogger.Log.Warning("[DeleteAccount] :: Public delete failed: {Message}", result.Message);
+            return Results.Json(new { success = false, error = result.Message }, statusCode: 400);
+        }
+
+        customLogger.Log.Information("[DeleteAccount] :: Public delete OK userId={UserId}", result.UserId);
+        return Results.Json(new { success = true, message = result.Message });
+    }
+    catch (Exception ex)
+    {
+        customLogger.Log.Error(ex, "[DeleteAccount] :: Public delete exception");
         return Results.Json(new { error = ex.Message }, statusCode: 500);
     }
 }).AllowAnonymous();

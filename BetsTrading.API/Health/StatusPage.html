@@ -276,10 +276,42 @@
             margin-top: 0.35rem;
             object-fit: contain;
         }
+        #delete-account-btn {
+            display: inline-flex;
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 200;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.5rem 0.85rem;
+            background: rgba(220, 38, 38, 0.2);
+            border: 1px solid rgba(239, 68, 68, 0.55);
+            border-radius: 10px;
+            color: #fecaca;
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-weight: 600;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+            transition: background 0.15s, border-color 0.15s;
+        }
+        #delete-account-btn:hover {
+            background: rgba(220, 38, 38, 0.35);
+            border-color: #f87171;
+            color: #fff;
+        }
+        #delete-account-btn .delete-btn-icon {
+            font-size: 1.1rem;
+            line-height: 1;
+        }
     </style>
 </head>
 <body>
     <div class="grid-bg"></div>
+    <a id="delete-account-btn" href="/status/delete-account" title="Eliminar tu cuenta de BetsTrading">
+        <span class="delete-btn-icon" aria-hidden="true">🗑️</span>
+        <span class="delete-btn-text">Eliminar cuenta</span>
+    </a>
     <div id="status-view">
     <div class="card">
         <div class="logo-wrap">
