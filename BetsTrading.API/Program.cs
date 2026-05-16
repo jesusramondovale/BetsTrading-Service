@@ -530,6 +530,7 @@ builder.Services.Configure<BetsTrading.Infrastructure.HostedServices.OddsAdjuste
 builder.Services.AddSingleton<BetsTrading.Infrastructure.Services.AdminRuntimeConfig>();
 builder.Services.AddSingleton<BetsTrading.Application.Interfaces.IAdminRuntimeConfig>(sp =>
     sp.GetRequiredService<BetsTrading.Infrastructure.Services.AdminRuntimeConfig>());
+builder.Services.AddScoped<BetsTrading.Infrastructure.Services.AccessLockService>();
 
 builder.Services.AddSingleton<IJwtTokenService>(sp =>
     new JwtTokenService(
@@ -540,6 +541,9 @@ builder.Services.AddSingleton<IJwtTokenService>(sp =>
 
 // Hosted Services (odds se actualizan al hacer NewBet, no con job periódico)
 builder.Services.AddHostedService<BetsTrading.Infrastructure.HostedServices.UpdaterHostedService>();
+builder.Services.AddHostedService<BetsTrading.Infrastructure.HostedServices.RaffleDrawHostedService>();
+builder.Services.AddScoped<BetsTrading.Application.Interfaces.IRaffleDrawService, BetsTrading.Infrastructure.Services.RaffleDrawService>();
+builder.Services.AddScoped<BetsTrading.Application.Interfaces.IRaffleAdminService, BetsTrading.Infrastructure.Services.RaffleAdminService>();
 
 builder.Services.AddSingleton<BetsTrading.Application.Interfaces.IEmailService>(sp =>
 {
@@ -653,6 +657,7 @@ app.Use(async (context, next) =>
 app.UseIpRateLimiting();
 #endif
 app.UseResponseCompression();
+app.UseMiddleware<BetsTrading.API.Middleware.AccessLockMiddleware>();
 
 // Endpoint para servir el logo
 app.MapGet("/logo", (IWebHostEnvironment env) =>
@@ -758,6 +763,37 @@ app.MapGet("/status/admin/config", (HttpContext ctx, BetsTrading.Infrastructure.
         adminConfig.ExchangeOptionsEur ?? eurJson,
         adminConfig.ExchangeOptionsUsd ?? usdJson);
     return Results.Json(dto);
+}).AllowAnonymous();
+
+// Bloqueo global de acceso (toggle + invalidación de sesiones + FCM logout al activar)
+app.MapPost("/status/admin/access-lock", async (
+    HttpContext ctx,
+    BetsTrading.Infrastructure.Services.AccessLockService accessLockService) =>
+{
+    if (!AdminAuthHelper.TryValidateAdminToken(ctx, jwtLocalKey, localIssuer, out _))
+        return Results.Json(new { error = "Unauthorized" }, statusCode: 401);
+
+    BetsTrading.Infrastructure.Services.AccessLockRequestDto? body;
+    try
+    {
+        body = await ctx.Request.ReadFromJsonAsync<BetsTrading.Infrastructure.Services.AccessLockRequestDto>();
+    }
+    catch
+    {
+        return Results.Json(new { error = "Invalid JSON" }, statusCode: 400);
+    }
+
+    if (body == null)
+        return Results.Json(new { error = "Invalid body" }, statusCode: 400);
+
+    var result = await accessLockService.SetAccessLockAsync(body.Enabled);
+
+    return Results.Json(new
+    {
+        accessLockEnabled = result.AccessLockEnabled,
+        sessionsInvalidated = result.SessionsInvalidated,
+        logoutNotificationsSent = result.LogoutNotificationsSent,
+    });
 }).AllowAnonymous();
 
 // POST config (requiere Bearer token admin)
@@ -869,6 +905,62 @@ app.MapPost("/status/admin/config", async (HttpContext ctx, BetsTrading.Infrastr
         nextUpdaterRunUtc,
         waitSeconds);
     return Results.Ok();
+}).AllowAnonymous();
+
+// GET/POST sorteos (panel admin, 6 items en PostgreSQL)
+app.MapGet("/status/admin/raffle-items", async (HttpContext ctx, BetsTrading.Application.Interfaces.IRaffleAdminService raffleAdmin) =>
+{
+    if (!AdminAuthHelper.TryValidateAdminToken(ctx, jwtLocalKey, localIssuer, out _))
+        return Results.Json(new { error = "Unauthorized" }, statusCode: 401);
+
+    try
+    {
+        var items = await raffleAdmin.GetItemsAsync();
+        return Results.Json(items);
+    }
+    catch (Exception ex)
+    {
+        customLogger.Log.Error(ex, "[ADMIN] :: GET raffle-items failed");
+        return Results.Json(new { error = ex.Message }, statusCode: 500);
+    }
+}).AllowAnonymous();
+
+app.MapPost("/status/admin/raffle-items", async (HttpContext ctx, BetsTrading.Application.Interfaces.IRaffleAdminService raffleAdmin) =>
+{
+    if (!AdminAuthHelper.TryValidateAdminToken(ctx, jwtLocalKey, localIssuer, out _))
+        return Results.Json(new { error = "Unauthorized" }, statusCode: 401);
+
+    BetsTrading.Application.DTOs.SaveAdminRaffleItemsRequest? body;
+    try
+    {
+        using var reader = new StreamReader(ctx.Request.Body);
+        var raw = await reader.ReadToEndAsync();
+        var opts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        body = System.Text.Json.JsonSerializer.Deserialize<BetsTrading.Application.DTOs.SaveAdminRaffleItemsRequest>(raw, opts);
+    }
+    catch
+    {
+        return Results.Json(new { error = "Invalid JSON" }, statusCode: 400);
+    }
+
+    if (body?.Items == null || body.Items.Count == 0)
+        return Results.Json(new { error = "Items required" }, statusCode: 400);
+
+    try
+    {
+        await raffleAdmin.SaveItemsAsync(body.Items);
+        customLogger.Log.Information("[ADMIN] :: POST raffle-items: OK ({Count} items)", body.Items.Count);
+        return Results.Ok();
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.Json(new { error = ex.Message }, statusCode: 400);
+    }
+    catch (Exception ex)
+    {
+        customLogger.Log.Error(ex, "[ADMIN] :: POST raffle-items failed");
+        return Results.Json(new { error = ex.Message }, statusCode: 500);
+    }
 }).AllowAnonymous();
 
 // Endpoint JSON para health checks programáticos (load balancers, monitoreo)

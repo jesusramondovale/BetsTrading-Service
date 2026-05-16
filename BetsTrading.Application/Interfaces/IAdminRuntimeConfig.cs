@@ -11,6 +11,11 @@ public interface IAdminRuntimeConfig
     /// <summary>Versión monotónica de la configuración en memoria; incrementa cada POST de config.</summary>
     long ConfigVersion { get; }
 
+    /// <summary>Si true, la API de usuarios está bloqueada hasta desactivar desde el panel admin.</summary>
+    bool AccessLockEnabled { get; }
+
+    void SetAccessLockEnabled(bool enabled);
+
     /// <summary>Minuto UTC en que corre el updater de assets (ej. 15 = XX:15). Null = usar 15.</summary>
     int? UpdaterMinute { get; }
 

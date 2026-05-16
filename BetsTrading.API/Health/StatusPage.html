@@ -185,10 +185,96 @@
             padding-top: 1rem;
             border-top: 1px solid rgba(34, 211, 238, 0.12);
         }
+        .admin-warnings-card {
+            border-color: rgba(248, 113, 113, 0.45) !important;
+            background: rgba(127, 29, 29, 0.18) !important;
+        }
+        .admin-warnings-card.active-lock {
+            border-color: rgba(248, 113, 113, 0.75) !important;
+            box-shadow: 0 0 24px rgba(248, 113, 113, 0.15);
+        }
+        .admin-warnings-card h2 {
+            color: #fca5a5;
+            font-size: 1.15rem;
+            margin-bottom: 0.5rem;
+        }
+        .admin-warnings-card p {
+            font-size: 0.88rem;
+            color: #fecaca;
+            line-height: 1.45;
+            margin-bottom: 0.75rem;
+        }
+        #access-lock-btn {
+            padding: 0.65rem 1.25rem;
+            border: none;
+            border-radius: 8px;
+            font-weight: 700;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.9rem;
+        }
+        #access-lock-btn.lock-off {
+            background: #ef4444;
+            color: #fff;
+        }
+        #access-lock-btn.lock-on {
+            background: #10b981;
+            color: #0f0f23;
+        }
+        #access-lock-status {
+            font-size: 0.82rem;
+            color: #fca5a5;
+            margin-top: 0.65rem;
+            min-height: 1.2em;
+        }
         @media (max-width: 880px) {
             .admin-form-grid {
                 grid-template-columns: 1fr;
             }
+        }
+        .raffle-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        .raffle-card {
+            border: 1px solid rgba(34, 211, 238, 0.25);
+            border-radius: 12px;
+            padding: 0.75rem;
+            background: rgba(0,0,0,0.2);
+        }
+        .raffle-card h3 {
+            color: #22d3ee;
+            font-size: 0.95rem;
+            margin-bottom: 0.5rem;
+        }
+        .raffle-card label {
+            display: block;
+            font-size: 0.75rem;
+            color: #94a3b8;
+            margin-top: 0.35rem;
+        }
+        .raffle-card input[type="text"],
+        .raffle-card input[type="number"],
+        .raffle-card input[type="datetime-local"],
+        .raffle-card input[type="file"] {
+            display: block;
+            width: 100%;
+            margin-top: 0.15rem;
+            padding: 0.35rem;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(34,211,238,0.3);
+            border-radius: 6px;
+            color: #e8e8ed;
+            font-size: 0.8rem;
+            box-sizing: border-box;
+        }
+        .raffle-preview {
+            max-height: 48px;
+            max-width: 100%;
+            margin-top: 0.35rem;
+            object-fit: contain;
         }
     </style>
 </head>
@@ -238,6 +324,16 @@
     </div>
 
     <div id="admin-panel" style="display:none; position:relative; z-index:10; width:100%; flex-shrink:0;">
+        <div class="card admin-warnings-card" id="access-lock-card">
+            <h2>⚠ Acciones críticas</h2>
+            <p>
+                <strong>Cierre de acceso global:</strong> invalida todas las sesiones activas, envía un cierre de sesión por push
+                («Mantenimiento», como otro dispositivo) y bloquea login, registro y uso de la API hasta que pulses de nuevo el botón.
+                Los webhooks de pago y verificación siguen funcionando.
+            </p>
+            <button type="button" id="access-lock-btn" class="lock-off">Cerrar acceso a todos los usuarios</button>
+            <p id="access-lock-status"></p>
+        </div>
         <div class="card">
             <h2 style="margin-bottom:1rem;">Configuración del servidor (tiempo real)</h2>
             <p id="admin-status" style="font-size:0.85rem; color:#94a3b8; margin-bottom:1rem;">Los cambios se aplican de inmediato. Exchange options se guardan también en archivo.</p>
@@ -301,6 +397,14 @@
                     </div>
                 </div>
             </form>
+        </div>
+        <div class="card" style="margin-top: 1.5rem;">
+            <h2 style="margin-bottom:0.5rem;">Sorteos (6 premios)</h2>
+            <p id="raffle-admin-status" style="font-size:0.85rem; color:#94a3b8; margin-bottom:0.5rem;">Fechas en UTC. Imagen: solo cambia si subes archivo nuevo.</p>
+            <div id="raffle-grid" class="raffle-grid"></div>
+            <div style="margin-top:1rem;">
+                <button type="button" id="raffle-save-btn" style="padding:0.6rem 1.2rem; background:#10b981; color:#0f0f23; border:none; border-radius:8px; font-weight:600; cursor:pointer;">Guardar sorteos</button>
+            </div>
         </div>
     </div>
 
@@ -418,6 +522,83 @@
             const el = document.getElementById('admin-status');
             if (el) el.textContent = msg || 'Los cambios se aplican de inmediato. Exchange options se guardan también en archivo.';
         }
+
+        let accessLockEnabled = false;
+
+        function setAccessLockStatus(msg) {
+            const el = document.getElementById('access-lock-status');
+            if (el) el.textContent = msg || '';
+        }
+
+        function updateAccessLockUi(enabled) {
+            accessLockEnabled = !!enabled;
+            const btn = document.getElementById('access-lock-btn');
+            const card = document.getElementById('access-lock-card');
+            if (!btn) return;
+            if (accessLockEnabled) {
+                btn.textContent = 'Reabrir acceso a la aplicación';
+                btn.className = 'lock-on';
+                if (card) card.classList.add('active-lock');
+                setAccessLockStatus('ACCESO BLOQUEADO: ningún usuario puede entrar hasta que pulses este botón.');
+            } else {
+                btn.textContent = 'Cerrar acceso a todos los usuarios';
+                btn.className = 'lock-off';
+                if (card) card.classList.remove('active-lock');
+                setAccessLockStatus('Acceso normal. Los usuarios pueden iniciar sesión.');
+            }
+        }
+
+        async function setAccessLock(enabled) {
+            const token = adminToken();
+            if (!token) {
+                setAccessLockStatus('Sesión admin expirada.');
+                return;
+            }
+            if (enabled) {
+                const ok = confirm(
+                    '¿Cerrar el acceso a TODOS los usuarios?\n\n' +
+                    'Se invalidarán todas las sesiones activas y nadie podrá usar la app hasta que reabras el acceso.'
+                );
+                if (!ok) return;
+            }
+            try {
+                setAccessLockStatus(enabled ? 'Cerrando acceso...' : 'Reabriendo acceso...');
+                const r = await fetch('/status/admin/access-lock', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + token
+                    },
+                    body: JSON.stringify({ enabled: enabled })
+                });
+                const body = await r.json().catch(() => ({}));
+                if (r.status === 401) {
+                    sessionStorage.removeItem('status_admin_token');
+                    setAccessLockStatus('Sesión expirada. Escribe la clave de nuevo.');
+                    return;
+                }
+                if (!r.ok) {
+                    setAccessLockStatus(body.error || ('Error ' + r.status));
+                    return;
+                }
+                updateAccessLockUi(body.accessLockEnabled === true);
+                if (body.accessLockEnabled) {
+                    setAccessLockStatus(
+                        'Acceso bloqueado. Sesiones invalidadas: ' + (body.sessionsInvalidated ?? 0) +
+                        '. Avisos FCM enviados: ' + (body.logoutNotificationsSent ?? 0) + '.'
+                    );
+                } else {
+                    setAccessLockStatus('Acceso reabierto. Los usuarios ya pueden iniciar sesión.');
+                }
+            } catch (e) {
+                console.error('[ADMIN] access-lock', e);
+                setAccessLockStatus('Error de red al cambiar el bloqueo.');
+            }
+        }
+
+        document.getElementById('access-lock-btn')?.addEventListener('click', function() {
+            setAccessLock(!accessLockEnabled);
+        });
         async function loadAdminConfig() {
             const token = adminToken();
             if (!token) {
@@ -455,13 +636,135 @@
                 document.getElementById('noAdsPriceUsd').value = d.noAdsPriceUsd ?? 4.99;
                 document.getElementById('exchangeOptionsEur').value = typeof d.exchangeOptionsEur === 'string' ? d.exchangeOptionsEur : JSON.stringify(d.exchangeOptionsEur || [], null, 2);
                 document.getElementById('exchangeOptionsUsd').value = typeof d.exchangeOptionsUsd === 'string' ? d.exchangeOptionsUsd : JSON.stringify(d.exchangeOptionsUsd || [], null, 2);
+                updateAccessLockUi(d.accessLockEnabled === true);
                 setAdminStatus('');
                 console.log('[ADMIN] Config loaded OK');
+                loadRaffleItems();
             } catch (e) {
                 console.error('[ADMIN] loadAdminConfig error:', e);
                 setAdminStatus('Error de red al cargar. Comprueba la consola.');
             }
         }
+
+        const rafflePendingIcons = {};
+
+        function utcIsoToDatetimeLocal(iso) {
+            if (!iso) return '';
+            const d = new Date(iso);
+            const pad = n => String(n).padStart(2, '0');
+            return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()) +
+                'T' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes());
+        }
+
+        function datetimeLocalToUtcIso(value) {
+            if (!value) return new Date().toISOString();
+            const [datePart, timePart] = value.split('T');
+            const [y, m, d] = datePart.split('-').map(Number);
+            const [hh, mm] = (timePart || '00:00').split(':').map(Number);
+            return new Date(Date.UTC(y, m - 1, d, hh, mm, 0)).toISOString();
+        }
+
+        function setRaffleAdminStatus(msg) {
+            const el = document.getElementById('raffle-admin-status');
+            if (el) el.textContent = msg || 'Fechas en UTC. Imagen: solo cambia si subes archivo nuevo.';
+        }
+
+        function renderRaffleGrid(items) {
+            const grid = document.getElementById('raffle-grid');
+            if (!grid) return;
+            grid.innerHTML = '';
+            const byId = {};
+            (items || []).forEach(it => { byId[it.id] = it; });
+            for (let id = 1; id <= 6; id++) {
+                const it = byId[id] || { id, name: 'Prize ' + id, shortName: 'P' + id, coins: 100 * id, raffleDate: new Date().toISOString(), icon: '' };
+                const card = document.createElement('div');
+                card.className = 'raffle-card';
+                const previewSrc = rafflePendingIcons[id] || (it.icon ? 'data:image/png;base64,' + it.icon : '');
+                card.innerHTML =
+                    '<h3>Sorteo #' + id + '</h3>' +
+                    '<label>Nombre largo</label><input type="text" id="raffle-name-' + id + '" value="' + (it.name || '').replace(/"/g, '&quot;') + '">' +
+                    '<label>Nombre corto</label><input type="text" id="raffle-short-' + id + '" value="' + (it.shortName || '').replace(/"/g, '&quot;') + '">' +
+                    '<label>Monedas (coste)</label><input type="number" id="raffle-coins-' + id + '" min="1" value="' + (it.coins || 1) + '">' +
+                    '<label>Fecha sorteo (UTC)</label><input type="datetime-local" id="raffle-date-' + id + '" value="' + utcIsoToDatetimeLocal(it.raffleDate) + '">' +
+                    '<label>Imagen (PNG/JPG)</label><input type="file" id="raffle-file-' + id + '" accept="image/*">' +
+                    (previewSrc ? '<img class="raffle-preview" id="raffle-preview-' + id + '" src="' + previewSrc + '" alt="">' : '<img class="raffle-preview" id="raffle-preview-' + id + '" style="display:none" alt="">');
+                grid.appendChild(card);
+                const fileInput = document.getElementById('raffle-file-' + id);
+                fileInput?.addEventListener('change', function() {
+                    const f = fileInput.files && fileInput.files[0];
+                    if (!f) return;
+                    const reader = new FileReader();
+                    reader.onload = function() {
+                        const dataUrl = reader.result;
+                        const base64 = String(dataUrl).split(',')[1] || '';
+                        rafflePendingIcons[id] = base64;
+                        const img = document.getElementById('raffle-preview-' + id);
+                        if (img) { img.src = dataUrl; img.style.display = 'block'; }
+                    };
+                    reader.readAsDataURL(f);
+                });
+            }
+        }
+
+        async function loadRaffleItems() {
+            const token = adminToken();
+            if (!token) return;
+            try {
+                setRaffleAdminStatus('Cargando sorteos...');
+                const r = await fetch('/status/admin/raffle-items', { headers: { 'Authorization': 'Bearer ' + token } });
+                if (!r.ok) {
+                    setRaffleAdminStatus('Error al cargar sorteos: ' + r.status);
+                    return;
+                }
+                const items = await r.json();
+                Object.keys(rafflePendingIcons).forEach(k => delete rafflePendingIcons[k]);
+                renderRaffleGrid(items);
+                setRaffleAdminStatus('');
+            } catch (e) {
+                console.error('[ADMIN] loadRaffleItems', e);
+                setRaffleAdminStatus('Error de red al cargar sorteos.');
+            }
+        }
+
+        async function saveRaffleItems() {
+            const token = adminToken();
+            if (!token) {
+                setRaffleAdminStatus('Sesión expirada.');
+                return;
+            }
+            const payloadItems = [];
+            for (let id = 1; id <= 6; id++) {
+                const item = {
+                    id: id,
+                    name: document.getElementById('raffle-name-' + id)?.value?.trim() || '',
+                    shortName: document.getElementById('raffle-short-' + id)?.value?.trim() || '',
+                    coins: parseInt(document.getElementById('raffle-coins-' + id)?.value, 10) || 1,
+                    raffleDate: datetimeLocalToUtcIso(document.getElementById('raffle-date-' + id)?.value)
+                };
+                if (rafflePendingIcons[id]) item.icon = rafflePendingIcons[id];
+                payloadItems.push(item);
+            }
+            try {
+                setRaffleAdminStatus('Guardando...');
+                const r = await fetch('/status/admin/raffle-items', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify({ items: payloadItems })
+                });
+                const errBody = await r.json().catch(() => ({}));
+                if (r.ok) {
+                    setRaffleAdminStatus('Sorteos guardados.');
+                    await loadRaffleItems();
+                } else {
+                    setRaffleAdminStatus(errBody.error || ('Error ' + r.status));
+                }
+            } catch (e) {
+                console.error('[ADMIN] saveRaffleItems', e);
+                setRaffleAdminStatus('Error de red al guardar.');
+            }
+        }
+
+        document.getElementById('raffle-save-btn')?.addEventListener('click', saveRaffleItems);
         document.getElementById('admin-form')?.addEventListener('submit', async function(e) {
             e.preventDefault();
             const token = adminToken();

@@ -99,6 +99,14 @@ public class User
     {
         LastSession = DateTime.UtcNow;
         TokenExpiration = DateTime.UtcNow.AddDays(15);
+        IsActive = true;
+    }
+
+    public void EndSession()
+    {
+        LastSession = DateTime.UtcNow;
+        IsActive = false;
+        TokenExpiration = DateTime.UtcNow;
     }
 
     public void UpdateFcm(string fcm)

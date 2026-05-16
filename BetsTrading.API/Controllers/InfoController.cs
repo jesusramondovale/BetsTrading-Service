@@ -991,6 +991,10 @@ public class InfoController : ControllerBase
                 {
                     return BadRequest(new { Error = result.Message });
                 }
+                if (result.Message == "Already participated")
+                {
+                    return Conflict(new { Error = result.Message });
+                }
                 return NotFound(new { Error = result.Message });
             }
 

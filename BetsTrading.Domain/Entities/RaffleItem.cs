@@ -1,3 +1,5 @@
+using BetsTrading.Domain;
+
 namespace BetsTrading.Domain.Entities;
 
 public class RaffleItem
@@ -22,4 +24,33 @@ public class RaffleItem
     public DateTimeOffset RaffleDate { get; private set; }
     public string Icon { get; private set; } = string.Empty;
     public int Participants { get; set; }
+
+    public void UpdateFromAdmin(string name, string shortName, int coins, DateTimeOffset raffleDate, string? newIconBase64)
+    {
+        Name = name.Trim();
+        ShortName = shortName.Trim();
+        Coins = coins;
+        RaffleDate = raffleDate;
+        if (!string.IsNullOrWhiteSpace(newIconBase64))
+            Icon = newIconBase64;
+    }
+
+    public void ResetAfterDraw(DateTime utcNow)
+    {
+        Participants = 0;
+        RaffleDate = RaffleSchedule.NextMonthFirstUtc(utcNow);
+    }
+
+    public static RaffleItem CreateDefault(int id, DateTime utcNow)
+    {
+        var next = RaffleSchedule.NextMonthFirstUtc(utcNow);
+        return new RaffleItem(
+            id,
+            $"Prize {id}",
+            $"P{id}",
+            100 * id,
+            next,
+            string.Empty,
+            0);
+    }
 }

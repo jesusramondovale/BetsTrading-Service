@@ -25,9 +25,11 @@ public class GetRaffleItemsQueryHandler : IRequestHandler<GetRaffleItemsQuery, G
             };
         }
 
+        await _unitOfWork.RaffleItems.EnsureDefaultItemsAsync(cancellationToken);
         var items = await _unitOfWork.RaffleItems.GetAllAsync(cancellationToken);
+        var itemList = items.OrderBy(r => r.Coins).ToList();
 
-        if (!items.Any())
+        if (itemList.Count == 0)
         {
             return new GetRaffleItemsResult
             {
@@ -36,7 +38,9 @@ public class GetRaffleItemsQueryHandler : IRequestHandler<GetRaffleItemsQuery, G
             };
         }
 
-        var itemDtos = items.OrderBy(r => r.Coins).Select(r => new RaffleItemDto
+        var participatedIds = await _unitOfWork.Raffles.GetParticipatedItemIdsForUserAsync(request.UserId, cancellationToken);
+
+        var itemDtos = itemList.Select(r => new RaffleItemDto
         {
             Id = r.Id,
             Name = r.Name,
@@ -44,7 +48,8 @@ public class GetRaffleItemsQueryHandler : IRequestHandler<GetRaffleItemsQuery, G
             Coins = r.Coins,
             RaffleDate = r.RaffleDate,
             Icon = r.Icon,
-            Participants = r.Participants
+            Participants = r.Participants,
+            AlreadyParticipated = participatedIds.Contains(r.Id)
         }).ToList();
 
         return new GetRaffleItemsResult

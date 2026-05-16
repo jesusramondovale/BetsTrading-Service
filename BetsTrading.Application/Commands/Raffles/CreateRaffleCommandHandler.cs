@@ -48,6 +48,15 @@ public class CreateRaffleCommandHandler : IRequestHandler<CreateRaffleCommand, C
                 };
             }
 
+            if (await _unitOfWork.Raffles.UserHasParticipatedAsync(request.UserId, itemId, cancellationToken))
+            {
+                return new CreateRaffleResult
+                {
+                    Success = false,
+                    Message = "Already participated"
+                };
+            }
+
             if (user.Points < raffleItem.Coins)
             {
                 return new CreateRaffleResult

@@ -11,7 +11,9 @@ public class LocalizationService : ILocalizationService
                 { "emailSubjectUserVerified", "Account verified" },
                 { "userVerifiedEmailBody", "Hello {0},\n\nYour account has been successfully verified.\n\nYou now have full access to Betrader features and can start enjoying the platform without restrictions.\n\nIf you did not complete this verification, please contact our support team immediately.\n\nBest regards,\nBetrader Support Team" },
                 { "emailSubjectPayment", "Betrader payment" },
-                { "withdrawalEmailBody", "Hello {0},\n\nAn amount of {1} {2} has been withdrawn from your account.\n\nWithdrawal method: {3}\nLocation: {4}, {5}, {6}\n\nIf this was not you, please contact support immediately.\n\nBest regards,\nBetrader Support Team" }
+                { "withdrawalEmailBody", "Hello {0},\n\nAn amount of {1} {2} has been withdrawn from your account.\n\nWithdrawal method: {3}\nLocation: {4}, {5}, {6}\n\nIf this was not you, please contact support immediately.\n\nBest regards,\nBetrader Support Team" },
+                { "raffleWinnerTitle", "Congratulations!" },
+                { "raffleWinnerBody", "You won the raffle \"{0}\" ({1})!" }
             }
         },
         { "UK", new Dictionary<string, string>()
@@ -19,7 +21,9 @@ public class LocalizationService : ILocalizationService
                 { "emailSubjectUserVerified", "Account verified" },
                 { "userVerifiedEmailBody", "Hello {0},\n\nYour account has been successfully verified.\n\nYou now have full access to Betrader features and can start enjoying the platform without restrictions.\n\nIf you did not complete this verification, please contact our support team immediately.\n\nBest regards,\nBetrader Support Team" },
                 { "emailSubjectPayment", "Betrader payment" },
-                { "withdrawalEmailBody", "Hello {0},\n\nAn amount of {1} {2} has been withdrawn from your account.\n\nWithdrawal method: {3}\nLocation: {4}, {5}, {6}\n\nIf this was not you, please contact support immediately.\n\nBest regards,\nBetrader Support Team" }
+                { "withdrawalEmailBody", "Hello {0},\n\nAn amount of {1} {2} has been withdrawn from your account.\n\nWithdrawal method: {3}\nLocation: {4}, {5}, {6}\n\nIf this was not you, please contact support immediately.\n\nBest regards,\nBetrader Support Team" },
+                { "raffleWinnerTitle", "Congratulations!" },
+                { "raffleWinnerBody", "You won the raffle \"{0}\" ({1})!" }
             }
         },
         { "ES", new Dictionary<string, string>()
@@ -27,7 +31,9 @@ public class LocalizationService : ILocalizationService
                 { "emailSubjectUserVerified", "Cuenta verificada" },
                 { "userVerifiedEmailBody", "Hola {0},\n\nTu cuenta ha sido verificada correctamente.\n\nAhora tienes acceso completo a todas las funciones de Betrader y puedes disfrutar de la plataforma sin restricciones.\n\nSi no has completado esta verificación, contacta con el soporte de Betrader inmediatamente.\n\nUn saludo,\nEquipo de soporte de Betrader" },
                 { "emailSubjectPayment", "Pago de Betrader" },
-                { "withdrawalEmailBody", "Hola {0},\n\nSe ha retirado una cantidad de {1} {2} de su cuenta.\n\nMétodo de retirada: {3}\nLocalización: {4}, {5}, {6}\n\nSi no ha sido usted, póngase en contacto con el soporte inmediatamente.\n\nUn saludo,\nEquipo de soporte de Betrader" }
+                { "withdrawalEmailBody", "Hola {0},\n\nSe ha retirado una cantidad de {1} {2} de su cuenta.\n\nMétodo de retirada: {3}\nLocalización: {4}, {5}, {6}\n\nSi no ha sido usted, póngase en contacto con el soporte inmediatamente.\n\nUn saludo,\nEquipo de soporte de Betrader" },
+                { "raffleWinnerTitle", "¡Enhorabuena!" },
+                { "raffleWinnerBody", "Has ganado el sorteo «{0}» ({1})." }
             }
         },
         { "FR", new Dictionary<string, string>()
@@ -35,7 +41,9 @@ public class LocalizationService : ILocalizationService
                 { "emailSubjectUserVerified", "Compte vérifié" },
                 { "userVerifiedEmailBody", "Bonjour {0},\n\nVotre compte a été vérifié avec succès.\n\nVous avez désormais un accès complet à toutes les fonctionnalités de Betrader et pouvez profiter de la plateforme sans restrictions.\n\nSi vous n'êtes pas à l'origine de cette vérification, veuillez contacter immédiatement notre service d'assistance.\n\nCordialement,\nÉquipe de support Betrader" },
                 { "emailSubjectPayment", "Paiement Betrader" },
-                { "withdrawalEmailBody", "Bonjour {0},\n\nUn montant de {1} {2} a été retiré de votre compte.\n\nMéthode de retrait : {3}\nLocalisation : {4}, {5}, {6}\n\nSi ce n'était pas vous, veuillez contacter le support immédiatement.\n\nCordialement,\nÉquipe de support Betrader" }
+                { "withdrawalEmailBody", "Bonjour {0},\n\nUn montant de {1} {2} a été retiré de votre compte.\n\nMéthode de retrait : {3}\nLocalisation : {4}, {5}, {6}\n\nSi ce n'était pas vous, veuillez contacter le support immédiatement.\n\nCordialement,\nÉquipe de support Betrader" },
+                { "raffleWinnerTitle", "Félicitations !" },
+                { "raffleWinnerBody", "Vous avez gagné le tirage « {0} » ({1}) !" }
             }
         },
         { "IT", new Dictionary<string, string>()
@@ -43,7 +51,9 @@ public class LocalizationService : ILocalizationService
                 { "emailSubjectUserVerified", "Account verificato" },
                 { "userVerifiedEmailBody", "Ciao {0},\n\nIl tuo account è stato verificato con successo.\n\nOra hai pieno accesso a tutte le funzionalità di Betrader e puoi utilizzare la piattaforma senza restrizioni.\n\nSe non hai effettuato tu questa verifica, contatta immediatamente il supporto di Betrader.\n\nCordiali saluti,\nTeam di supporto Betrader" },
                 { "emailSubjectPayment", "Pagamento Betrader" },
-                { "withdrawalEmailBody", "Ciao {0},\n\nUn importo di {1} {2} è stato prelevato dal tuo account.\n\nMetodo di prelievo: {3}\nLocalizzazione: {4}, {5}, {6}\n\nSe non sei stato tu, contatta subito il supporto.\n\nCordiali saluti,\nTeam di supporto Betrader" }
+                { "withdrawalEmailBody", "Ciao {0},\n\nUn importo di {1} {2} è stato prelevato dal tuo account.\n\nMetodo di prelievo: {3}\nLocalizzazione: {4}, {5}, {6}\n\nSe non sei stato tu, contatta subito il supporto.\n\nCordiali saluti,\nTeam di supporto Betrader" },
+                { "raffleWinnerTitle", "Congratulazioni!" },
+                { "raffleWinnerBody", "Hai vinto l'estrazione «{0}» ({1})!" }
             }
         },
         { "DE", new Dictionary<string, string>()
@@ -51,7 +61,9 @@ public class LocalizationService : ILocalizationService
                 { "emailSubjectUserVerified", "Konto verifiziert" },
                 { "userVerifiedEmailBody", "Hallo {0},\n\nIhr Konto wurde erfolgreich verifiziert.\n\nSie haben nun vollen Zugriff auf alle Funktionen von Betrader und können die Plattform uneingeschränkt nutzen.\n\nWenn Sie diese Verifizierung nicht selbst vorgenommen haben, wenden Sie sich bitte umgehend an den Betrader-Support.\n\nMit freundlichen Grüßen,\nBetrader Support Team" },
                 { "emailSubjectPayment", "Betrader-Zahlung" },
-                { "withdrawalEmailBody", "Hallo {0},\n\nEin Betrag von {1} {2} wurde von Ihrem Konto abgebucht.\n\nAuszahlungsmethode: {3}\nStandort: {4}, {5}, {6}\n\nWenn Sie das nicht waren, wenden Sie sich bitte sofort an den Support.\n\nMit freundlichen Grüßen,\nBetrader Support Team" }
+                { "withdrawalEmailBody", "Hallo {0},\n\nEin Betrag von {1} {2} wurde von Ihrem Konto abgebucht.\n\nAuszahlungsmethode: {3}\nStandort: {4}, {5}, {6}\n\nWenn Sie das nicht waren, wenden Sie sich bitte sofort an den Support.\n\nMit freundlichen Grüßen,\nBetrader Support Team" },
+                { "raffleWinnerTitle", "Herzlichen Glückwunsch!" },
+                { "raffleWinnerBody", "Sie haben die Verlosung \"{0}\" ({1}) gewonnen!" }
             }
         },
         { "PT", new Dictionary<string, string>()
@@ -59,7 +71,9 @@ public class LocalizationService : ILocalizationService
                 { "emailSubjectUserVerified", "Conta verificada" },
                 { "userVerifiedEmailBody", "Olá {0},\n\nSua conta foi verificada com sucesso.\n\nAgora você tem acesso total a todos os recursos do Betrader e pode aproveitar a plataforma sem restrições.\n\nSe você não realizou esta verificação, entre em contato imediatamente com o suporte da Betrader.\n\nAtenciosamente,\nEquipe de suporte Betrader" },
                 { "emailSubjectPayment", "Pagamento Betrader" },
-                { "withdrawalEmailBody", "Olá {0},\n\nUm valor de {1} {2} foi retirado da sua conta.\n\nMétodo de retirada: {3}\nLocalização: {4}, {5}, {6}\n\nSe não foi você, entre em contato com o suporte imediatamente.\n\nAtenciosamente,\nEquipe de suporte Betrader" }
+                { "withdrawalEmailBody", "Olá {0},\n\nUm valor de {1} {2} foi retirado da sua conta.\n\nMétodo de retirada: {3}\nLocalização: {4}, {5}, {6}\n\nSe não foi você, entre em contato com o suporte imediatamente.\n\nAtenciosamente,\nEquipe de suporte Betrader" },
+                { "raffleWinnerTitle", "Parabéns!" },
+                { "raffleWinnerBody", "Ganhou o sorteio «{0}» ({1})!" }
             }
         }
     };

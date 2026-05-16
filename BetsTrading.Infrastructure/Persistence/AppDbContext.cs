@@ -133,8 +133,8 @@ public class AppDbContext : DbContext
             entity.Property(e => e.Id).HasColumnName("id");
             entity.Property(e => e.Email).HasColumnName("email").IsRequired();
             entity.Property(e => e.Code).HasColumnName("code").IsRequired();
-            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
-            entity.Property(e => e.ExpiresAt).HasColumnName("expires_at");
+            entity.Property(e => e.CreatedAt).HasColumnName("createdAt");
+            entity.Property(e => e.ExpiresAt).HasColumnName("expiresAt");
             entity.Property(e => e.Verified).HasColumnName("verified");
         });
 

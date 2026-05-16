@@ -49,4 +49,33 @@ public class UserRepository : Repository<User>, IUserRepository
             .Take(limit)
             .ToListAsync(cancellationToken);
     }
+
+    public async Task<int> InvalidateAllActiveSessionsAsync(CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+        return await _dbSet
+            .Where(u => u.IsActive && u.TokenExpiration > now)
+            .ExecuteUpdateAsync(
+                s => s
+                    .SetProperty(u => u.IsActive, false)
+                    .SetProperty(u => u.TokenExpiration, now)
+                    .SetProperty(u => u.LastSession, now),
+                cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<string>> GetActiveSessionFcmTokensAsync(CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+        return await _dbSet
+            .AsNoTracking()
+            .Where(u =>
+                u.IsActive &&
+                u.TokenExpiration > now &&
+                u.Fcm != null &&
+                u.Fcm != "" &&
+                u.Fcm != "-")
+            .Select(u => u.Fcm)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+    }
 }

@@ -102,4 +102,43 @@ public class FirebaseNotificationService : IFirebaseNotificationService
             throw; // Re-throw para que el logger pueda capturarlo
         }
     }
+
+    public async Task<int> BroadcastMaintenanceLogoutAsync(
+        IEnumerable<string> deviceTokens,
+        CancellationToken cancellationToken = default)
+    {
+        var logoutData = new Dictionary<string, string>
+        {
+            { "type", "LOGOUT" },
+            { "reason", "MAINTENANCE" },
+            { "userId", "" },
+            { "ip", "" },
+            { "city", "" },
+            { "country", "" },
+        };
+
+        var sent = 0;
+        foreach (var token in deviceTokens.Distinct(StringComparer.Ordinal))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(token) || token == "-")
+                continue;
+
+            try
+            {
+                await SendNotificationToUserAsync(
+                    token.Trim(),
+                    "Betstrading",
+                    "Maintenance",
+                    logoutData);
+                sent++;
+            }
+            catch (Exception ex)
+            {
+                _logger.Debug("[ADMIN] Firebase :: Maintenance logout omitido para token: {0}", ex.Message);
+            }
+        }
+
+        return sent;
+    }
 }

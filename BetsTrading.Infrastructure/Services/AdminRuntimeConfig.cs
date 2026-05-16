@@ -23,8 +23,13 @@ public sealed class AdminRuntimeConfig : IAdminRuntimeConfig
     private double? _noAdsPriceEur;
     private double? _noAdsPriceUsd;
     private long _configVersion = 0;
+    private bool _accessLockEnabled;
 
     public long ConfigVersion => Interlocked.Read(ref _configVersion);
+
+    public bool AccessLockEnabled => Volatile.Read(ref _accessLockEnabled);
+
+    public void SetAccessLockEnabled(bool enabled) => Volatile.Write(ref _accessLockEnabled, enabled);
 
     public int? UpdaterMinute => _updaterMinute;
     public int? OddsAdjusterRefreshTimeSeconds => _oddsAdjusterRefreshTimeSeconds;
@@ -97,6 +102,7 @@ public sealed class AdminRuntimeConfig : IAdminRuntimeConfig
             MandatoryAdCooldownSeconds = _mandatoryAdCooldownSeconds ?? 300,
             NoAdsPriceEur = _noAdsPriceEur ?? 4.99,
             NoAdsPriceUsd = _noAdsPriceUsd ?? 4.99,
+            AccessLockEnabled = AccessLockEnabled,
         };
     }
 
@@ -111,6 +117,12 @@ public sealed class AdminRuntimeConfig : IAdminRuntimeConfig
             NoAdsPriceUsd = d.NoAdsPriceUsd,
         };
     }
+}
+
+/// <summary>POST /status/admin/access-lock</summary>
+public class AccessLockRequestDto
+{
+    public bool Enabled { get; set; }
 }
 
 /// <summary>DTO para GET/POST del panel admin.</summary>
@@ -137,4 +149,7 @@ public class AdminConfigDto
     public double NoAdsPriceEur { get; set; } = 4.99;
 
     public double NoAdsPriceUsd { get; set; } = 4.99;
+
+    /// <summary>Bloqueo global de acceso a la API (toggle desde panel /status).</summary>
+    public bool AccessLockEnabled { get; set; }
 }
