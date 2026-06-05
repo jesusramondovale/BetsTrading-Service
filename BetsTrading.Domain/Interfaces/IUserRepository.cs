@@ -22,4 +22,7 @@ public interface IUserRepository : IRepository<User>
 
     /// <summary>Añade puntos de forma atómica.</summary>
     Task<bool> TryAddPointsAsync(string id, double amount, CancellationToken cancellationToken = default);
+
+    /// <summary>Quita del change tracker un usuario cargado (evita que SaveChanges revierta deducciones atómicas).</summary>
+    void DetachTracked(string id);
 }

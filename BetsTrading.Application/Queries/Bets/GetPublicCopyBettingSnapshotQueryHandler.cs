@@ -1,5 +1,6 @@
 using MediatR;
 using BetsTrading.Application.DTOs;
+using BetsTrading.Domain.Interfaces;
 
 namespace BetsTrading.Application.Queries.Bets;
 
@@ -7,10 +8,12 @@ public sealed class GetPublicCopyBettingSnapshotQueryHandler
     : IRequestHandler<GetPublicCopyBettingSnapshotQuery, PublicCopyBettingSnapshotDto>
 {
     private readonly IMediator _mediator;
+    private readonly IUnitOfWork _unitOfWork;
 
-    public GetPublicCopyBettingSnapshotQueryHandler(IMediator mediator)
+    public GetPublicCopyBettingSnapshotQueryHandler(IMediator mediator, IUnitOfWork unitOfWork)
     {
         _mediator = mediator;
+        _unitOfWork = unitOfWork;
     }
 
     public async Task<PublicCopyBettingSnapshotDto> Handle(
@@ -75,10 +78,34 @@ public sealed class GetPublicCopyBettingSnapshotQueryHandler
             .Select(x => x.Item)
             .ToList();
 
+        ViewerCopyTradingStatusDto? viewerStatus = null;
+        var viewerId = (request.ViewerUserId ?? string.Empty).Trim();
+        if (!string.IsNullOrEmpty(viewerId) && viewerId != userId)
+        {
+            var subscription = await _unitOfWork.CopyTradingSubscriptions
+                .GetByFollowerAndTargetAsync(viewerId, userId, cancellationToken);
+
+            if (subscription != null && subscription.IsActive)
+            {
+                viewerStatus = new ViewerCopyTradingStatusDto
+                {
+                    IsActive = true,
+                    CopyPercent = subscription.CopyPercent,
+                    AutoAdjustByBalance = subscription.AutoAdjustByBalance,
+                    StopAfterOneLoss = subscription.StopAfterOneLoss
+                };
+            }
+            else
+            {
+                viewerStatus = new ViewerCopyTradingStatusDto { IsActive = false };
+            }
+        }
+
         return new PublicCopyBettingSnapshotDto
         {
             Stats = stats,
-            RecentBets = recent
+            RecentBets = recent,
+            ViewerCopyTrading = viewerStatus
         };
     }
 }

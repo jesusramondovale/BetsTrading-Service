@@ -90,7 +90,9 @@ public class ConfigureCopyTradingCommandHandler : IRequestHandler<ConfigureCopyT
         {
             existing.UpdateSettings(copyPercent, request.AutoAdjustByBalance, request.StopAfterOneLoss);
             _unitOfWork.CopyTradingSubscriptions.Update(existing);
-            _logger.Debug("[ConfigureCopyTrading] Updated subscription. follower={FollowerId}, target={TargetId}, percent={Percent}", followerId, targetId, copyPercent);
+            _logger.Debug(
+                "[ConfigureCopyTrading] Updated subscription (reactivated if previously stopped). follower={FollowerId}, target={TargetId}, percent={Percent}, wasActive={WasActive}",
+                followerId, targetId, copyPercent, existing.IsActive);
         }
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);

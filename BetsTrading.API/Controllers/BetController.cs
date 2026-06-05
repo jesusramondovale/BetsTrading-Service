@@ -223,7 +223,11 @@ public class BetController : ControllerBase
                 return BadRequest(new { Message = "targetUserId is required" });
             }
 
-            var query = new GetPublicCopyBettingSnapshotQuery { TargetUserId = targetUserId };
+            var query = new GetPublicCopyBettingSnapshotQuery
+            {
+                TargetUserId = targetUserId,
+                ViewerUserId = tokenUserId
+            };
             var result = await _mediator.Send(query, cancellationToken);
             return Ok(result);
         }

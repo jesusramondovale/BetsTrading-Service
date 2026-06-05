@@ -71,6 +71,7 @@ public class CreatePriceBetCommandHandler : IRequestHandler<CreatePriceBetComman
                 if (!await _unitOfWork.Users.TryDeductPointsAsync(request.UserId, betCost, cancellationToken))
                     throw new BetException("NO POINTS");
 
+                _unitOfWork.Users.DetachTracked(request.UserId);
                 await _unitOfWork.PriceBets.AddAsync(newPriceBet, cancellationToken);
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
                 await ReplicatePriceBetsAsync(request, user, betCost, cancellationToken);
@@ -114,6 +115,7 @@ public class CreatePriceBetCommandHandler : IRequestHandler<CreatePriceBetComman
                 if (!await _unitOfWork.Users.TryDeductPointsAsync(request.UserId, betCost, cancellationToken))
                     throw new BetException("NO POINTS");
 
+                _unitOfWork.Users.DetachTracked(request.UserId);
                 await _unitOfWork.PriceBetsUSD.AddAsync(newPriceBet, cancellationToken);
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
                 await ReplicatePriceBetsAsync(request, user, betCost, cancellationToken);
@@ -148,22 +150,25 @@ public class CreatePriceBetCommandHandler : IRequestHandler<CreatePriceBetComman
         _logger.Debug("[CreatePriceBet] Copy replication check. sourceUser={SourceUserId}, activeSubscriptions={Count}", sourceUser.Id, subscriptions.Count);
         if (subscriptions.Count == 0) return;
 
+        var freshSource = await _unitOfWork.Users.GetByIdAsync(sourceUser.Id, cancellationToken);
+        var sourcePoints = freshSource?.Points ?? 0;
+
         foreach (var subscription in subscriptions)
         {
             if (!subscription.IsActive) continue;
             if (subscription.FollowerUserId == sourceUser.Id) continue;
 
             var follower = await _unitOfWork.Users.GetByIdAsync(subscription.FollowerUserId, cancellationToken);
-            if (follower == null || !follower.IsActive)
+            if (follower == null)
             {
-                subscription.Stop("follower_not_available");
+                subscription.Stop("follower_not_found");
                 _unitOfWork.CopyTradingSubscriptions.Update(subscription);
-                _logger.Debug("[CreatePriceBet] Subscription stopped: follower not available. follower={FollowerId}, target={TargetId}", subscription.FollowerUserId, sourceUser.Id);
+                _logger.Debug("[CreatePriceBet] Subscription stopped: follower user not found. follower={FollowerId}, target={TargetId}", subscription.FollowerUserId, sourceUser.Id);
                 continue;
             }
 
             var percent = subscription.AutoAdjustByBalance
-                ? CalculateAutoPercent(follower.Points, sourceUser.Points)
+                ? CalculateAutoPercent(follower.Points, sourcePoints)
                 : subscription.CopyPercent;
             if (percent <= 0)
             {
@@ -184,11 +189,13 @@ public class CreatePriceBetCommandHandler : IRequestHandler<CreatePriceBetComman
                 _logger.Debug("[CreatePriceBet] Replication skipped: followerCost <= 0. follower={FollowerId}, margin={Margin}", follower.Id, margin);
                 continue;
             }
-            if (follower.Points < followerCost)
+            if (!await _unitOfWork.Users.TryDeductPointsAsync(follower.Id, followerCost, cancellationToken))
             {
-                _logger.Debug("[CreatePriceBet] Replication skipped: insufficient follower points. follower={FollowerId}, followerPoints={FollowerPoints}, required={Required}", follower.Id, follower.Points, followerCost);
+                _logger.Debug("[CreatePriceBet] Replication skipped: insufficient follower points. follower={FollowerId}, required={Required}", follower.Id, followerCost);
                 continue;
             }
+
+            _unitOfWork.Users.DetachTracked(follower.Id);
 
             if (request.Currency == "EUR")
             {
@@ -210,7 +217,6 @@ public class CreatePriceBetCommandHandler : IRequestHandler<CreatePriceBetComman
                     prize: PriceBetCostService.GetPrize(),
                     margin: margin,
                     endDate: request.EndDate);
-                follower.DeductPoints(followerCost);
                 await _unitOfWork.PriceBets.AddAsync(followerPriceBet, cancellationToken);
             }
             else
@@ -233,7 +239,6 @@ public class CreatePriceBetCommandHandler : IRequestHandler<CreatePriceBetComman
                     prize: PriceBetCostService.GetPrize(),
                     margin: margin,
                     endDate: request.EndDate);
-                follower.DeductPoints(followerCost);
                 await _unitOfWork.PriceBetsUSD.AddAsync(followerPriceBet, cancellationToken);
             }
 

@@ -83,6 +83,8 @@ public class CreateBetCommandHandler : IRequestHandler<CreateBetCommand, CreateB
         {
             if (!await _unitOfWork.Users.TryDeductPointsAsync(request.UserId, request.BetAmount, cancellationToken))
                 throw new InsufficientPointsException();
+
+            _unitOfWork.Users.DetachTracked(request.UserId);
             
             // Insertar la apuesta usando SQL directo para evitar la validación de clave foránea
             // La clave foránea bet_zone solo valida contra BetZones, pero puede referenciar BetZonesUSD también
@@ -158,8 +160,13 @@ public class CreateBetCommandHandler : IRequestHandler<CreateBetCommand, CreateB
         var subscriptions = await _unitOfWork.CopyTradingSubscriptions
             .GetActiveByTargetUserIdAsync(sourceUser.Id, cancellationToken);
 
-        _logger.Debug("[CreateBet] Copy replication check. sourceUser={SourceUserId}, activeSubscriptions={Count}", sourceUser.Id, subscriptions.Count);
+        _logger.Information(
+            "[CreateBet] Copy replication check. sourceUser={SourceUserId}, activeSubscriptions={Count}",
+            sourceUser.Id, subscriptions.Count);
         if (subscriptions.Count == 0) return;
+
+        var freshSource = await _unitOfWork.Users.GetByIdAsync(sourceUser.Id, cancellationToken);
+        var sourcePoints = freshSource?.Points ?? 0;
 
         foreach (var subscription in subscriptions)
         {
@@ -167,16 +174,16 @@ public class CreateBetCommandHandler : IRequestHandler<CreateBetCommand, CreateB
             if (subscription.FollowerUserId == sourceUser.Id) continue;
 
             var follower = await _unitOfWork.Users.GetByIdAsync(subscription.FollowerUserId, cancellationToken);
-            if (follower == null || !follower.IsActive)
+            if (follower == null)
             {
-                subscription.Stop("follower_not_available");
+                subscription.Stop("follower_not_found");
                 _unitOfWork.CopyTradingSubscriptions.Update(subscription);
-                _logger.Debug("[CreateBet] Subscription stopped: follower not available. follower={FollowerId}, target={TargetId}", subscription.FollowerUserId, sourceUser.Id);
+                _logger.Debug("[CreateBet] Subscription stopped: follower user not found. follower={FollowerId}, target={TargetId}", subscription.FollowerUserId, sourceUser.Id);
                 continue;
             }
 
             var percent = subscription.AutoAdjustByBalance
-                ? CalculateAutoPercent(follower.Points, sourceUser.Points)
+                ? CalculateAutoPercent(follower.Points, sourcePoints)
                 : subscription.CopyPercent;
 
             if (percent <= 0)
@@ -191,13 +198,17 @@ public class CreateBetCommandHandler : IRequestHandler<CreateBetCommand, CreateB
                 _logger.Debug("[CreateBet] Replication skipped: computed amount <= 0. follower={FollowerId}, sourceAmount={SourceAmount}, percent={Percent}", follower.Id, sourceBetAmount, percent);
                 continue;
             }
-            if (follower.Points < followerAmount)
+
+            if (!await _unitOfWork.Users.TryDeductPointsAsync(follower.Id, followerAmount, cancellationToken))
             {
-                _logger.Debug("[CreateBet] Replication skipped: insufficient follower points. follower={FollowerId}, followerPoints={FollowerPoints}, required={Required}", follower.Id, follower.Points, followerAmount);
+                _logger.Information(
+                    "[CreateBet] Replication skipped: insufficient follower points. follower={FollowerId}, required={Required}, percent={Percent}",
+                    follower.Id, followerAmount, percent);
                 continue;
             }
 
-            follower.DeductPoints(followerAmount);
+            _unitOfWork.Users.DetachTracked(follower.Id);
+
             var copyBet = new Bet(
                 userId: follower.Id,
                 ticker: ticker,
@@ -208,12 +219,15 @@ public class CreateBetCommandHandler : IRequestHandler<CreateBetCommand, CreateB
                 targetMargin: targetMargin,
                 betZoneId: betZoneId);
 
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.Bets.InsertBetWithRawSqlAsync(copyBet, cancellationToken);
             subscription.MarkCopiedNow();
             _unitOfWork.CopyTradingSubscriptions.Update(subscription);
-            _logger.Debug("[CreateBet] Replicated copy bet. follower={FollowerId}, target={TargetId}, amount={Amount}, zoneId={ZoneId}", follower.Id, sourceUser.Id, followerAmount, betZoneId);
+            _logger.Information(
+                "[CreateBet] Replicated copy bet. follower={FollowerId}, target={TargetId}, amount={Amount}, zoneId={ZoneId}, percent={Percent}",
+                follower.Id, sourceUser.Id, followerAmount, betZoneId, percent);
         }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
     }
 
     private static double CalculateAutoPercent(double followerPoints, double sourcePoints)

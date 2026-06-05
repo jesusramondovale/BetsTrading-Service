@@ -104,4 +104,12 @@ public class UserRepository : Repository<User>, IUserRepository
                 cancellationToken);
         return rows > 0;
     }
+
+    public void DetachTracked(string id)
+    {
+        var tracked = _context.ChangeTracker.Entries<User>()
+            .FirstOrDefault(e => e.Entity.Id == id);
+        if (tracked != null)
+            tracked.State = EntityState.Detached;
+    }
 }

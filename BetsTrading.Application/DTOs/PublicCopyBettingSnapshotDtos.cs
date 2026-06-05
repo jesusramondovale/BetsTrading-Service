@@ -26,8 +26,26 @@ public sealed class CopyBettingRecentItemDto
     public PriceBetDto? PriceBet { get; set; }
 }
 
+/// <summary>Estado de copy-trading del usuario autenticado (follower) respecto al perfil consultado.</summary>
+public sealed class ViewerCopyTradingStatusDto
+{
+    public bool IsActive { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? CopyPercent { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? AutoAdjustByBalance { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? StopAfterOneLoss { get; set; }
+}
+
 public sealed class PublicCopyBettingSnapshotDto
 {
     public CopyBettingStatsDto Stats { get; set; } = new();
     public List<CopyBettingRecentItemDto> RecentBets { get; set; } = new();
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ViewerCopyTradingStatusDto? ViewerCopyTrading { get; set; }
 }
