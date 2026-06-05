@@ -78,4 +78,30 @@ public class UserRepository : Repository<User>, IUserRepository
             .Distinct()
             .ToListAsync(cancellationToken);
     }
+
+    public async Task<bool> TryDeductPointsAsync(string id, double amount, CancellationToken cancellationToken = default)
+    {
+        if (amount <= 0)
+            return false;
+
+        var rows = await _dbSet
+            .Where(u => u.Id == id && u.Points >= amount)
+            .ExecuteUpdateAsync(
+                s => s.SetProperty(u => u.Points, u => u.Points - amount),
+                cancellationToken);
+        return rows > 0;
+    }
+
+    public async Task<bool> TryAddPointsAsync(string id, double amount, CancellationToken cancellationToken = default)
+    {
+        if (amount <= 0)
+            return false;
+
+        var rows = await _dbSet
+            .Where(u => u.Id == id)
+            .ExecuteUpdateAsync(
+                s => s.SetProperty(u => u.Points, u => u.Points + amount),
+                cancellationToken);
+        return rows > 0;
+    }
 }

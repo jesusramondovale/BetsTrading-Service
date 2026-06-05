@@ -37,10 +37,10 @@ public class ConfigureCopyTradingCommandHandler : IRequestHandler<ConfigureCopyT
         }
 
         var follower = await _unitOfWork.Users.GetByIdAsync(followerId, cancellationToken);
-        if (follower == null || follower.Fcm != request.Fcm)
+        if (follower == null)
         {
-            _logger.Debug("[ConfigureCopyTrading] Invalid session for follower={FollowerId}", followerId);
-            throw new InvalidOperationException("Invalid session");
+            _logger.Debug("[ConfigureCopyTrading] Follower not found follower={FollowerId}", followerId);
+            throw new InvalidOperationException("User not found");
         }
 
         var target = await _unitOfWork.Users.GetByIdAsync(targetId, cancellationToken);

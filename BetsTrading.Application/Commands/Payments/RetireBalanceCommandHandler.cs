@@ -47,13 +47,13 @@ public class RetireBalanceCommandHandler : IRequestHandler<RetireBalanceCommand,
             // Get user by FCM and UserId
             var user = await _unitOfWork.Users.GetByIdAsync(request.UserId, cancellationToken);
             
-            if (user == null || user.Fcm != request.Fcm)
+            if (user == null)
             {
-                _logger.Warning("[PAYMENTS] :: RetireBalance :: User not found or session expired: {0}", request.UserId);
+                _logger.Warning("[PAYMENTS] :: RetireBalance :: User not found: {0}", request.UserId);
                 return new RetireBalanceResult
                 {
                     Success = false,
-                    Message = "User not found or session expired"
+                    Message = "User not found"
                 };
             }
 
@@ -121,9 +121,26 @@ public class RetireBalanceCommandHandler : IRequestHandler<RetireBalanceCommand,
                 };
             }
 
-            // Update user balance
+            if (!await _unitOfWork.Users.TryDeductPointsAsync(request.UserId, request.Coins, cancellationToken))
+            {
+                return new RetireBalanceResult
+                {
+                    Success = false,
+                    Message = "Insufficient points"
+                };
+            }
+
+            user = await _unitOfWork.Users.GetByIdAsync(request.UserId, cancellationToken);
+            if (user == null)
+            {
+                return new RetireBalanceResult
+                {
+                    Success = false,
+                    Message = "User not found"
+                };
+            }
+
             user.PendingBalance += request.CurrencyAmount;
-            user.DeductPoints(request.Coins);
 
             // Create withdrawal record
             var withdrawal = new WithdrawalData(

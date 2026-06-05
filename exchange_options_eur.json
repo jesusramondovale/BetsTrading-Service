@@ -10,7 +10,7 @@
     "type": "ad_reward"
   },
   
-  { "euros": 1.99, "coins": 120, "type": "buy" },
+  { "euros": 0.15, "coins": 120, "type": "buy" },
   { "euros": 5.99, "coins": 400, "type": "buy" },
   { "euros": 10.99, "coins": 1000, "type": "buy" },
   { "euros": 59.99, "coins": 5000, "type": "buy" }

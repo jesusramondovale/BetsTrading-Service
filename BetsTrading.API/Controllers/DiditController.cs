@@ -5,6 +5,7 @@ using BetsTrading.Application.Commands.Didit;
 using System.Security.Claims;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text.Json;
+using BetsTrading.API.Security;
 
 namespace BetsTrading.API.Controllers;
 
@@ -67,6 +68,9 @@ public class DiditController : ControllerBase
     {
         using var reader = new StreamReader(Request.Body);
         var json = await reader.ReadToEndAsync(cancellationToken);
+
+        if (!DiditWebhookVerifier.IsValid(json, Request.Headers))
+            return Unauthorized(new { Message = "Invalid webhook signature" });
 
         JsonElement payload;
         try

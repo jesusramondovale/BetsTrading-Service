@@ -10,15 +10,18 @@ public class CreatePaymentIntentCommandHandler : IRequestHandler<CreatePaymentIn
     private readonly IApplicationLogger _logger;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IAdminRuntimeConfig _adminConfig;
+    private readonly ICoinPurchasePricingService _coinPricing;
 
     public CreatePaymentIntentCommandHandler(
         IApplicationLogger logger,
         IUnitOfWork unitOfWork,
-        IAdminRuntimeConfig adminConfig)
+        IAdminRuntimeConfig adminConfig,
+        ICoinPurchasePricingService coinPricing)
     {
         _logger = logger;
         _unitOfWork = unitOfWork;
         _adminConfig = adminConfig;
+        _coinPricing = coinPricing;
         StripeConfiguration.ApiKey = Environment.GetEnvironmentVariable("STRIPE_SECRET_KEY") ?? "";
     }
 
@@ -30,6 +33,21 @@ public class CreatePaymentIntentCommandHandler : IRequestHandler<CreatePaymentIn
             long amountMinor = request.Amount;
             var coins = request.Coins;
             var currency = (request.Currency ?? "eur").ToLowerInvariant();
+
+            if (!string.Equals(productType, "no_ads", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!_coinPricing.TryResolvePackage(currency, coins, amountMinor, out var package))
+                {
+                    return new CreatePaymentIntentResult
+                    {
+                        Success = false,
+                        Message = "Invalid coin package"
+                    };
+                }
+
+                amountMinor = (long)Math.Round(package.Price * 100.0, MidpointRounding.AwayFromZero);
+                coins = package.Coins;
+            }
 
             if (string.Equals(productType, "no_ads", StringComparison.OrdinalIgnoreCase))
             {

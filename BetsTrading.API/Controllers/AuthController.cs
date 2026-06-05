@@ -7,6 +7,7 @@ using System.Security.Claims;
 using System.IdentityModel.Tokens.Jwt;
 using System.IO;
 using BetsTrading.API.Security;
+using BetsTrading.Application.Interfaces;
 
 namespace BetsTrading.API.Controllers;
 
@@ -16,11 +17,16 @@ public class AuthController : ControllerBase
 {
     private readonly IMediator _mediator;
     private readonly IStepUpTokenService _stepUpTokenService;
+    private readonly IGoogleIdTokenValidator _googleIdTokenValidator;
 
-    public AuthController(IMediator mediator, IStepUpTokenService stepUpTokenService)
+    public AuthController(
+        IMediator mediator,
+        IStepUpTokenService stepUpTokenService,
+        IGoogleIdTokenValidator googleIdTokenValidator)
     {
         _mediator = mediator;
         _stepUpTokenService = stepUpTokenService;
+        _googleIdTokenValidator = googleIdTokenValidator;
     }
 
     [AllowAnonymous]
@@ -88,9 +94,16 @@ public class AuthController : ControllerBase
     [HttpPost("GoogleQuickRegister")]
     public async Task<IActionResult> GoogleQuickRegister([FromBody] GoogleSignInCommand command, CancellationToken cancellationToken)
     {
+        var googlePayload = await _googleIdTokenValidator.ValidateAsync(command.IdToken ?? "", cancellationToken);
+        if (googlePayload == null)
+            return Unauthorized(new { Message = "Invalid Google ID token" });
+
+        if (!string.Equals(command.Id, googlePayload.Subject, StringComparison.Ordinal))
+            return BadRequest(new { Message = "Google ID mismatch" });
+
         var registerCommand = new RegisterCommand
         {
-            Token = command.Id,
+            Token = googlePayload.Subject,
             Fcm = command.Fcm ?? "-",
             FullName = command.DisplayName ?? "-",
             Email = command.Email ?? "-",

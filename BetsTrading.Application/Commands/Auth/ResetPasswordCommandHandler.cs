@@ -32,8 +32,8 @@ public class ResetPasswordCommandHandler : IRequestHandler<ResetPasswordCommand,
             {
                 return new ResetPasswordResult
                 {
-                    Success = false,
-                    Message = "User not found"
+                    Success = true,
+                    Message = "If the account exists, a new password has been sent by email"
                 };
             }
 
@@ -76,8 +76,12 @@ public class ResetPasswordCommandHandler : IRequestHandler<ResetPasswordCommand,
     private static string GenerateSecurePassword()
     {
         const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
-        var random = new Random();
-        return new string(Enumerable.Repeat(chars, 16)
-            .Select(s => s[random.Next(s.Length)]).ToArray());
+        return string.Create(16, chars, static (span, availableChars) =>
+        {
+            Span<byte> bytes = stackalloc byte[span.Length];
+            System.Security.Cryptography.RandomNumberGenerator.Fill(bytes);
+            for (var i = 0; i < span.Length; i++)
+                span[i] = availableChars[bytes[i] % availableChars.Length];
+        });
     }
 }

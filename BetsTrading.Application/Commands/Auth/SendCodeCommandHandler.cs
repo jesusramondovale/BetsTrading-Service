@@ -31,9 +31,10 @@ public class SendCodeCommandHandler : IRequestHandler<SendCodeCommand, SendCodeR
             };
         }
 
-        // Generate verification code
-        var random = new Random();
-        string code = random.Next(100000, 999999).ToString();
+        var bytes = new byte[4];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(bytes);
+        var codeValue = BitConverter.ToUInt32(bytes) % 900000 + 100000;
+        string code = codeValue.ToString();
 
         var verificationCode = new VerificationCode(
             request.Email,

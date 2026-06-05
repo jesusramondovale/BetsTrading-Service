@@ -155,6 +155,7 @@ builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
 // MediatR
 builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(BetsTrading.Application.Commands.Bets.CreateBetCommand).Assembly));
+builder.Services.AddTransient(typeof(MediatR.IPipelineBehavior<,>), typeof(BetsTrading.Application.Behaviors.ValidationBehavior<,>));
 
 // AutoMapper
 builder.Services.AddAutoMapper(typeof(MappingProfile));
@@ -498,6 +499,9 @@ builder.Services.AddSingleton<BetsTrading.Application.Interfaces.IAdMobSsvVerifi
 
 // Didit API Service
 builder.Services.AddSingleton<BetsTrading.Application.Interfaces.IDiditApiService, BetsTrading.Infrastructure.Services.DiditApiService>();
+builder.Services.AddSingleton<BetsTrading.Application.Interfaces.IGoogleIdTokenValidator, BetsTrading.Infrastructure.Services.GoogleIdTokenValidator>();
+builder.Services.AddSingleton<BetsTrading.Application.Interfaces.ICoinPurchasePricingService, BetsTrading.Infrastructure.Services.CoinPurchasePricingService>();
+builder.Services.AddScoped<BetsTrading.Application.Interfaces.IStripePaymentFulfillmentService, BetsTrading.Infrastructure.Services.StripePaymentFulfillmentService>();
 
 // Localization Service
 builder.Services.AddSingleton<BetsTrading.Application.Interfaces.ILocalizationService, BetsTrading.Infrastructure.Services.LocalizationService>();
@@ -654,9 +658,12 @@ app.Use(async (context, next) =>
         method, path, context.Response.StatusCode, responseSize, hasStarted);
 });
 
-#if RELEASE
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHsts();
+}
+
 app.UseIpRateLimiting();
-#endif
 app.UseResponseCompression();
 app.UseMiddleware<BetsTrading.API.Middleware.AccessLockMiddleware>();
 

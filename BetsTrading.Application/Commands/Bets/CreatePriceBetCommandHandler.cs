@@ -28,9 +28,6 @@ public class CreatePriceBetCommandHandler : IRequestHandler<CreatePriceBetComman
         if (user == null)
             throw new InvalidOperationException("Unexistent user or session expired!");
 
-        if (user.Fcm != request.Fcm)
-            throw new InvalidOperationException("Invalid session");
-
         // Calcular costo de la apuesta
         int betCost = PriceBetCostService.GetBetCostFromMargin(request.Margin);
 
@@ -67,13 +64,13 @@ public class CreatePriceBetCommandHandler : IRequestHandler<CreatePriceBetComman
                 endDate: request.EndDate
             );
 
-            // Deductir puntos del usuario
-            user.DeductPoints(betCost);
-
             // Iniciar transacción
             await _unitOfWork.BeginTransactionAsync(cancellationToken);
             try
             {
+                if (!await _unitOfWork.Users.TryDeductPointsAsync(request.UserId, betCost, cancellationToken))
+                    throw new BetException("NO POINTS");
+
                 await _unitOfWork.PriceBets.AddAsync(newPriceBet, cancellationToken);
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
                 await ReplicatePriceBetsAsync(request, user, betCost, cancellationToken);
@@ -87,10 +84,11 @@ public class CreatePriceBetCommandHandler : IRequestHandler<CreatePriceBetComman
                 throw;
             }
 
+            var updatedUserEur = await _unitOfWork.Users.GetByIdAsync(request.UserId, cancellationToken);
             return new CreatePriceBetResult
             {
                 PriceBetId = newPriceBet.Id,
-                RemainingPoints = user.Points
+                RemainingPoints = updatedUserEur?.Points ?? 0
             };
         }
         else
@@ -109,13 +107,13 @@ public class CreatePriceBetCommandHandler : IRequestHandler<CreatePriceBetComman
                 endDate: request.EndDate
             );
 
-            // Deductir puntos del usuario
-            user.DeductPoints(betCost);
-
             // Iniciar transacción
             await _unitOfWork.BeginTransactionAsync(cancellationToken);
             try
             {
+                if (!await _unitOfWork.Users.TryDeductPointsAsync(request.UserId, betCost, cancellationToken))
+                    throw new BetException("NO POINTS");
+
                 await _unitOfWork.PriceBetsUSD.AddAsync(newPriceBet, cancellationToken);
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
                 await ReplicatePriceBetsAsync(request, user, betCost, cancellationToken);
@@ -129,10 +127,11 @@ public class CreatePriceBetCommandHandler : IRequestHandler<CreatePriceBetComman
                 throw;
             }
 
+            var updatedUserUsd = await _unitOfWork.Users.GetByIdAsync(request.UserId, cancellationToken);
             return new CreatePriceBetResult
             {
                 PriceBetId = newPriceBet.Id,
-                RemainingPoints = user.Points
+                RemainingPoints = updatedUserUsd?.Points ?? 0
             };
         }
     }

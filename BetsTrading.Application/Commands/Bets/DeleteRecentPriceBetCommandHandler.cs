@@ -17,7 +17,7 @@ public class DeleteRecentPriceBetCommandHandler : IRequestHandler<DeleteRecentPr
         if (request.Currency == "EUR")
         {
             var priceBet = await _unitOfWork.PriceBets.GetByIdAsync(request.PriceBetId, cancellationToken);
-            if (priceBet == null)
+            if (priceBet == null || !string.Equals(priceBet.UserId, request.UserId, StringComparison.Ordinal))
                 return false;
 
             priceBet.Archive();
@@ -39,7 +39,7 @@ public class DeleteRecentPriceBetCommandHandler : IRequestHandler<DeleteRecentPr
         else
         {
             var priceBet = await _unitOfWork.PriceBetsUSD.GetByIdAsync(request.PriceBetId, cancellationToken);
-            if (priceBet == null)
+            if (priceBet == null || !string.Equals(priceBet.UserId, request.UserId, StringComparison.Ordinal))
                 return false;
 
             priceBet.Archive();

@@ -80,12 +80,15 @@ public class ClaimDailyRewardCommandHandler : IRequestHandler<ClaimDailyRewardCo
         }
         _logger.Debug("[DAILY_REWARD HANDLER] user found Points before AddPoints={0}", user.Points);
 
-        user.AddPoints(coins);
+        if (!await _unitOfWork.Users.TryAddPointsAsync(request.UserId, coins, cancellationToken))
+        {
+            return new ClaimDailyRewardResult { Success = false, Message = "User not found." };
+        }
+
         streak.RecordClaim(dayToClaim, now);
-        _unitOfWork.Users.Update(user);
         if (!isNewStreak)
             _unitOfWork.DailyLoginStreaks.Update(streak);
-        _logger.Debug("[DAILY_REWARD HANDLER] AddPoints({0}) RecordClaim({1}) Update(user) Update(streak)={2} -> calling SaveChangesAsync", coins, dayToClaim, !isNewStreak);
+        _logger.Debug("[DAILY_REWARD HANDLER] AddPoints({0}) RecordClaim({1}) Update(streak)={2} -> calling SaveChangesAsync", coins, dayToClaim, !isNewStreak);
         var saved = await _unitOfWork.SaveChangesAsync(cancellationToken);
         _logger.Debug("[DAILY_REWARD HANDLER] SaveChangesAsync returned {0} (rows affected)", saved);
 

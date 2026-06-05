@@ -31,9 +31,6 @@ public class CreateBetCommandHandler : IRequestHandler<CreateBetCommand, CreateB
         if (user == null)
             throw new InvalidOperationException("User not found");
 
-        if (user.Fcm != request.Fcm)
-            throw new InvalidOperationException("Invalid session");
-
         if (request.RequireStrongAuth && !request.StepUpValidated)
         {
             if (string.IsNullOrWhiteSpace(request.Password) || !BCrypt.Net.BCrypt.Verify(request.Password, user.Password))
@@ -41,10 +38,6 @@ public class CreateBetCommandHandler : IRequestHandler<CreateBetCommand, CreateB
                 throw new InvalidOperationException("Incorrect password");
             }
         }
-
-        // Validar que el usuario tiene suficientes puntos
-        if (user.Points < request.BetAmount)
-            throw new InsufficientPointsException();
 
         // Obtener la zona de apuesta según la moneda
         double targetOdds;
@@ -84,15 +77,12 @@ public class CreateBetCommandHandler : IRequestHandler<CreateBetCommand, CreateB
             betZoneId: request.BetZoneId
         );
 
-        // Deductir puntos del usuario
-        user.DeductPoints(request.BetAmount);
-
         // Iniciar transacción
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
-            // Guardar cambios del usuario primero
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            if (!await _unitOfWork.Users.TryDeductPointsAsync(request.UserId, request.BetAmount, cancellationToken))
+                throw new InsufficientPointsException();
             
             // Insertar la apuesta usando SQL directo para evitar la validación de clave foránea
             // La clave foránea bet_zone solo valida contra BetZones, pero puede referenciar BetZonesUSD también
@@ -146,10 +136,11 @@ public class CreateBetCommandHandler : IRequestHandler<CreateBetCommand, CreateB
             }
         });
 
+        var updatedUser = await _unitOfWork.Users.GetByIdAsync(request.UserId, cancellationToken);
         return new CreateBetResult
         {
             BetId = bet.Id,
-            RemainingPoints = user.Points
+            RemainingPoints = updatedUser?.Points ?? 0
         };
     }
 

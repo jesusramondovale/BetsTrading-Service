@@ -9,6 +9,7 @@ using BetsTrading.Domain.Exceptions;
 using System.Security.Claims;
 using System.IdentityModel.Tokens.Jwt;
 using BetsTrading.API.Security;
+using static BetsTrading.API.Security.ControllerAuth;
 
 namespace BetsTrading.API.Controllers;
 
@@ -32,12 +33,19 @@ public class BetController : ControllerBase
     {
         try
         {
+            var authError = RequireAuthenticatedUser(User);
+            if (authError != null) return authError;
+
+            var tokenUserId = GetTokenUserId(User)!;
+            var mismatch = ForbidIfUserMismatch(User, request.GetUserId());
+            if (mismatch != null) return mismatch;
+
             _logger.LogDebug("[BetController] :: NewBet :: Request received. UserId: {userId}, BetZoneId: {betZoneId}, Currency: {currency}, BetAmount: {betAmount}", 
-                request.UserId, request.BetZoneId, request.Currency ?? "EUR", request.BetAmount);
+                tokenUserId, request.BetZoneId, request.Currency ?? "EUR", request.BetAmount);
 
             var command = new CreateBetCommand
             {
-                UserId = request.GetUserId(),
+                UserId = RequireAndResolveUserId(User, request.GetUserId()),
                 Fcm = request.GetFcm(),
                 Password = request.Password ?? string.Empty,
                 Ticker = request.Ticker ?? string.Empty,
@@ -231,13 +239,20 @@ public class BetController : ControllerBase
     {
         try
         {
+            var authError = RequireAuthenticatedUser(User);
+            if (authError != null) return authError;
+
+            var tokenUserId = GetTokenUserId(User)!;
+            var mismatch = ForbidIfUserMismatch(User, request.GetFollowerUserId());
+            if (mismatch != null) return mismatch;
+
             _logger.LogDebug(
                 "[BetController] :: ConfigureCopyTrading :: Request received. FollowerUserId={FollowerUserId}, UserId={UserId}, TargetUserId={TargetUserId}, IsEnabled={IsEnabled}, CopyPercent={CopyPercent}, AutoAdjust={AutoAdjust}, StopAfterOneLoss={StopAfterOneLoss}",
-                request.FollowerUserId, request.UserId, request.TargetUserId, request.IsEnabled, request.CopyPercent, request.AutoAdjustByBalance, request.StopAfterOneLoss);
+                tokenUserId, request.UserId, request.TargetUserId, request.IsEnabled, request.CopyPercent, request.AutoAdjustByBalance, request.StopAfterOneLoss);
 
             var command = new ConfigureCopyTradingCommand
             {
-                FollowerUserId = request.GetFollowerUserId(),
+                FollowerUserId = RequireAndResolveUserId(User, request.GetFollowerUserId()),
                 Fcm = request.GetFcm(),
                 TargetUserId = request.GetTargetUserId(),
                 IsEnabled = request.IsEnabled,
@@ -284,8 +299,12 @@ public class BetController : ControllerBase
     [HttpPost("DeleteRecentBet")]
     public async Task<IActionResult> DeleteRecentBet([FromBody] DeleteBetRequest request)
     {
+        var authError = RequireAuthenticatedUser(User);
+        if (authError != null) return authError;
+
         var command = new DeleteRecentBetCommand
         {
+            UserId = GetTokenUserId(User)!,
             BetId = request.GetBetId()
         };
 
@@ -492,9 +511,15 @@ public class BetController : ControllerBase
     [HttpPost("NewPriceBet")]
     public async Task<IActionResult> NewPriceBet([FromBody] CreatePriceBetRequest request)
     {
+        var authError = RequireAuthenticatedUser(User);
+        if (authError != null) return authError;
+
+        var mismatch = ForbidIfUserMismatch(User, request.GetUserId());
+        if (mismatch != null) return mismatch;
+
         var command = new CreatePriceBetCommand
         {
-            UserId = request.GetUserId(),
+            UserId = RequireAndResolveUserId(User, request.GetUserId()),
             Fcm = request.GetFcm(),
             Password = request.Password ?? string.Empty,
             Ticker = request.Ticker ?? string.Empty,
@@ -530,8 +555,12 @@ public class BetController : ControllerBase
     [HttpPost("DeleteRecentPriceBet")]
     public async Task<IActionResult> DeleteRecentPriceBet([FromBody] DeletePriceBetRequest request)
     {
+        var authError = RequireAuthenticatedUser(User);
+        if (authError != null) return authError;
+
         var command = new DeleteRecentPriceBetCommand
         {
+            UserId = GetTokenUserId(User)!,
             PriceBetId = request.GetPriceBetId(),
             Currency = request.Currency ?? "EUR"
         };

@@ -15,7 +15,7 @@ public class DeleteRecentBetCommandHandler : IRequestHandler<DeleteRecentBetComm
     public async Task<bool> Handle(DeleteRecentBetCommand request, CancellationToken cancellationToken)
     {
         var bet = await _unitOfWork.Bets.GetByIdAsync(request.BetId, cancellationToken);
-        if (bet == null)
+        if (bet == null || !string.Equals(bet.UserId, request.UserId, StringComparison.Ordinal))
             return false;
 
         bet.Archive();

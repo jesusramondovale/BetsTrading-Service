@@ -4,6 +4,7 @@ namespace BetsTrading.Application.Commands.Auth;
 
 public class GoogleSignInCommand : IRequest<GoogleSignInResult>
 {
+    public string? IdToken { get; set; }
     public string Id { get; set; } = string.Empty;
     public string? Email { get; set; }
     public string? DisplayName { get; set; }

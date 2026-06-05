@@ -4,6 +4,8 @@ using MediatR;
 using BetsTrading.Application.Commands.Rewards;
 using System.Security.Claims;
 using System.IdentityModel.Tokens.Jwt;
+using BetsTrading.API.Security;
+using static BetsTrading.API.Security.ControllerAuth;
 
 namespace BetsTrading.API.Controllers;
 
@@ -27,20 +29,10 @@ public class RewardsController : ControllerBase
             return BadRequest(new { Message = "Request body required. Expected JSON: { \"adUnitId\": \"...\", \"purpose\": \"...\", \"coins\": 20 }" });
         }
 
-        // Extract user ID from header or token
-        var userId = Request.Headers["X-UserId"].ToString();
-        if (string.IsNullOrWhiteSpace(userId))
-        {
-            // Try to get from JWT token
-            userId = User.FindFirstValue(ClaimTypes.NameIdentifier) 
-                ?? User.FindFirstValue("app_sub") 
-                ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub);
-        }
+        var authError = RequireAuthenticatedUser(User);
+        if (authError != null) return authError;
 
-        if (string.IsNullOrWhiteSpace(userId))
-        {
-            return Unauthorized(new { Message = "missing user id" });
-        }
+        var userId = GetTokenUserId(User)!;
 
         if (string.IsNullOrWhiteSpace(command.AdUnitId))
         {

@@ -40,6 +40,17 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResult>
             };
         }
 
+        if (user.FailedAttempts >= 5 &&
+            user.LastLoginAttempt.HasValue &&
+            user.LastLoginAttempt.Value > DateTime.UtcNow.AddMinutes(-15))
+        {
+            return new LoginResult
+            {
+                Success = false,
+                Message = "Account temporarily locked. Try again later."
+            };
+        }
+
         if (!BCrypt.Net.BCrypt.Verify(request.Password, user.Password))
         {
             user.RecordFailedLoginAttempt();
@@ -53,7 +64,7 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResult>
             };
         }
 
-        // Update session
+        user.ResetFailedAttempts();
         user.UpdateSession();
         
         if (!string.IsNullOrEmpty(request.Fcm))

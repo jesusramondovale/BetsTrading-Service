@@ -22,19 +22,22 @@ public class PaymentsController : ControllerBase
     private readonly IEmailService _emailService;
     private readonly IApplicationLogger _logger;
     private readonly IStepUpTokenService _stepUpTokenService;
+    private readonly IStripePaymentFulfillmentService _paymentFulfillment;
 
     public PaymentsController(
         IMediator mediator, 
         IUnitOfWork unitOfWork,
         IEmailService emailService,
         IApplicationLogger logger,
-        IStepUpTokenService stepUpTokenService)
+        IStepUpTokenService stepUpTokenService,
+        IStripePaymentFulfillmentService paymentFulfillment)
     {
         _mediator = mediator;
         _unitOfWork = unitOfWork;
         _emailService = emailService;
         _logger = logger;
         _stepUpTokenService = stepUpTokenService;
+        _paymentFulfillment = paymentFulfillment;
         // Stripe se configura en Program.cs
     }
 
@@ -62,7 +65,7 @@ public class PaymentsController : ControllerBase
 
         if (!result.Success)
         {
-            if (result.Message is "User not found" or "no_ads_already_owned")
+            if (result.Message is "User not found" or "no_ads_already_owned" or "Invalid coin package")
             {
                 return BadRequest(new { message = result.Message });
             }
@@ -71,6 +74,37 @@ public class PaymentsController : ControllerBase
         }
 
         return Ok(new { client_secret = result.ClientSecret });
+    }
+
+    [HttpPost("ConfirmPaymentIntent")]
+    public async Task<IActionResult> ConfirmPaymentIntent(
+        [FromBody] ConfirmPaymentIntentRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var tokenUserId = User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? User.FindFirstValue("app_sub")
+            ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+        if (string.IsNullOrEmpty(tokenUserId))
+            return Unauthorized(new { Message = "Invalid token" });
+
+        var paymentIntentId = request?.PaymentIntentId?.Trim();
+        if (string.IsNullOrWhiteSpace(paymentIntentId))
+            return BadRequest(new { Message = "paymentIntentId is required" });
+
+        var result = await _paymentFulfillment.TryFulfillPaymentIntentAsync(
+            paymentIntentId, tokenUserId, cancellationToken);
+
+        if (!result.Success)
+            return BadRequest(new { message = result.Message });
+
+        return Ok(new
+        {
+            success = true,
+            alreadyProcessed = result.AlreadyProcessed,
+            coinsCredited = result.CoinsCredited,
+            message = result.Message
+        });
     }
 
     [AllowAnonymous]
@@ -88,101 +122,16 @@ public class PaymentsController : ControllerBase
             if (stripeEvent.Type == "payment_intent.succeeded")
             {
                 var intent = stripeEvent.Data.Object as PaymentIntent;
-                var userId = intent!.Metadata["userId"];
-                var productType = intent.Metadata.TryGetValue("productType", out var pt) ? pt : "coins";
-
-                // Extract payment method
-                string paymentMethod = "unknown";
-                var currency = "unknown";
-                double amount = 0;
-                var chargeService = new ChargeService();
-                Charge? charge = null;
-
-                if (!string.IsNullOrEmpty(intent.LatestChargeId))
+                if (intent == null)
                 {
-                    charge = await chargeService.GetAsync(intent.LatestChargeId);
-                }
-                else
-                {
-                    var list = await chargeService.ListAsync(new ChargeListOptions
-                    {
-                        PaymentIntent = intent.Id,
-                        Limit = 1
-                    });
-                    charge = list.Data.FirstOrDefault();
+                    _logger.Warning("[Stripe] Webhook payment_intent.succeeded with null intent");
+                    return BadRequest();
                 }
 
-                if (charge?.PaymentMethodDetails != null)
-                {
-                    var pmd = charge.PaymentMethodDetails;
-                    currency = charge.Currency;
-                    amount = charge.Amount / 100.0;
-
-                    if (pmd.Type == "card" && pmd.Card != null)
-                    {
-                        paymentMethod = $"{pmd.Card.Brand} ****{pmd.Card.Last4}";
-                    }
-                    else
-                    {
-                        paymentMethod = pmd.Type ?? "unknown";
-                    }
-                }
-
-                var user = await _unitOfWork.Users.GetByIdAsync(userId, cancellationToken: default);
-                if (user == null)
-                {
-                    return Ok();
-                }
-
-                if (string.Equals(productType, "no_ads", StringComparison.OrdinalIgnoreCase))
-                {
-                    _logger.Debug("[Stripe] No-ads purchase for user {0} via {1}", userId, paymentMethod);
-                    if (!user.NoAds)
-                    {
-                        user.GrantNoAds();
-                    }
-
-                    var noAdsPayment = new PaymentData(
-                        userId,
-                        intent.Id,
-                        0,
-                        currency,
-                        amount,
-                        true,
-                        paymentMethod
-                    );
-
-                    await _unitOfWork.PaymentData.AddAsync(noAdsPayment, cancellationToken: default);
-                    await _unitOfWork.SaveChangesAsync();
-                    return Ok();
-                }
-
-                var coins = 0.0;
-                if (intent.Metadata.TryGetValue("coins", out var coinsRaw) &&
-                    double.TryParse(coinsRaw, System.Globalization.CultureInfo.InvariantCulture, out var parsedCoins))
-                {
-                    coins = parsedCoins;
-                }
-
-                _logger.Debug("[Stripe] Pay confirmed for user {0} ({1} coins) via {2}", userId, coins, paymentMethod);
-
-                if (coins > 0)
-                {
-                    user.AddPoints(coins);
-                }
-
-                var paymentHistory = new PaymentData(
-                    userId,
-                    intent.Id,
-                    coins,
-                    currency,
-                    amount,
-                    true,
-                    paymentMethod
-                );
-
-                await _unitOfWork.PaymentData.AddAsync(paymentHistory, cancellationToken: default);
-                await _unitOfWork.SaveChangesAsync();
+                _logger.Information("[Stripe] Webhook payment_intent.succeeded pi={0}", intent.Id);
+                var result = await _paymentFulfillment.TryFulfillPaymentIntentAsync(intent.Id, cancellationToken: default);
+                if (!result.Success)
+                    _logger.Warning("[Stripe] Webhook fulfillment failed pi={0} msg={1}", intent.Id, result.Message ?? "unknown");
             }
             else if (stripeEvent.Type == "payment_intent.payment_failed")
             {
@@ -341,4 +290,9 @@ public class PaymentsController : ControllerBase
 
         return Ok();
     }
+}
+
+public class ConfirmPaymentIntentRequest
+{
+    public string? PaymentIntentId { get; set; }
 }

@@ -14,6 +14,8 @@ using System.IdentityModel.Tokens.Jwt;
 using BetsTrading.Application.DTOs;
 using System.IO;
 using BetsTrading.Application.Interfaces;
+using BetsTrading.API.Security;
+using static BetsTrading.API.Security.ControllerAuth;
 
 namespace BetsTrading.API.Controllers;
 
@@ -88,12 +90,13 @@ public class InfoController : ControllerBase
         return Content(content, "text/plain");
     }
 
-    [AllowAnonymous]
     [HttpPost("UserInfo")]
     public async Task<IActionResult> UserInfo([FromBody] GetUserInfoQuery? query, CancellationToken cancellationToken)
     {
         try
         {
+            var authError = RequireAuthenticatedUser(User);
+            if (authError != null) return authError;
             // Handle null query (empty body or malformed JSON)
             if (query == null)
             {
@@ -197,8 +200,10 @@ public class InfoController : ControllerBase
                     return Forbid();
                 }
             }
-            // If no token, we'll still allow the request (like IsLoggedIn does)
-            // This allows the endpoint to work even if token validation fails
+            var mismatch = ForbidIfUserMismatch(User, query.UserId);
+            if (mismatch != null) return mismatch;
+
+            query.UserId = RequireAndResolveUserId(User, query.UserId);
 
             var result = await _mediator.Send(query, cancellationToken);
 
@@ -238,18 +243,15 @@ public class InfoController : ControllerBase
         _logger.Debug("[DAILY_REWARD] DailyRewardStatus REQUEST query={@Q}", new { UserId = query?.UserId ?? "(null)" });
         try
         {
+            var authError = RequireAuthenticatedUser(User);
+            if (authError != null) return authError;
+
             query ??= new GetDailyRewardStatusQuery();
-            var tokenUserId = User.FindFirstValue(ClaimTypes.NameIdentifier)
-                ?? User.FindFirstValue("app_sub")
-                ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub);
-            _logger.Debug("[DAILY_REWARD] DailyRewardStatus tokenUserId={TokenUserId} query.UserId before={QueryUserId}", tokenUserId ?? "null", query.UserId ?? "null");
-            if (!string.IsNullOrEmpty(tokenUserId) && string.IsNullOrEmpty(query.UserId))
-                query.UserId = tokenUserId;
-            if (string.IsNullOrEmpty(query.UserId))
-            {
-                _logger.Debug("[DAILY_REWARD] DailyRewardStatus ABORT User ID is required");
-                return BadRequest(new { Message = "User ID is required" });
-            }
+            var tokenUserId = GetTokenUserId(User)!;
+            _logger.Debug("[DAILY_REWARD] DailyRewardStatus tokenUserId={TokenUserId} query.UserId before={QueryUserId}", tokenUserId, query.UserId ?? "null");
+            var mismatch = ForbidIfUserMismatch(User, query.UserId);
+            if (mismatch != null) return mismatch;
+            query.UserId = RequireAndResolveUserId(User, query.UserId);
             var result = await _mediator.Send(query, cancellationToken);
             _logger.Debug("[DAILY_REWARD] DailyRewardStatus RESULT ShowDialog={ShowDialog} CanClaim={CanClaim} CurrentDay={CurrentDay} CoinsForCurrentDay={Coins}", result.ShowDialog, result.CanClaim, result.CurrentDay, result.CoinsForCurrentDay);
             return Ok(new
@@ -275,18 +277,15 @@ public class InfoController : ControllerBase
         _logger.Debug("[DAILY_REWARD] ClaimDailyReward REQUEST command.UserId={UserId}", command?.UserId ?? "null");
         try
         {
+            var authError = RequireAuthenticatedUser(User);
+            if (authError != null) return authError;
+
             command ??= new ClaimDailyRewardCommand();
-            var tokenUserId = User.FindFirstValue(ClaimTypes.NameIdentifier)
-                ?? User.FindFirstValue("app_sub")
-                ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub);
-            _logger.Debug("[DAILY_REWARD] ClaimDailyReward tokenUserId={TokenUserId} command.UserId before={CmdUserId}", tokenUserId ?? "null", command.UserId ?? "null");
-            if (!string.IsNullOrEmpty(tokenUserId) && string.IsNullOrEmpty(command.UserId))
-                command.UserId = tokenUserId;
-            if (string.IsNullOrEmpty(command.UserId))
-            {
-                _logger.Debug("[DAILY_REWARD] ClaimDailyReward ABORT User ID is required");
-                return BadRequest(new { Message = "User ID is required" });
-            }
+            var tokenUserId = GetTokenUserId(User)!;
+            _logger.Debug("[DAILY_REWARD] ClaimDailyReward tokenUserId={TokenUserId} command.UserId before={CmdUserId}", tokenUserId, command.UserId ?? "null");
+            var mismatch = ForbidIfUserMismatch(User, command.UserId);
+            if (mismatch != null) return mismatch;
+            command.UserId = RequireAndResolveUserId(User, command.UserId);
             _logger.Debug("[DAILY_REWARD] ClaimDailyReward sending command to mediator UserId={UserId}", command.UserId);
             var result = await _mediator.Send(command, cancellationToken);
             _logger.Debug("[DAILY_REWARD] ClaimDailyReward RESULT Success={Success} CoinsAwarded={Coins} NewStreakDay={Day} Message={Msg}", result.Success, result.CoinsAwarded, result.NewStreakDay, result.Message ?? "null");
@@ -534,6 +533,9 @@ public class InfoController : ControllerBase
     {
         try
         {
+            var authError = RequireAuthenticatedUser(User);
+            if (authError != null) return authError;
+
             var countryCode = query.GetCountryCode();
             if (string.IsNullOrEmpty(countryCode))
             {

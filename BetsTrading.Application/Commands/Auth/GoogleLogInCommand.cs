@@ -4,6 +4,8 @@ namespace BetsTrading.Application.Commands.Auth;
 
 public class GoogleLogInCommand : IRequest<GoogleLogInResult>
 {
+    public string? IdToken { get; set; }
+
     /// <summary>Google user ID. Binds from "userId" (camelCase) or "UserId" via case-insensitive JSON options.</summary>
     public string? UserId { get; set; }
 
