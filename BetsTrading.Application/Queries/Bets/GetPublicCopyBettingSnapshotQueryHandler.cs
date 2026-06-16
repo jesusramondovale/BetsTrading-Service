@@ -80,7 +80,8 @@ public sealed class GetPublicCopyBettingSnapshotQueryHandler
 
         ViewerCopyTradingStatusDto? viewerStatus = null;
         var viewerId = (request.ViewerUserId ?? string.Empty).Trim();
-        if (!string.IsNullOrEmpty(viewerId) && viewerId != userId)
+        if (!string.IsNullOrEmpty(viewerId)
+            && !string.Equals(viewerId, userId, StringComparison.OrdinalIgnoreCase))
         {
             var subscription = await _unitOfWork.CopyTradingSubscriptions
                 .GetByFollowerAndTargetAsync(viewerId, userId, cancellationToken);

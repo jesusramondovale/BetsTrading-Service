@@ -11,6 +11,11 @@ public class CopyTradingSubscription
         bool autoAdjustByBalance,
         bool stopAfterOneLoss)
     {
+        if (string.Equals(followerUserId, targetUserId, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("A user cannot copy-trade themselves", nameof(targetUserId));
+        }
+
         Id = Guid.NewGuid();
         FollowerUserId = followerUserId;
         TargetUserId = targetUserId;

@@ -171,7 +171,7 @@ public class CreateBetCommandHandler : IRequestHandler<CreateBetCommand, CreateB
         foreach (var subscription in subscriptions)
         {
             if (!subscription.IsActive) continue;
-            if (subscription.FollowerUserId == sourceUser.Id) continue;
+            if (subscription.FollowerUserId.Equals(sourceUser.Id, StringComparison.OrdinalIgnoreCase)) continue;
 
             var follower = await _unitOfWork.Users.GetByIdAsync(subscription.FollowerUserId, cancellationToken);
             if (follower == null)

@@ -31,8 +31,29 @@ public class ConfigureCopyTradingCommandHandler : IRequestHandler<ConfigureCopyT
             throw new InvalidOperationException("FollowerUserId and TargetUserId are required");
         }
 
-        if (followerId == targetId)
+        if (string.Equals(followerId, targetId, StringComparison.OrdinalIgnoreCase))
         {
+            if (!request.IsEnabled)
+            {
+                var selfSubscription = await _unitOfWork.CopyTradingSubscriptions
+                    .GetByFollowerAndTargetAsync(followerId, targetId, cancellationToken);
+                if (selfSubscription != null && selfSubscription.IsActive)
+                {
+                    selfSubscription.Stop("self_copy_not_allowed");
+                    _unitOfWork.CopyTradingSubscriptions.Update(selfSubscription);
+                    await _unitOfWork.SaveChangesAsync(cancellationToken);
+                    _logger.Debug(
+                        "[ConfigureCopyTrading] Disabled invalid self-copy subscription. user={UserId}",
+                        followerId);
+                }
+
+                return new ConfigureCopyTradingResult
+                {
+                    Active = false,
+                    Message = "Copy-trading disabled"
+                };
+            }
+
             throw new InvalidOperationException("User cannot copy himself");
         }
 
