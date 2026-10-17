@@ -53,6 +53,7 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
+    <!-- wwwroot/app (Flutter web) lo incluye el SDK Web por defecto; regenerar con BetsTrading/scripts/publish_web.ps1 -->
   </ItemGroup>
 
   <ProjectExtensions><VisualStudio><UserProperties appsettings_1json__JsonSchema="" /></VisualStudio></ProjectExtensions>

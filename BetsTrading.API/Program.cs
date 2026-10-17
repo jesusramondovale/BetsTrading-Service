@@ -164,19 +164,25 @@ builder.Services.AddAutoMapper(typeof(MappingProfile));
 builder.Services.AddValidatorsFromAssembly(typeof(BetsTrading.Application.Commands.Bets.CreateBetCommandValidator).Assembly);
 
 // JWT Configuration
-var googleClientId = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID") 
+// GOOGLE_CLIENT_ID puede ser uno o varios (móvil + web) separados por coma.
+var googleClientIdRaw = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID") 
     ?? builder.Configuration["Google:ClientId"] 
     ?? "";
+var googleClientIds = googleClientIdRaw
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+    .Where(id => !string.IsNullOrWhiteSpace(id))
+    .ToArray();
+var googleClientId = googleClientIds.FirstOrDefault() ?? "";
 var localIssuer = builder.Configuration["Jwt:Issuer"] ?? "https://api.betstrading.online";
 var localAudience = builder.Configuration["Jwt:Audience"] ?? "bets-trading-api";
 var jwtLocalKey = Environment.GetEnvironmentVariable("JWT_LOCAL_KEY") ?? builder.Configuration["Jwt:Key"] ?? "";
 
 if (string.IsNullOrEmpty(jwtLocalKey))
     customLogger.Log.Warning("[PROGRAM] :: JWT Local Custom Key is empty!");
-if (string.IsNullOrEmpty(googleClientId))
+if (googleClientIds.Length == 0)
     customLogger.Log.Warning("[PROGRAM] :: Google JWT Client Id is empty! (Set GOOGLE_CLIENT_ID environment variable or configure in appsettings.json)");
 else
-    customLogger.Log.Information("[PROGRAM] :: Google JWT Client Id loaded successfully.");
+    customLogger.Log.Information("[PROGRAM] :: Google JWT Client Id(s) loaded: {Count}", googleClientIds.Length);
 
 JwtSecurityTokenHandler.DefaultMapInboundClaims = false;
 
@@ -237,7 +243,7 @@ builder.Services.AddAuthentication(options =>
 })
 .AddJwtBearer("GoogleJwt", o =>
 {
-    if (string.IsNullOrEmpty(googleClientId))
+    if (googleClientIds.Length == 0)
     {
         customLogger.Log.Warning("[PROGRAM] :: Google JWT Client Id is empty! Google authentication will not work.");
         // Configurar con valores por defecto para evitar errores de configuración
@@ -257,7 +263,7 @@ builder.Services.AddAuthentication(options =>
             ValidateIssuer = true,
             ValidIssuers = new[] { "https://accounts.google.com", "accounts.google.com" },
             ValidateAudience = true,
-            ValidAudience = googleClientId,
+            ValidAudiences = googleClientIds,
             ValidateLifetime = true,
             NameClaimType = "sub",
             RoleClaimType = ClaimTypes.Role
@@ -1022,6 +1028,53 @@ if (app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Flutter web client en /betrader (build copiado a wwwroot/betrader vía scripts/publish_web.ps1)
+// Importante: Map("/betrader") + UseStaticFiles dentro del branch; un MapFallback global
+// devolvía index.html también para .js/.wasm (pantalla gris / splash eterno).
+var flutterWebRoot = Path.Combine(app.Environment.ContentRootPath, "wwwroot", "betrader");
+if (Directory.Exists(flutterWebRoot))
+{
+    var flutterFileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(flutterWebRoot);
+    var flutterIndexPath = Path.Combine(flutterWebRoot, "index.html");
+    customLogger.Log.Information("[PROGRAM] :: Serving Flutter web from {Path} at /betrader", flutterWebRoot);
+
+    app.Map("/betrader", flutterApp =>
+    {
+        flutterApp.UseDefaultFiles(new DefaultFilesOptions
+        {
+            FileProvider = flutterFileProvider,
+            DefaultFileNames = new List<string> { "index.html" },
+        });
+        flutterApp.UseStaticFiles(new StaticFileOptions
+        {
+            FileProvider = flutterFileProvider,
+            ServeUnknownFileTypes = true,
+        });
+        // SPA fallback solo si no hay archivo estático
+        flutterApp.Run(async context =>
+        {
+            if (!System.IO.File.Exists(flutterIndexPath))
+            {
+                context.Response.StatusCode = 404;
+                await context.Response.WriteAsync("Flutter web build not found. Run scripts/publish_web.ps1");
+                return;
+            }
+            context.Response.ContentType = "text/html; charset=utf-8";
+            await context.Response.SendFileAsync(flutterIndexPath);
+        });
+    });
+
+    // Compat: /app → /betrader/
+    app.MapGet("/app", () => Results.Redirect("/betrader/", permanent: false));
+    app.MapGet("/app/{**path}", (string path) => Results.Redirect($"/betrader/{path}", permanent: false));
+}
+else
+{
+    customLogger.Log.Warning(
+        "[PROGRAM] :: Flutter web root missing at {Path}. /betrader will not be served until publish_web.ps1 runs.",
+        flutterWebRoot);
+}
 
 app.MapControllers();
 

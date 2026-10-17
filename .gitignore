@@ -8,3 +8,6 @@ appsettings.json
 .env.txt
 *pubxml.user
 *.pubxml
+# Flutter web build (regenerar con BetsTrading/scripts/publish_web.ps1)
+BetsTrading.API/wwwroot/betrader/
+BetsTrading.API/wwwroot/app/
