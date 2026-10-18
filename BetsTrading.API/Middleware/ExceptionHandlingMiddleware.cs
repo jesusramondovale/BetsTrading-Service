@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Net;
 using System.Text.Json;
 using BetsTrading.Domain.Exceptions;
@@ -35,28 +36,37 @@ public class ExceptionHandlingMiddleware
 
         switch (exception)
         {
+            case FluentValidation.ValidationException validationEx:
+                code = HttpStatusCode.BadRequest;
+                result = JsonSerializer.Serialize(new
+                {
+                    success = false,
+                    message = string.Join("; ", validationEx.Errors.Select(e => e.ErrorMessage)),
+                    errors = validationEx.Errors.Select(e => e.ErrorMessage).ToArray()
+                });
+                break;
             case InvalidOperationException:
                 code = HttpStatusCode.BadRequest;
-                result = JsonSerializer.Serialize(new { Message = exception.Message });
+                result = JsonSerializer.Serialize(new { success = false, message = exception.Message });
                 break;
             case InsufficientPointsException:
                 code = HttpStatusCode.BadRequest;
-                result = JsonSerializer.Serialize(new { Message = exception.Message });
+                result = JsonSerializer.Serialize(new { success = false, message = exception.Message });
                 break;
             case BetException:
                 code = HttpStatusCode.BadRequest;
-                result = JsonSerializer.Serialize(new { Message = exception.Message });
+                result = JsonSerializer.Serialize(new { success = false, message = exception.Message });
                 break;
             case FormatException:
                 code = HttpStatusCode.BadRequest;
-                result = JsonSerializer.Serialize(new { Message = "Invalid request format. Please check your request body and Content-Type header." });
+                result = JsonSerializer.Serialize(new { success = false, message = "Invalid request format. Please check your request body and Content-Type header." });
                 break;
             case System.Text.Json.JsonException:
                 code = HttpStatusCode.BadRequest;
-                result = JsonSerializer.Serialize(new { Message = "Invalid JSON format in request body." });
+                result = JsonSerializer.Serialize(new { success = false, message = "Invalid JSON format in request body." });
                 break;
             default:
-                result = JsonSerializer.Serialize(new { Message = "An error occurred while processing your request.", Error = exception?.Message ?? "" });
+                result = JsonSerializer.Serialize(new { success = false, message = "An error occurred while processing your request.", error = exception?.Message ?? "" });
                 break;
         }
 
