@@ -65,7 +65,7 @@ public class PaymentsController : ControllerBase
 
         if (!result.Success)
         {
-            if (result.Message is "User not found" or "no_ads_already_owned" or "Invalid coin package")
+            if (result.Message is "User not found" or "no_ads_already_owned" or "Invalid coin package" or "Amount below Stripe minimum")
             {
                 return BadRequest(new { message = result.Message });
             }

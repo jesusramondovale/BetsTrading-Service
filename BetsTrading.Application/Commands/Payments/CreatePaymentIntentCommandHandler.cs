@@ -49,6 +49,16 @@ public class CreatePaymentIntentCommandHandler : IRequestHandler<CreatePaymentIn
                 coins = package.Coins;
             }
 
+            // Stripe rechaza cargos por debajo de 0,50 en la divisa (EUR/USD).
+            if (amountMinor < 50)
+            {
+                return new CreatePaymentIntentResult
+                {
+                    Success = false,
+                    Message = "Amount below Stripe minimum"
+                };
+            }
+
             if (string.Equals(productType, "no_ads", StringComparison.OrdinalIgnoreCase))
             {
                 var user = await _unitOfWork.Users.GetByIdAsync(request.UserId, cancellationToken);
