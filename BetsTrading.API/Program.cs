@@ -71,7 +71,11 @@ builder.Services.AddSingleton<ICustomLogger>(customLogger);
 builder.Services.AddSingleton<BetsTrading.Application.Interfaces.IApplicationLogger>(sp =>
     new BetsTrading.Infrastructure.Logging.ApplicationLogger(sp.GetRequiredService<ICustomLogger>()));
 
-customLogger.Log.Information("[PROGRAM] :: ****** STARTING BETSTRADING API (Clean Architecture) ******");
+var appVersion = typeof(Program).Assembly
+    .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()
+    ?.InformationalVersion?.Split('+')[0]
+    ?? "26.326.1";
+customLogger.Log.Information("[PROGRAM] :: ****** BETSTRADING API {Version} ******", appVersion);
 customLogger.Log.Information("[PROGRAM] :: Working Directory: {wd}", Directory.GetCurrentDirectory());
 customLogger.Log.Information("[PROGRAM] :: Serilog service started. Logging on {pth} (full path: {full}) with interval: {itr}", 
     logPath, fullLogPath, loggingInterval.ToString());

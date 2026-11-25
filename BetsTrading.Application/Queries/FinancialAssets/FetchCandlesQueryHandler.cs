@@ -43,11 +43,12 @@ public class FetchCandlesQueryHandler : IRequestHandler<FetchCandlesQuery, Fetch
                 };
             }
 
-            var timeframe = request.Timeframe ?? 1;
+            // Granularidad mínima 1h: timeframes < 1 se tratan como 1h; >1 agregan velas 1h.
+            var timeframe = Math.Max(1, request.Timeframe ?? 1);
             var currency = request.Currency ?? "EUR";
 
             // Comportamiento legacy: mismas velas para EUR y USD (solo cambia AssetCandles vs AssetCandlesUSD),
-            // todas las velas, OrderByDescending(DateTime). Sin límite de 30 días ni de 1000.
+            // base siempre interval "1h"; el cliente agrega a 2h/4h/24h.
             IEnumerable<CandleDto> rawDtos;
             if (currency == "EUR")
             {

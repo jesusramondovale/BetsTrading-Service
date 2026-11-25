@@ -23,13 +23,23 @@ public class UpdaterService : IUpdaterService
         .Select(i => Environment.GetEnvironmentVariable($"TWELVE_DATA_KEY{i}") ?? "")
         .ToArray();
     private const decimal FIXED_EUR_USD = 1.16m;
+    /// <summary>Ventana de histórico a pedir/rellenar. 45 días × 24 h = una sola llamada 1h por activo.</summary>
+    private const int CandleLookbackDays = 45;
+    private const int CandleLookbackHours = CandleLookbackDays * 24; // 1080
     private const int MaxZonesPerTickerTimeframe = 12;
     private const int MaxPeriodsPerTimeframe = 3;
     private const double MaxTargetOddsCap = 999.99;
+    private const string CandleInterval = "1h";
 
     /// <summary>Multiplicador de odds casi proporcional al timeframe (1h→1×, 2h→2×, 4h→4×, 24h→24×).</summary>
     private static double TimeframeOddsMultiplier(int timeframeHours) =>
         timeframeHours <= 0 ? 1.0 : timeframeHours;
+
+    private static DateTime FloorToHourUtc(DateTime dt)
+    {
+        var utc = dt.Kind == DateTimeKind.Local ? dt.ToUniversalTime() : DateTime.SpecifyKind(dt, DateTimeKind.Utc);
+        return new DateTime(utc.Year, utc.Month, utc.Day, utc.Hour, 0, 0, DateTimeKind.Utc);
+    }
 
     private static double ApplyTimeframeOddsBoost(double baseOdds, int timeframeHours)
     {
@@ -84,8 +94,6 @@ public class UpdaterService : IUpdaterService
 
         var httpClient = _httpClientFactory.CreateClient("TwelveData");
 
-        const string interval = "1h";
-        const int latestCandlesCount = 10;
         const string desiredQuote = "EUR";
 
         int keyIndex = 0;
@@ -126,44 +134,34 @@ public class UpdaterService : IUpdaterService
                 continue;
             }
 
-            // Siempre pedir las últimas N velas; la BD evita duplicados con BulkInsertOrUpdate (clave AssetId, Exchange, Interval, DateTime)
-            string baseUrl = asset.Group.Equals("Cryptos", StringComparison.OrdinalIgnoreCase)
-                ? $"https://api.twelvedata.com/time_series?symbol={symbol}/{desiredQuote}&interval={interval}&timezone=UTC&apikey={CurrentKey()}"
-                : $"https://api.twelvedata.com/time_series?symbol={symbol}&interval={interval}&timezone=UTC&apikey={CurrentKey()}";
-            string url = $"{baseUrl}&outputsize={latestCandlesCount}";
+            // Una sola llamada por activo: últimas 45 días de velas 1h (outputsize = 1080).
+            var toHour = FloorToHourUtc(DateTime.UtcNow);
+            var fromHour = toHour.AddHours(-(CandleLookbackHours - 1));
 
-            // Llamar a la API
-            HttpResponseMessage resp;
+            string url = asset.Group.Equals("Cryptos", StringComparison.OrdinalIgnoreCase)
+                ? $"https://api.twelvedata.com/time_series?symbol={symbol}/{desiredQuote}&interval={CandleInterval}&timezone=UTC&outputsize={CandleLookbackHours}&apikey={CurrentKey()}"
+                : $"https://api.twelvedata.com/time_series?symbol={symbol}&interval={CandleInterval}&timezone=UTC&outputsize={CandleLookbackHours}&apikey={CurrentKey()}";
+
+            string? json;
             try
             {
-                resp = await httpClient.GetAsync(url, cancellationToken);
+                var resp = await httpClient.GetAsync(url, cancellationToken);
                 callsWithThisKey++;
-            }
-            catch (Exception ex)
-            {
-                _logger.Debug("[UpdaterService] :: HTTP error fetching {0}: {1}", symbol, ex.Message);
-                callsWithThisKey++;
-                continue;
-            }
-
-            if (!resp.IsSuccessStatusCode)
-            {
-                _logger.Debug("[UpdaterService] :: TwelveData: Failed for {0}. HTTP {1}", symbol, resp.StatusCode);
-                continue;
-            }
-
-            string json;
-            try
-            {
+                if (!resp.IsSuccessStatusCode)
+                {
+                    _logger.Warning("[UpdaterService] :: TwelveData: Failed for {0} ({1:u}..{2:u}). HTTP {3}",
+                        symbol, fromHour, toHour, resp.StatusCode);
+                    continue;
+                }
                 json = await resp.Content.ReadAsStringAsync(cancellationToken);
             }
             catch (Exception ex)
             {
-                _logger.Debug("[UpdaterService] :: Error reading content for {0}: {1}", symbol, ex.Message);
+                callsWithThisKey++;
+                _logger.Warning("[UpdaterService] :: HTTP error fetching {0}: {1}", symbol, ex.Message);
                 continue;
             }
 
-            // Parsear JSON
             TwelveDataResponse? parsed;
             try
             {
@@ -174,39 +172,34 @@ public class UpdaterService : IUpdaterService
             }
             catch (Exception ex)
             {
-                _logger.Debug("[UpdaterService] :: JSON parse error for {0}: {1}", symbol, ex.Message);
+                _logger.Warning("[UpdaterService] :: JSON parse error for {0}: {1}", symbol, ex.Message);
                 continue;
             }
 
-            if (parsed == null || parsed.Status?.Equals("error", StringComparison.OrdinalIgnoreCase) == true)
+            if (parsed == null || parsed.Status?.Equals("error", StringComparison.OrdinalIgnoreCase) == true
+                || parsed.Values == null || parsed.Values.Count == 0)
             {
-                _logger.Debug("[UpdaterService] :: API status not ok for {0}. Raw: {1}", symbol, json);
-                continue;
-            }
-
-            if (parsed.Values == null || parsed.Values.Count == 0)
-            {
-                _logger.Debug("[UpdaterService] :: No market data for {0}", symbol);
+                _logger.Warning("[UpdaterService] :: No market data for {0} in last {1} days", symbol, CandleLookbackDays);
                 continue;
             }
 
             var exchange = parsed.Meta?.Exchange ?? "Unknown";
             var newCandles = new List<AssetCandle>();
+            var seenHours = new HashSet<DateTime>();
 
-            // Procesar candles (BulkInsertOrUpdate evita duplicados por AssetId, Exchange, Interval, DateTime)
             foreach (var v in parsed.Values)
             {
                 try
                 {
-                    // Twelve Data devuelve datetimes en UTC (timezone=UTC en la request); interpretar como UTC, no como hora local
                     var dtRaw = DateTime.Parse(v.Datetime!, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
-                    var dt = new DateTime(dtRaw.Year, dtRaw.Month, dtRaw.Day, dtRaw.Hour, 0, 0, DateTimeKind.Utc);
-
+                    var dt = FloorToHourUtc(dtRaw);
+                    if (dt < fromHour || dt > toHour || !seenHours.Add(dt))
+                        continue;
                     newCandles.Add(new AssetCandle
                     {
                         AssetId = asset.Id,
                         Exchange = exchange,
-                        Interval = interval,
+                        Interval = CandleInterval,
                         DateTime = dt,
                         Open = decimal.Parse(v.Open!, CultureInfo.InvariantCulture),
                         High = decimal.Parse(v.High!, CultureInfo.InvariantCulture),
@@ -279,18 +272,19 @@ public class UpdaterService : IUpdaterService
                 await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
                 totalCandlesSaved += newCandles.Count;
-                _logger.Debug("[UpdaterService] :: Saved {0} new candles for {1}", newCandles.Count, symbol);
+                _logger.Information("[UpdaterService] :: Saved {0} 1h candles for {1} (window {2:u}..{3:u})",
+                    newCandles.Count, symbol, fromHour, toHour);
             }
             catch (Exception ex)
             {
                 await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                _logger.Debug("[UpdaterService] :: Error saving candles for {0}: {1}", symbol, ex.Message);
+                _logger.Warning("[UpdaterService] :: Error saving candles for {0}: {1}", symbol, ex.Message);
             }
         }
 
-        _logger.Information("[UpdaterService] :: UpdateAssets completed: {0} candles saved for {1} assets", 
-            totalCandlesSaved, selectedAssets.Count);
-        _logger.Debug("[UpdaterService] :: UpdateAssetsAsync completed successfully ({0})", 
+        _logger.Information("[UpdaterService] :: UpdateAssets completed: {0} candles saved for {1} assets (1h, last {2}d)",
+            totalCandlesSaved, selectedAssets.Count, CandleLookbackDays);
+        _logger.Debug("[UpdaterService] :: UpdateAssetsAsync completed successfully ({0})",
             marketHours ? "Mode market hours" : "Continuous mode");
     }
 
@@ -329,52 +323,40 @@ public class UpdaterService : IUpdaterService
 
                 var now = DateTime.UtcNow;
 
-                // Desactivar zonas existentes antes de crear nuevas
-                var existingZones = await _unitOfWork.BetZones.DeactivateZonesByTickerAsync(currentAsset.Ticker, cancellationToken);
-                var existingZonesUSD = await _unitOfWork.BetZonesUSD.DeactivateZonesByTickerAsync(currentAsset.Ticker, cancellationToken);
-
-                if (existingZones > 0 || existingZonesUSD > 0)
-                {
-                    _logger.Debug("[UpdaterService] :: Deactivated {0} existing zones (EUR: {1}, USD: {2}) for {3} before creating new ones",
-                        existingZones + existingZonesUSD, existingZones, existingZonesUSD, currentAsset.Ticker);
-                }
-
                 _logger.Debug("[UpdaterService] :: Starting zone creation process for {0}", currentAsset.Ticker);
 
-                // Definir múltiples períodos temporales para cada timeframe
-                var horizons = new Dictionary<int, List<(DateTime Start, DateTime End)>>();
-
-                // Timeframe 1h: 3 períodos cortos
-                horizons[1] = new List<(DateTime Start, DateTime End)>
+                // El primer tramo de cada timeframe empieza en `now`, así hay zonas vigentes
+                // (StartDate <= ahora <= EndDate) en cuanto se insertan.
+                var horizons = new Dictionary<int, List<(DateTime Start, DateTime End)>>
                 {
-                    (now.AddHours(2), now.AddHours(5)),   // Muy corto: 3 horas
-                    (now.AddHours(5), now.AddHours(10)),  // Corto: 5 horas
-                    (now.AddHours(10), now.AddHours(18))  // Medio: 8 horas
+                    [1] = new()
+                    {
+                        (now, now.AddHours(5)),
+                        (now.AddHours(5), now.AddHours(10)),
+                        (now.AddHours(10), now.AddHours(18))
+                    },
+                    [2] = new()
+                    {
+                        (now, now.AddHours(8)),
+                        (now.AddHours(8), now.AddHours(16)),
+                        (now.AddHours(16), now.AddHours(28))
+                    },
+                    [4] = new()
+                    {
+                        (now, now.AddHours(10)),
+                        (now.AddHours(10), now.AddHours(22)),
+                        (now.AddHours(22), now.AddHours(40))
+                    },
+                    [24] = new()
+                    {
+                        (now, now.AddHours(26)),
+                        (now.AddHours(26), now.AddHours(74)),
+                        (now.AddHours(74), now.AddHours(146))
+                    }
                 };
 
-                // Timeframe 2h: 3 períodos
-                horizons[2] = new List<(DateTime Start, DateTime End)>
-                {
-                    (now.AddHours(2), now.AddHours(8)),   // Corto: 6 horas
-                    (now.AddHours(8), now.AddHours(16)),  // Medio: 8 horas
-                    (now.AddHours(16), now.AddHours(28))  // Largo: 12 horas
-                };
-
-                // Timeframe 4h: 3 períodos
-                horizons[4] = new List<(DateTime Start, DateTime End)>
-                {
-                    (now.AddHours(2), now.AddHours(10)),   // Corto: 8 horas
-                    (now.AddHours(10), now.AddHours(22)),  // Medio: 12 horas
-                    (now.AddHours(22), now.AddHours(40))   // Largo: 18 horas
-                };
-
-                // Timeframe 24h: 3 períodos
-                horizons[24] = new List<(DateTime Start, DateTime End)>
-                {
-                    (now.AddHours(2), now.AddHours(26)),   // Corto: 24 horas (1 día)
-                    (now.AddHours(26), now.AddHours(74)),  // Medio: 48 horas (2 días)
-                    (now.AddHours(74), now.AddHours(146))  // Largo: 72 horas (3 días)
-                };
+                var pendingEur = new List<BetZone>();
+                var pendingUsd = new List<BetZoneUSD>();
 
                 _logger.Debug("[UpdaterService] :: Starting to process {0} timeframes for {1}",
                     horizons.Count, currentAsset.Ticker);
@@ -556,7 +538,7 @@ public class UpdaterService : IUpdaterService
                                 timeframe
                             );
 
-                            await _unitOfWork.BetZones.AddAsync(betZone, cancellationToken);
+                            pendingEur.Add(betZone);
                         }
 
                         // Crear zonas USD para este período
@@ -581,7 +563,7 @@ public class UpdaterService : IUpdaterService
                                 timeframe
                             );
 
-                            await _unitOfWork.BetZonesUSD.AddAsync(betZoneUSD, cancellationToken);
+                            pendingUsd.Add(betZoneUSD);
                         }
 
                         totalZonesCreated += zonesWithPercentMargins.Count;
@@ -593,6 +575,22 @@ public class UpdaterService : IUpdaterService
                     _logger.Debug("[UpdaterService] :: Created TOTAL {0} zones across {1} time periods for {2} timeframe {3}",
                         totalZonesCreated, timePeriods.Count, currentAsset.Ticker, timeframe);
                 }
+
+                if (pendingEur.Count == 0 && pendingUsd.Count == 0)
+                {
+                    _logger.Debug("[UpdaterService] :: No zones generated for {0}; keeping the active ones", currentAsset.Ticker);
+                    continue;
+                }
+
+                var deactivatedEur = await _unitOfWork.BetZones.DeactivateZonesByTickerAsync(currentAsset.Ticker, cancellationToken);
+                var deactivatedUsd = await _unitOfWork.BetZonesUSD.DeactivateZonesByTickerAsync(currentAsset.Ticker, cancellationToken);
+                foreach (var zone in pendingEur)
+                    await _unitOfWork.BetZones.AddAsync(zone, cancellationToken);
+                foreach (var zone in pendingUsd)
+                    await _unitOfWork.BetZonesUSD.AddAsync(zone, cancellationToken);
+
+                _logger.Information("[UpdaterService] :: {0}: replaced {1} EUR + {2} USD zones with {3} EUR + {4} USD (current from {5:u})",
+                    currentAsset.Ticker, deactivatedEur, deactivatedUsd, pendingEur.Count, pendingUsd.Count, now);
             }
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
